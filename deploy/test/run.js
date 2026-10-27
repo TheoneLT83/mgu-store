@@ -886,6 +886,11 @@ function testFallbackHook() {
     const main = handle('main_app', { installable_apps: { app: { '#text': 'provisioned_app' } } });
     check('fallback hook: installable_apps keeps the provisioned app and adds ours',
         main.installable_apps.app.map((a) => a['#text']).join(',') === 'provisioned_app,our_app,their_app', JSON.stringify(main));
+    write(list, JSON.stringify({ our_app: flags, robertn_store: flags }));
+    const first = new (require(path.join(dir, 'built.js')))().handle('main_app', { installable_apps: { app: { '#text': 'provisioned_app' } } });
+    check('fallback hook: the Store\'s own app goes first, the other apps after the provisioned ones',
+        first.installable_apps.app.map((a) => a['#text']).join(',') === 'robertn_store,provisioned_app,our_app', JSON.stringify(first));
+    write(list, JSON.stringify({ our_app: flags, their_app: { '-appStartType': 'manually', '-userLoginRequired': 'false' } }));
     check('fallback hook: an entry without -enabled/-allowed (idrive7-apps\' installer) takes them as true',
         JSON.stringify(handle('their_app', undefined)) === JSON.stringify(flags) &&
         main.installable_apps.app[2]['-enabled'] === 'true', JSON.stringify(handle('their_app', undefined)));

@@ -12,7 +12,8 @@
  * "-updateMechanism"; one it leaves out is "true" for "-enabled" and
  * "-allowed", else as mgu-deploy writes it):
  *  - an app with no entry in MainApp's installable_apps list takes one
- *    ({"#text": appId, ...flags}, the shape modifyInstallableApps handles);
+ *    ({"#text": appId, ...flags}, the shape modifyInstallableApps handles),
+ *    the Store's own app at the front of the list, the others at the end;
  *  - an app whose own provisioning section is missing or empty takes its
  *    flags as that section, which gives it its tile and start type.
  * An app provisioning names keeps its provisioned entry and section; an
@@ -56,11 +57,15 @@ function helperSource(listPath) {
         'const __mguDeployFallbackApps=()=>{const c=__mguDeployFallbackList();' +
         'return Object.keys(c).map(id=>Object.assign({"#text":id,"-supportedECUs":"HU,RSE_LEFT,RSE_RIGHT"},c[id]))};';
 }
+/* The Store's own app goes first in the list, the other missing apps after
+ * the provisioned ones. */
+var FIRST_APP = 'robertn_store';
 var HOOK = 'if(isMainapp&&section===mainAppSection){' +
     'const __have=((newProvisioning.installable_apps||{}).app||[]);' +
     'const __haveList=Array.isArray(__have)?__have:[__have];' +
     'const __missing=__mguDeployFallbackApps().filter(a=>!__haveList.some(h=>h["#text"]===a["#text"]));' +
-    '__missing.length&&(newProvisioning.installable_apps={app:__haveList.concat(__missing)})}' +
+    '__missing.length&&(newProvisioning.installable_apps={app:__missing.filter(a=>a["#text"]===' + JSON.stringify(FIRST_APP) + ')' +
+    '.concat(__haveList,__missing.filter(a=>a["#text"]!==' + JSON.stringify(FIRST_APP) + '))})}' +
     'else if(isMainapp&&(!newProvisioning||typeof newProvisioning!=="object"||!Object.keys(newProvisioning).length)){' +
     'const __own=__mguDeployFallbackList()[section];' +
     '__own&&typeof __own==="object"&&(newProvisioning=Object.assign({},__own))}' +

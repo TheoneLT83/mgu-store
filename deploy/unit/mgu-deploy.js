@@ -1841,9 +1841,16 @@ function readCustomApps() {
     var c = readJsonOrNull(customAppsFile());
     return c && typeof c === 'object' && !Array.isArray(c) ? c : {};
 }
+/* The Store's own app is listed first (provisioning takes the apps in
+ * this order). */
+var FIRST_APP = 'robertn_store';
 function writeCustomApps(c) {
+    var ordered = {};
+    var ids = Object.keys(c);
+    ids.filter(function (id) { return id === FIRST_APP; }).concat(ids.filter(function (id) { return id !== FIRST_APP; }))
+        .forEach(function (id) { ordered[id] = c[id]; });
     mkdirp(path.dirname(customAppsFile()));
-    writeAtomic(customAppsFile(), JSON.stringify(c, null, 2) + '\n', 0o660);
+    writeAtomic(customAppsFile(), JSON.stringify(ordered, null, 2) + '\n', 0o660);
     chownMaybe(customAppsFile(), MGR_UID, MGR_UID);
 }
 function customAppsPut(id, cache, startType) {
