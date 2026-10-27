@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.6
+
+Plain > instead of the arrow the iDrive 7 font lacks (it showed as a box): "No internet: Settings > Internet ...", the phone tethering steps, and the version change on Installed.
+
 ## 0.9.5
 
 The Installed page lists the apps and tools that have an update first.

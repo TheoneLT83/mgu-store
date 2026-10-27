@@ -161,7 +161,7 @@ function storeView(m) {
     return {
         title: { text: 'Store' },
         subtitle: busyRow ? { text: `${busy.phase === 'download' ? `Downloading ${percent(busy)} %` : PHASE[busy.phase] || 'Installing'} · ${named(m, busyRow)}`, color: BLUE }
-            : m.connected && !checking && !online ? { text: 'No internet: Settings → Internet shows how to connect the car', color: AMBER }
+            : m.connected && !checking && !online ? { text: 'No internet: Settings > Internet shows how to connect the car', color: AMBER }
                 : { text: m.connected ? statusLine(st, true) : statusLine(null, false, m.secret), color: DIM },
         filter: { sel: Math.max(0, FILTERS.indexOf(m.filter)), acts: FILTERS.map((f) => ({ do: 'filter', filter: f })) },
         online: { items: !m.connected ? [] : checking ? [{ text: 'Checking', color: BLUE, dot: true }]
@@ -183,7 +183,7 @@ function installedView(m) {
         const up = c.status === 'update' && s.badge === 'update';
         const open = { do: 'open', page: pageOf(c) };
         return Object.assign(iconOf(c), { id: c.id, title: c.title, act: open,
-            sub: [up ? `${c.installed} → ${target(c)}` : `${c.installed}${isTool(c) ? ' · tool' : ''}`, srcName(m, c)].filter(Boolean).join(' · '), subColor: up ? BLUE : DIM,
+            sub: [up ? `${c.installed} > ${target(c)}` : `${c.installed}${isTool(c) ? ' · tool' : ''}`, srcName(m, c)].filter(Boolean).join(' · '), subColor: up ? BLUE : DIM,
             right: up ? 'chip:Update' : s.sub !== 'Installed' ? `chip:${s.sub}` : 'chevron', chipColor: up ? BLUE : s.subColor,
             chipAct: up ? { do: 'install', id: c.id } : null });
     };
@@ -445,7 +445,7 @@ const INTERNET_STEPS = [
     'The head unit has no internet of its own. Plug one of these into a USB port in the car:',
     '·  a USB LTE stick with a SIM card that has mobile data (e.g. Huawei E3372h)',
     '·  a USB network adapter, cabled to a mobile router',
-    '·  an Android phone: Settings → Network → Hotspot & tethering → USB tethering on',
+    '·  an Android phone: Settings > Network > Hotspot & tethering > USB tethering on',
     '·  an iPhone: Personal Hotspot on, phone unlocked, tap Trust when it asks',
     'Within a minute this page says Connected and the Store finds new apps and updates.',
     'No internet at all? Apps on a USB stick show under USB.'
