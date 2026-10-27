@@ -144,7 +144,7 @@ commit). Without one: `releases` when the repo has a release, else
 - An app with `build.node` or `build.python` is built by the repo's own
   script (below); its version and title come from its `manifest`, else
   `app.json`, else `package.json`, in its folder. A Python build requires
-  `mgu-python` (1.0.0), one with `sdk` `mgu-deploy` 0.3.2, which are
+  `mgu-python` (1.0.2), one with `sdk` `mgu-deploy` 0.3.2, which are
   installed first. The updater itself requires `mgu-python`, so it is on
   every unit with the updater: an updater update installs it first, and it
   cannot be removed.

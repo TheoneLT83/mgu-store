@@ -117,16 +117,30 @@ function visibleIds(b, o) {
     const g = gridView(b, o);
     return g.all.slice(g.top * g.cols, (g.top + g.shown) * g.cols).map((a) => a.id);
 }
-// (the Store: o.iconK, o.titleSize, o.subSize size a smaller tile's icon and texts; the defaults are the design's)
+// a source line too long for its tile keeps its repo name whole and shortens the owner
+function fitSource(cv, s, w, size) {
+    const i = s.lastIndexOf('/');
+    if (i < 0 || cv.textWidth(s, size) <= w) return W.fit(cv, s, w, size);
+    const repo = s.slice(i);
+    return W.fit(cv, s.slice(0, i), Math.max(0, w - cv.textWidth(repo, size)), size) + repo;
+}
+// (the Store: o.iconK, o.titleSize, o.subSize size a smaller tile's icon and texts; the defaults are the design's.
+// Tiles with a source line (item.src, dim, under the title) set the three lines closer and take the icon that
+// leaves them, descenders included, above the tile's bottom 8 px, where the focus rings are drawn: store_frame.js.)
 function appGrid(cv, t, b, o) {
-    const g = gridView(b, o), k = g.th / 274, s = Math.round(g.th * (o.iconK || 0.5));
-    const ts = o.titleSize || 40, ss = o.subSize || 30, top = 12 * k;
+    const g = gridView(b, o), k = g.th / 274;
+    const ts = o.titleSize || 40, ss = o.subSize || 30, rs = Math.round(ss * 0.9), top = 12 * k;
+    const src = g.all.some((a) => a.src);
+    const gap = src ? [ts * 1.2, rs * 1.25, ss * 1.25] : [ts * 1.45, 0, ss * 1.4];
+    const s = src ? Math.floor(Math.min(g.th * (o.iconK || 0.5), g.th - 8 - top - gap[0] - gap[1] - gap[2] - ss * 0.25))
+        : Math.round(g.th * (o.iconK || 0.5));
     g.all.slice(g.top * g.cols, (g.top + g.shown) * g.cols).forEach((a, i) => {
         const x = b.x + (i % g.cols) * g.tw, y = b.y + Math.floor(i / g.cols) * g.th;
         appIcon(cv, t, a, x + (g.tw - s) / 2, y + top, s);
-        const ny = y + top + s + ts * 1.45;
+        const ny = y + top + s + gap[0], sy = ny + gap[1];
         cv.text(W.fit(cv, String(a.title || ''), g.tw - 16, ts, 'bold'), x + g.tw / 2, ny, ts, t.text, { align: 'center', font: 'bold' });
-        if (a.sub) cv.text(W.fit(cv, String(a.sub), g.tw - 16, ss), x + g.tw / 2, ny + ss * 1.4, ss, C(t, a.subColor, t.dim), { align: 'center' });
+        if (a.src) cv.text(fitSource(cv, String(a.src), g.tw - 16, rs), x + g.tw / 2, sy, rs, t.dim, { align: 'center' });
+        if (a.sub) cv.text(W.fit(cv, String(a.sub), g.tw - 16, ss), x + g.tw / 2, sy + gap[2], ss, C(t, a.subColor, t.dim), { align: 'center' });
     });
     if (!g.all.length && o.empty) mid(cv, o.empty, b.x + b.w / 2, b.y + b.h / 2, 36, t.dim, { align: 'center' });
     if (g.rows > g.shown) {             // scroll bar

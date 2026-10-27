@@ -27,7 +27,7 @@
  */
 const { PHASE, percent, rowAction, statusLine, sourceLabel, sourceState, sourceActions, sourceChannel, sourceAccount,
     tokenLabel, tokenState, tokenSources, accountsState, loginStatus, loginCode, phoneState, phoneAddress, hmiNames,
-    notForUnit, removable, pickOptions, probeStatus, withSources, listed } = require('./store_view.js');
+    notForUnit, removable, pickOptions, probeStatus, sourceNames, listed } = require('./store_view.js');
 
 const GREEN = '#35d07f';
 const BLUE = '#3d9bff';
@@ -56,8 +56,11 @@ const target = (c) => (c.revision && c.version === c.installed ? c.revision : c.
 const rawComps = (m) => (m.connected && m.st && Array.isArray(m.st.components) ? m.st.components : []);
 /* The components the Store lists (store_view.js listed). */
 function comps(m) {
-    return withSources(rawComps(m).filter(listed), m.st && m.st.sources);
+    return rawComps(m).filter(listed);
 }
+const srcName = (m, c) => (c.source && sourceNames(sources(m))[c.source]) || '';
+/* Its title, with its source's short name where another listed row has the same title (two sources' DOOM). */
+const named = (m, c) => (srcName(m, c) && comps(m).some((o) => o !== c && o.title === c.title) ? `${c.title} (${srcName(m, c)})` : c.title);
 /* A component's page: its row, else (its row's id changed with an install)
  * the row of the same source and listed id, else (its source turned to a
  * stick copying it, or back) the row of its id. */
@@ -129,8 +132,8 @@ function tileState(c, busy) {
     return { sub: 'Installed', subColor: GREEN, badge: 'installed', progress: -1 };
 }
 
-function tile(c, busy) {
-    return Object.assign(iconOf(c), { id: c.id, title: c.title, act: { do: 'open', page: pageOf(c) } }, tileState(c, busy));
+function tile(m, c, busy) {
+    return Object.assign(iconOf(c), { id: c.id, title: c.title, src: srcName(m, c), act: { do: 'open', page: pageOf(c) } }, tileState(c, busy));
 }
 
 function nav(m, sel) {
@@ -150,18 +153,20 @@ const button = (text, act, extra) => Object.assign({ hidden: false, disabled: fa
 function storeView(m) {
     const busy = busyOf(m);
     const busyRow = busy && find(comps(m), busy.id);
+    // the status line names a row as the tiles tell it apart
+    const st = m.st && Object.assign({}, m.st, { components: m.st.components.map((c) => (listed(c) ? Object.assign({}, c, { title: named(m, c) }) : c)) });
     const list = comps(m).filter((c) => m.filter === 'all' || (m.filter === 'app' ? !isTool(c) : isTool(c)));
     const checking = !!(m.connected && m.st && m.st.catalog && m.st.catalog.checking);
     const online = m.connected && m.st && m.st.online;
     return {
         title: { text: 'Store' },
-        subtitle: busyRow ? { text: `${busy.phase === 'download' ? `Downloading ${percent(busy)} %` : PHASE[busy.phase] || 'Installing'} · ${busyRow.title}`, color: BLUE }
+        subtitle: busyRow ? { text: `${busy.phase === 'download' ? `Downloading ${percent(busy)} %` : PHASE[busy.phase] || 'Installing'} · ${named(m, busyRow)}`, color: BLUE }
             : m.connected && !checking && !online ? { text: 'No internet: Settings → Internet shows how to connect the car', color: AMBER }
-                : { text: m.connected ? statusLine(m.st, true) : statusLine(null, false, m.secret), color: DIM },
+                : { text: m.connected ? statusLine(st, true) : statusLine(null, false, m.secret), color: DIM },
         filter: { sel: Math.max(0, FILTERS.indexOf(m.filter)), acts: FILTERS.map((f) => ({ do: 'filter', filter: f })) },
         online: { items: !m.connected ? [] : checking ? [{ text: 'Checking', color: BLUE, dot: true }]
             : online ? [{ text: 'Online', color: GREEN, dot: true }] : [{ text: 'Offline', color: AMBER, dot: true }] },
-        grid: { items: list.map((c) => tile(c, busy)), empty: m.connected ? 'Nothing here' : '' }
+        grid: { items: list.map((c) => tile(m, c, busy)), empty: m.connected ? 'Nothing here' : '' }
     };
 }
 
@@ -176,7 +181,7 @@ function installedView(m) {
         const up = c.status === 'update' && s.badge === 'update';
         const open = { do: 'open', page: pageOf(c) };
         return Object.assign(iconOf(c), { id: c.id, title: c.title, act: open,
-            sub: up ? `${c.installed} → ${target(c)}` : `${c.installed}${isTool(c) ? ' · tool' : ''}`, subColor: up ? BLUE : DIM,
+            sub: [up ? `${c.installed} → ${target(c)}` : `${c.installed}${isTool(c) ? ' · tool' : ''}`, srcName(m, c)].filter(Boolean).join(' · '), subColor: up ? BLUE : DIM,
             right: up ? 'chip:Update' : s.sub !== 'Installed' ? `chip:${s.sub}` : 'chevron', chipColor: up ? BLUE : s.subColor,
             chipAct: up ? { do: 'install', id: c.id } : null });
     };
@@ -197,7 +202,7 @@ function usbView(m) {
     return {
         title: { text: 'USB' },
         subtitle: { text: usb.length ? `${usb.map(sourceLabel).join(', ')} · ${plural(list.length, 'package')}` : '' },
-        grid: { items: list.map((c) => tile(c, busy)), empty: usb.length ? 'Nothing here' : 'No USB stick' }
+        grid: { items: list.map((c) => tile(m, c, busy)), empty: usb.length ? 'Nothing here' : 'No USB stick' }
     };
 }
 
@@ -325,7 +330,7 @@ function confirmView(m, page) {
     let line = '';
     let now = null;
     if (page.kind === 'remove') {
-        title = c ? `Remove ${c.title} ${c.installed || ''}?`.replace(' ?', '?') : 'Remove?';
+        title = c ? `Remove ${named(m, c)} ${c.installed || ''}?`.replace(' ?', '?') : 'Remove?';
         now = button('Remove', { do: 'remove', id: page.id }, { vicon: 'trash', style: 'primary', color: RED });
     } else if (page.kind === 'restart') {
         title = 'Restart head unit?';

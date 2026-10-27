@@ -276,7 +276,7 @@ function iconOf(entry, readFile) {
  * ("sdk") and installs drop-ins (a preload tool, a tool with dropins), and
  * the one that knows capabilities (mguProvides). */
 const PYTHON_TOOL = 'mgu-python';
-const PYTHON_MIN = '1.0.0';
+const PYTHON_MIN = '1.0.2';
 const DEPLOY_SDK_MIN = '0.3.2';
 const DEPLOY_PROVIDES_MIN = '0.4.0';
 

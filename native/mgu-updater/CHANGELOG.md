@@ -1,5 +1,10 @@
 # Updater changelog
 
+## 0.7.5
+
+- Requires `mgu-python` 1.0.2, and so does every app that builds with Python: `mgu-python` 1.0.1 and older cannot start on the head unit, so an updater update, or the install of such an app, updates it first.
+- A Python build whose interpreter cannot start fails with `Python (<path>) cannot start (<reason>): update mgu-python`.
+
 ## 0.7.4
 
 - The Store's own source is TheoneLT83/mgu-store and the default source TheoneLT83/idrive7-apps; the apps that repository's own installer put on the unit are adopted with it as their origin.

@@ -554,7 +554,19 @@ function testTar() {
                 state_dir: path.join(T, 'nobuild') }, entry: { id: 'x', version: '1.0.0', script: { node: 'b.js', args: [] } }, files: [], donor: '', log: () => {} })
                 .then(() => false, (e) => /not a uid of the builds' own/.test(e.message));
         })
-        .then((refused) => ok('build: refused with a build_uid another part uses (it is killed wholesale)', refused && !fs.existsSync(path.join(T, 'nobuild'))));
+        .then((refused) => ok('build: refused with a build_uid another part uses (it is killed wholesale)', refused && !fs.existsSync(path.join(T, 'nobuild'))))
+        .then(() => {
+            // a Python that is there but cannot start (its loader missing: ENOENT)
+            const py = path.join(T, 'badpy', 'python3');
+            mkdirp(path.dirname(py));
+            fs.writeFileSync(py, '#!/nonexistent/loader\n', { mode: 0o755 });
+            return require('../js/build').runBuild({ conf: { build_uid: '12990', build_gid: '12990', fetch_uid: '12991', web_uid: '12996',
+                state_dir: path.join(T, 'badpy', 'state'), python: py, build_max_bytes: String(1 << 20), build_timeout_s: '20' },
+            entry: { id: 'x', version: '1.0.0', script: { python: 'b.py', args: [] } },
+            files: [{ name: 'b.py', data: Buffer.from('print(1)\n'), mode: 0o644 }], donor: '', log: () => {} })
+                .then(() => '', (e) => e.message);
+        })
+        .then((msg) => ok('build: a Python that cannot start says so and names mgu-python', /^Python \(.*python3\) cannot start \(ENOENT\): update mgu-python$/.test(msg), msg));
 }
 
 /* ---- fetch.js ----------------------------------------------------------------- */
@@ -3202,7 +3214,7 @@ function testPythonRepo() {
     // the Python tool, from a source of its own
     write(tools, {
         'mgu-repo.json': JSON.stringify({ schema: 1, components: [{ id: 'mgu-python', kind: 'tool', path: 'py' }] }),
-        'py/component.json': JSON.stringify({ id: 'mgu-python', kind: 'tool', version: '1.0.0', optional: true,
+        'py/component.json': JSON.stringify({ id: 'mgu-python', kind: 'tool', version: '1.0.2', optional: true,
             files: [{ path: 'bin/python3', mode: '0755' }, { path: 'ssl/cacert.pem', mode: '0644' }] }),
         'py/bin/python3': [`#!/bin/sh\nexec ${process.execPath} "$@"\n`, 0o755],
         'py/ssl/cacert.pem': 'roots\n'
@@ -3220,6 +3232,11 @@ function testPythonRepo() {
         socket: path.join(M, 'shm', 'updater.sock'), socket_group: 'staff', deploy_tool: 'mgu-deploy', uplink_tool: 'mgu-uplink',
         bootstrap_check_s: '6', privacy_tool: '', reboot: ''
     };
+    // a unit with mgu-python 1.0.1, whose interpreter names a loader the unit lacks
+    mkdirp(path.join(opt, 'mgu-python', 'versions', '1.0.1'));
+    fs.writeFileSync(path.join(opt, 'mgu-python', 'versions', '1.0.1', 'component.json'),
+        JSON.stringify({ id: 'mgu-python', kind: 'tool', version: '1.0.1' }));
+    fs.symlinkSync('versions/1.0.1', path.join(opt, 'mgu-python', 'current'));
     const u = new Updater(conf);
     const st = () => u.state();
     const comp = (id) => st().components.find((c) => c.id === id) || {};
@@ -3244,7 +3261,7 @@ function testPythonRepo() {
                 a1.version === '1.2.0' && a1.title === 'App one' && a1.build === 'unit' && comp('netapp').version === '2.0.0' &&
                 !st().components.some((c) => c.id === 'skipme' || c.id === 'notanapp'), JSON.stringify(st().components));
             ok('pattern: a python build with sdk requires mgu-python and the deploy tool that hands out the module',
-                JSON.stringify(entryOf('a1').requires) === JSON.stringify({ 'mgu-python': '1.0.0', 'mgu-deploy': '0.3.2' }) &&
+                JSON.stringify(entryOf('a1').requires) === JSON.stringify({ 'mgu-python': '1.0.2', 'mgu-deploy': '0.3.2' }) &&
                 entryOf('a1').script.python === 'kit/build.py' && entryOf('a1').script.args[0] === 'a1' &&
                 entryOf('a1').script.output === 'dist/a1@1.2.0.tgz' && entryOf('a1').script.network === false &&
                 entryOf('netapp').script.network === true, JSON.stringify(entryOf('a1')));
@@ -3271,8 +3288,9 @@ function testPythonRepo() {
         .then(() => {
             const pkg = comp('a1').status === 'installed' ? pkgOf('a1') : {};
             const order = deployed();
-            ok('python build: mgu-python installed first, then the app built by the build uid, under Python, with the oap-sdk module',
-                order.length === 2 && /mgu-python@1\.0\.0/.test(order[0]) && /a1@1\.2\.0/.test(order[1]) && pkg.uid === 12995 &&
+            ok('python build: mgu-python 1.0.1 (whose loader the unit lacks) updated first, then the app built by the build uid, ' +
+                'under Python, with the oap-sdk module',
+                order.length === 2 && /mgu-python@1\.0\.2/.test(order[0]) && /a1@1\.2\.0/.test(order[1]) && pkg.uid === 12995 &&
                 pkg.sdk === '// the generated oap-sdk module\n' && pkg.proxy === null &&
                 pkg.cert === path.join(opt, 'mgu-python', 'current', 'ssl', 'cacert.pem') &&
                 pkg.path.split(':')[0] === path.dirname(process.execPath), JSON.stringify([comp('a1'), order, pkg]));
@@ -3459,7 +3477,7 @@ function testIdClash() {
     });
     write(tools, {
         'mgu-repo.json': JSON.stringify({ schema: 1, components: [{ id: 'mgu-python', kind: 'tool', path: 'py' }] }),
-        'py/component.json': JSON.stringify({ id: 'mgu-python', kind: 'tool', version: '1.0.0', optional: true,
+        'py/component.json': JSON.stringify({ id: 'mgu-python', kind: 'tool', version: '1.0.2', optional: true,
             files: [{ path: 'bin/python3', mode: '0755' }, { path: 'ssl/cacert.pem', mode: '0644' }] }),
         'py/bin/python3': [`#!/bin/sh\nexec ${process.execPath} "$@"\n`, 0o755],
         'py/ssl/cacert.pem': 'roots\n'
@@ -3724,7 +3742,7 @@ function testIdClash() {
             ok('clash: doom2 is built from a copy of apps/doom made over to doom2 (with its download), and installed as doom2',
                 pkg.name === 'doom2' && pkg.specId === 'doom2' && pkg.version === '1.4.1' && pkg.proxied === true &&
                 JSON.stringify(pkg.folders) === '["doom","doom2","stubborn","warmup"]' &&
-                comp('mgu-python').installed === '1.0.0' && /doom2@1\.4\.1\.tgz --yes/.test(deployed().pop()),
+                comp('mgu-python').installed === '1.0.2' && /doom2@1\.4\.1\.tgz --yes/.test(deployed().pop()),
                 JSON.stringify([comp('doom2'), pkg, deployed()]));
             const reg = (id) => JSON.parse(fs.readFileSync(path.join(oap, 'oap_12201', 'data', 'apps', `${id}.json`))).userId;
             ok('clash: mgu-apps\' doom is untouched, beside it', pkgOf('doom').version === '1.1.2' && reg('doom') !== reg('doom2') &&

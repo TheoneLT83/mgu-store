@@ -6,7 +6,7 @@
  *   node tools/test_view.js
  */
 const assert = require('assert');
-const { listed, withSources, rowState, rowAction, groupState, statusLine, sourceLabel, sourceState, sourcesState, sourceActions,
+const { listed, sourceNames, withSources, rowState, rowAction, groupState, statusLine, sourceLabel, sourceState, sourcesState, sourceActions,
     sourceChannel, sourceAccount, tokenLabel, tokenState, tokenSources, accountsState, loginStatus, loginCode, phoneState, phoneAddress,
     parseSource, pickOptions, probeStatus, sourcesMessage, tokenMessage } = require('../src/store_view.js');
 
@@ -97,6 +97,9 @@ const cases = [
     [JSON.stringify(withSources([row({ source: 'a' }), row({ source: 'b' }), row({ source: 'c' })],
         [{ id: 'a', label: 'one/doom-apps' }, { id: 'b', label: 'two/doom-apps' }, { id: 'c', label: 'three/other' }]).map((r) => r.title)),
         '["DOOM (one/doom-apps)","DOOM (two/doom-apps)","DOOM (other)"]'],
+    [JSON.stringify(sourceNames([{ id: 'mgu-store', label: 'robertnisipeanu/mgu-store' }, { id: 'i7', label: 'cauliflowermossgrape/idrive7-apps' },
+        { id: 'a', label: 'one/apps' }, { id: 'b', label: 'two/apps' }, { id: 'x', label: 'https://apps.example.org/index.json' }, { id: 'y' }])),
+        '{"mgu-store":"mgu-store","i7":"idrive7-apps","a":"one/apps","b":"two/apps","x":"apps.example.org","y":"y"}'],
     [rowAction(row({ compat: 'no', uninstallable: true }), null), 'remove'],
     [rowAction(row({ compat: 'yes' }), null), 'install'],
     [groupState([row({}), row({ id: 'vc', compat: 'no' })], null), '1 update'],

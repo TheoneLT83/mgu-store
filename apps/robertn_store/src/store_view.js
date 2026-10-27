@@ -37,26 +37,25 @@ function listed(row) {
     return row.compat !== 'no' || !!row.installed;
 }
 
+/* Each source's short name, by id: an https URL's host, else the last part
+ * of its owner/repo or folder path, or the whole label where another
+ * source's last part is the same (two people's `apps`). */
+function sourceNames(sources) {
+    const label = (s) => String(s.label || s.id).replace(/^https:\/\/([^/]+).*$/, '$1');
+    const last = (s) => label(s).split('/').pop();
+    const names = {};
+    (sources || []).forEach((s) => {
+        names[s.id] = (sources || []).some((o) => o.id !== s.id && label(o) !== label(s) && last(o) === last(s)) ? label(s) : last(s);
+    });
+    return names;
+}
+
 /* The components, each titled with its source's name where another
  * source lists one of the same id (two repositories' Doom). */
 function withSources(rows, sources) {
-    // a source's label: an https URL's host, else its owner/repo or folder path
-    const label = (id) => {
-        const s = (sources || []).find((x) => x.id === id);
-        return s ? String(s.label || s.id).replace(/^https:\/\/([^/]+).*$/, '$1') : null;
-    };
-    const twins = (r) => (rows || []).filter((o) => (o.listedId || o.id) === (r.listedId || r.id) && o.source);
-    // its last part, or the whole label where another twin's last part is the same
-    const name = (r) => {
-        const full = label(r.source);
-        const last = full && full.split('/').pop();
-        return full && twins(r).some((o) => o.source !== r.source && label(o.source) !== full && (label(o.source) || '').split('/').pop() === last) ?
-            full : last;
-    };
-    return (rows || []).map((r) => {
-        const twin = r.source && twins(r).some((o) => o.source !== r.source);
-        return twin && name(r) ? Object.assign({}, r, { title: `${r.title} (${name(r)})` }) : r;
-    });
+    const names = sourceNames(sources);
+    const twin = (r) => r.source && (rows || []).some((o) => (o.listedId || o.id) === (r.listedId || r.id) && o.source && o.source !== r.source);
+    return (rows || []).map((r) => (twin(r) && names[r.source] ? Object.assign({}, r, { title: `${r.title} (${names[r.source]})` }) : r));
 }
 
 /* The second column of a component's row. */
@@ -359,6 +358,6 @@ function sourcesMessage(m) {
     }
 }
 
-module.exports = { listed, withSources, removable, hmiNames, notForUnit, parseSource, pickOptions, probeStatus, sourcesMessage, tokenMessage, PHASE, percent, rowState, rowAction, groupState, statusLine, sourceLabel, sourceState,
+module.exports = { listed, sourceNames, withSources, removable, hmiNames, notForUnit, parseSource, pickOptions, probeStatus, sourcesMessage, tokenMessage, PHASE, percent, rowState, rowAction, groupState, statusLine, sourceLabel, sourceState,
     sourcesState, sourceActions, sourceChannel, sourceAccount, tokenLabel, tokenState, tokenSources, accountsState, loginStatus, loginCode,
     phoneState, phoneAddress };

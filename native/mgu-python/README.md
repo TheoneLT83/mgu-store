@@ -7,7 +7,7 @@ it. The updater requires it, so it is installed with the updater
 
 | On the unit | |
 |---|---|
-| `/var/opt/mgu-python/current/bin/python3` | the interpreter, libpython and its libraries built in (it needs the system's glibc 2.17 or newer; the unit has 2.27) |
+| `/var/opt/mgu-python/current/bin/python3` | the interpreter, libpython and its libraries built in (it needs the system's glibc 2.17 or newer; the unit has 2.27), its loader set to the unit's `/lib/ld-linux-x86-64.so.2` (the unit has no `/lib64`) |
 | `lib/python312.zip` | the standard library's `.py` files, imported from the zip |
 | `lib/python3.12/lib-dynload/` | empty: every extension module is built in |
 | `ssl/cacert.pem` | CA bundle for builds that download (`SSL_CERT_FILE`) |

@@ -275,7 +275,8 @@ function runBuild(opts) {
                 child.on('error', (err) => {
                     clearTimeout(timer);
                     clearInterval(watch);
-                    reject(err);
+                    reject(python ? new Error(`Python (${interpreter}) cannot start (${err.code || err.message})` +
+                        (err.code === 'ENOENT' ? ': update mgu-python' : '')) : err);
                 });
                 // exit, not close: a process the script started may hold its output open
                 child.on('exit', (code, signal) => {

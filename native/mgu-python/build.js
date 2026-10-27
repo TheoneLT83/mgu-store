@@ -10,7 +10,9 @@
  * install_only_stripped: an interpreter with libpython and its libraries
  * built in, which needs the system's glibc 2.17 or newer; the unit has
  * 2.27), checked by sha256, and keeps:
- *   bin/python3                          the interpreter
+ *   bin/python3                          the interpreter, its loader set to
+ *                                        the unit's /lib/ld-linux-x86-64.so.2
+ *                                        (the unit has no /lib64)
  *   lib/python312.zip                    the standard library's .py files,
  *                                        without the GUI, test, packaging and
  *                                        IDE parts (Python imports from it)
@@ -42,6 +44,7 @@ const FULL_SHA256 = 'aaeeeeea4f98a41c7acd7379229a374c201aee45c1954be5788c18af837
 const url = (name) => `https://github.com/astral-sh/python-build-standalone/releases/download/${RELEASE}/${encodeURIComponent(name)}`;
 const STDLIB = 'python3.12';
 const ZIP = 'python312.zip';
+const LOADER = '/lib/ld-linux-x86-64.so.2';
 
 /* Left out of the zip: the standard library's top-level entries a build
  * script has no use for (GUI, IDE, tests, pip, 2to3, docs), and every test
@@ -117,6 +120,31 @@ function download(name, want) {
         fs.renameSync(`${file}.part`, file);
         return file;
     });
+}
+
+/* An x86-64 ELF executable's loader (its PT_INTERP) set to `loader`, in
+ * place: the segment keeps its size, the rest of it zeros. */
+function setLoader(buf, loader) {
+    if (buf.readUInt32BE(0) !== 0x7f454c46 || buf[4] !== 2 || buf[5] !== 1 || buf.readUInt16LE(18) !== 62) {
+        throw new Error('not an x86-64 ELF');
+    }
+    const u64 = (at) => buf.readUInt32LE(at) + buf.readUInt32LE(at + 4) * 0x100000000;
+    const phoff = u64(32);
+    const phentsize = buf.readUInt16LE(54);
+    for (let i = 0; i < buf.readUInt16LE(56); i += 1) {
+        const ph = phoff + i * phentsize;
+        if (buf.readUInt32LE(ph) === 3) { // PT_INTERP
+            const off = u64(ph + 8);
+            const size = u64(ph + 32);
+            if (Buffer.byteLength(loader) + 1 > size) {
+                throw new Error(`${loader} does not fit the ${size}-byte loader path`);
+            }
+            buf.fill(0, off, off + size);
+            buf.write(loader, off);
+            return buf;
+        }
+    }
+    throw new Error('no loader path (PT_INTERP)');
 }
 
 /* ---- a zip of stored paths (deflate, fixed times: the same input, the same bytes) ---- */
@@ -226,7 +254,8 @@ function main() {
             mkdirp(path.dirname(path.join(OUT, to)));
             fs.writeFileSync(path.join(OUT, to), fs.readFileSync(path.join(py, from)), { mode });
         };
-        copy(`bin/${STDLIB}`, 'bin/python3', 0o755);
+        mkdirp(path.join(OUT, 'bin'));
+        fs.writeFileSync(path.join(OUT, 'bin', 'python3'), setLoader(fs.readFileSync(path.join(py, 'bin', STDLIB)), LOADER), { mode: 0o755 });
         const files = stdlibFiles(lib);
         mkdirp(path.join(OUT, 'lib'));
         fs.writeFileSync(path.join(OUT, 'lib', ZIP), zip(files.map((name) => ({ name, data: fs.readFileSync(path.join(lib, name)) }))));
