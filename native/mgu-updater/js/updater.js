@@ -1088,7 +1088,9 @@ class Updater {
             const entry = resolved[i].entry;
             const o = this.origins[row.id];
             // a branch's new commit of the same version
-            if (row.status === 'installed' && entry.revision && o && o.source === row.source && o.commit && o.commit !== entry.commit) {
+            // (only when its files changed: another component's commit isn't an update of this one)
+            if (row.status === 'installed' && entry.revision && o && o.source === row.source && o.commit && o.commit !== entry.commit
+                && this.touched(entry, row.source, o.commit)) {
                 row.status = 'update';
             }
             const icon = entry.icon ? this.iconFile(resolved[i].source, entry) : null;
@@ -1266,6 +1268,7 @@ class Updater {
                         components: rt.components, checkedAt: rt.checkedAt, token: rt.tokenId, public: rt.public,
                         memo: rt.memo && { key: rt.memo.key, skipped: cat.skipped || [], version: this.version } }));
                 }
+                this.changesSince(rt);
                 console.log(`source ${id}${rt.channel ? ` (${rt.channel})` : ''}${rt.tokenId ? ` with token ${rt.tokenId}` : ''}: ` +
                     `${rt.mode}${rt.commit ? ` ${rt.commit.slice(0, 7)}` : ''}, ` +
                     `${cat.components.map((c) => `${c.id}@${c.version}`).join(' ') || 'nothing'}${rt.error ? `; ${rt.error}` : ''}`);
@@ -1289,6 +1292,43 @@ class Updater {
                 }
             });
         return rt.checking;
+    }
+
+    /* A branch source at a new commit: the files changed since each commit an
+     * installed component of it was built from (rt.changes[commit], one compare
+     * per commit, in the background). With them a same-version component is an
+     * update only when its own files or the shared build files changed. */
+    changesSince(rt) {
+        if (rt.mode !== 'repo' || !rt.commit || !rt.reader.changedFiles) {
+            return;
+        }
+        rt.changes = rt.changes || {};
+        const want = new Set(Object.keys(this.origins).map((k) => this.origins[k])
+            .filter((o) => o && o.source === rt.def.id && o.commit && o.commit !== rt.commit && !(o.commit in rt.changes))
+            .map((o) => o.commit));
+        want.forEach((base) => {
+            rt.changes[base] = undefined;
+            rt.reader.changedFiles(base, rt.commit).then((files) => {
+                rt.changes[base] = files;
+                console.log(`source ${rt.def.id}: ${base.slice(0, 7)}...${rt.commit.slice(0, 7)}: ${files ? `${files.length} file(s) changed` : 'changes not known'}`);
+                this.changed();
+            });
+        });
+    }
+
+    /* Whether a same-version component changed between its commit and the
+     * source's: its own folder, or the build script's folder (the shared code it
+     * is built with) outside the other components' folders. Not known: true. */
+    touched(entry, source, commit) {
+        const rt = this.src.get(source), files = rt && rt.changes && rt.changes[commit];
+        if (!Array.isArray(files)) {
+            return true;
+        }
+        const inside = (f, p) => !!p && (f === p || f.startsWith(`${p}/`));
+        const others = (rt.components || []).filter((c) => c.id !== entry.id && c.path).map((c) => c.path);
+        const script = entry.script && (entry.script.python || entry.script.node);
+        const shared = typeof script === 'string' && script.includes('/') ? `${script.split('/')[0]}/` : null;
+        return files.some((f) => inside(f, entry.path) || (shared && f.startsWith(shared) && !others.some((p) => inside(f, p))));
     }
 
     /* Where an entry's icon is kept: <state_dir>/icons/<sha256>.png, named by

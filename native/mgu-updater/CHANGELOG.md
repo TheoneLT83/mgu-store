@@ -1,5 +1,9 @@
 # Updater changelog
 
+## 0.7.7
+
+- A branch source's new commit makes an installed app of the same version an update only when the app's own folder, or the shared code it is built with (its build script's folder, outside the other components' folders), changed since the commit it was built from - one GitHub compare per commit. Before, every commit made every app of the source an update. When the changes can't be read, it is an update, as before.
+
 ## 0.7.6
 
 - A deploy tool run still going after `deploy_timeout_s` (3600) is stopped together with everything it started, and the install fails with `the deploy tool did not finish within 60 min and was stopped`. No `mgu-deploy` process is left running.
