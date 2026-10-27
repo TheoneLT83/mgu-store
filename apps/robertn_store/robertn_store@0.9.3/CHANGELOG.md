@@ -1,17 +1,26 @@
 # Changelog
 
+## 0.9.3
+
+Two looks, picked in Settings (iDrive 7 | iDrive 8; without a pick, the
+head unit's own). iDrive 7 is the look of the idrive7-apps: the menu as
+their button bar along the bottom, their header tabs, panels with the M
+stripe, badges and bar buttons, the online state after the title, the
+Ubuntu font. iDrive 8 is the App Manager's.
+
+Settings has an Internet page: whether the car is online, and how to
+connect it (a USB LTE stick, a USB network adapter, Android USB
+tethering, an iPhone's Personal Hotspot, or apps from a USB stick).
+Offline, the Store's top line points to it.
+
+A tile icon in the idrive7-apps style (a shopping bag with the M stripe),
+also shown for the Store in its own lists.
+
 ## 0.9.2
 
 The Store lists only what is for this head unit: an app or tool for the
 other iDrive only no longer shows on the Store, Apps, Tools and USB lists,
 unless it is installed, so it can still be removed.
-
-Two looks, picked in Settings: iDrive 7, the look of the idrive7-apps
-(the menu as their button bar along the bottom, their tabs, panels with
-the M stripe and badges, red selection, capitals, the Ubuntu font), and
-iDrive 8, the App Manager's; without a pick, the head unit's
-own. The app icons the sources name are shown; screenshots (tools/shots.js)
-show them too.
 
 ## 0.9.1
 

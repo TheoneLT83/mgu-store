@@ -1,5 +1,9 @@
 # Deploy tool changelog
 
+## 0.5.5
+
+- The Store's own app comes first: in `custom_apps.json`, and at the front of the provisioning list the fallback adds the apps to (the others after the provisioned ones).
+
 ## 0.5.4
 
 - An app update, the Store's included, runs in place, restarting only that app, also right after an update of the deploy tool: while the app manager runs a provisioning fallback with the same in-place install hook, it keeps that one, and the deploy tool's new one takes effect at the next start. An app manager restarted moments before (by an app-privacy update, say) is given its usual time to come up first.

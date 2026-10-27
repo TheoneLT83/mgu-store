@@ -56,12 +56,15 @@ function compact(W, H, look) {
 
     const FILTER_W = 420;
     const ONLINE_W = 190;
-    const filterX = R - ONLINE_W - 20 - FILTER_W;
+    // the iDrive 7 look: the online state after the title, the filters at the right edge
+    const filterX = low ? R - FILTER_W : R - ONLINE_W - 20 - FILTER_W;
+    const onlineX = low ? X + 150 : R - ONLINE_W;
+    const subX = low ? onlineX + ONLINE_W + 20 : X + 160;
     const store = screen('store', 0, [
         title('Store'),
-        status('subtitle', X + 160, filterX - X - 180),
+        status('subtitle', subX, filterX - subX - 20),
         el('filter', 'tabs', filterX, M + 2, FILTER_W, 60, { items: 'All,Apps,Tools', sel: 0, style: 'joined', size: 24 }),
-        el('online', 'chips', R - ONLINE_W, M + 8, ONLINE_W, 48, { items: '', align: 'right' }),
+        el('online', 'chips', onlineX, M + 8, ONLINE_W, 48, { items: '', align: low ? 'left' : 'right' }),
         grid()
     ]);
     const usb = screen('usb', 2, [title('USB'), status('subtitle', X + 130, CW - 130), grid()]);

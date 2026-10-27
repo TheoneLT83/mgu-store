@@ -1,5 +1,9 @@
 # Updater changelog
 
+## 0.7.4
+
+- The Store's own source is TheoneLT83/mgu-store and the default source TheoneLT83/idrive7-apps; the apps that repository's own installer put on the unit are adopted with it as their origin.
+
 ## 0.7.3
 
 - An installed app's `icon` is the icon its installed package shows on the car's app list (its rhmiData's first entry point's, read through no link), kept in `state/icons/`; the row of the installed app has its source's icon fetched only once it has none, other sources' rows of that id show their own.
