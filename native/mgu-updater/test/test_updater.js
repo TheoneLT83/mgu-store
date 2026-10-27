@@ -2955,7 +2955,7 @@ function testIdrive7(certs) {
             ok('requests: nor does a restarted updater: a missing icon is remembered', iconReads(mark).length === 0 && comp('gforce').icon,
                 iconReads(mark).join(' '));
             // a new commit: gforce 1.4.2 with a new icon, the rest as they were
-            const repo = gh.repos['cauliflowermossgrape/idrive7-apps'];
+            const repo = gh.repos['TheoneLT83/idrive7-apps'];
             const tree = Object.assign({}, repo.trees[repo.branches.main]);
             const files = {};
             Object.keys(tree).forEach((k) => {
@@ -2963,7 +2963,7 @@ function testIdrive7(certs) {
             });
             files['more/gforce/app.json'] = [JSON.stringify({ id: 'gforce', title: 'G-Force', version: '1.4.2' }), 0o644];
             files['more/gforce/icon.png'] = [png(99, 5), 0o644];
-            repo.branches.main = ghCommit('cauliflowermossgrape/idrive7-apps', files);
+            repo.branches.main = ghCommit('TheoneLT83/idrive7-apps', files);
             mark = seen.length;
             return u.check().then(() => until(() => u.src.get('idrive7-apps').icons, (x) => !x, 30000, 'icons fetched'));
         })
