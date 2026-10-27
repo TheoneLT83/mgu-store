@@ -185,7 +185,13 @@ type netFunction struct {
 	notify     byte // control interface's interrupt IN endpoint, 0 if none
 	macIndex   int  // string index of the host-side MAC address, 0 if none
 	maxSegment int  // Ethernet functional descriptor's wMaxSegmentSize
-	ncmCaps    byte
+
+	// An iPhone's usbmux interface (ff/fe/02) in the same configuration,
+	// muxIface -1 when there is none.
+	muxIface      int
+	muxIn, muxOut byte
+	muxOutPacket  int
+	ncmCaps       byte
 }
 
 // rndisControl are the control interface triples RNDIS functions present:
@@ -263,7 +269,16 @@ func iphoneFunction(configs []usbConfig) (netFunction, bool) {
 		return netFunction{}, false
 	}
 	c := configs[best]
-	fn := netFunction{kind: kindIPhone, config: c.value}
+	fn := netFunction{kind: kindIPhone, config: c.value, muxIface: -1}
+	for _, a := range c.alts {
+		if a.triple() != [3]byte{0xff, 0xfe, 0x02} {
+			continue
+		}
+		if in, out, ok := a.bulkPair(); ok {
+			fn.muxIface, fn.muxIn, fn.muxOut, fn.muxOutPacket = a.num, in.addr, out.addr, out.maxPacket
+			break
+		}
+	}
 	for _, a := range c.alts {
 		if a.triple() != [3]byte{0xff, 0xfd, 0x01} {
 			continue

@@ -258,6 +258,9 @@ func (g *gadgetPhone) detach() {
 }
 
 // hostToTAP forwards the host's raw Ethernet frames to the phone network.
+// The host sends one frame per transfer without a zero-length packet, so a
+// frame that fills whole USB packets runs into the next one: frames are
+// split again by their IPv4 length.
 func (g *gadgetPhone) hostToTAP(ep *os.File) {
 	buf := make([]byte, 65536)
 	for {
@@ -269,8 +272,13 @@ func (g *gadgetPhone) hostToTAP(ep *os.File) {
 		g.mu.Lock()
 		on := g.on && !g.silent
 		g.mu.Unlock()
-		if on && n >= 14 {
-			g.tap.Write(buf[:n])
+		for b := buf[:n]; on && len(b) >= 14; {
+			l := len(b)
+			if binary.BigEndian.Uint16(b[12:]) == 0x0800 && len(b) >= 18 {
+				l = min(len(b), 14+int(binary.BigEndian.Uint16(b[16:])))
+			}
+			g.tap.Write(b[:l])
+			b = b[l:]
 		}
 	}
 }

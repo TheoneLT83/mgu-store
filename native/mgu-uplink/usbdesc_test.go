@@ -165,24 +165,6 @@ func TestHuaweiSwitchCBW(t *testing.T) {
 	}
 }
 
-func TestSwitchable(t *testing.T) {
-	cd := usbDeviceInfo{vidpid: "12d1:1f01"}
-	stick := usbDeviceInfo{vidpid: "12d1:14dc"}
-	c := defaults()
-	any := newScanUplink("usbecm", c)
-	if !any.switchable(cd) || any.switchable(stick) {
-		t.Fatal("default switchable wrong")
-	}
-	c.USBDevice = "0525:a4a2"
-	if newScanUplink("usbecm", c).switchable(cd) {
-		t.Fatal("switches another vendor's stick for a named device")
-	}
-	c.USBDevice = "12d1:14db"
-	if !newScanUplink("auto", c).switchable(cd) {
-		t.Fatal("does not switch the named vendor's stick")
-	}
-}
-
 func TestUplinkChoices(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "c.conf")
@@ -194,27 +176,17 @@ func TestUplinkChoices(t *testing.T) {
 	if up, _ := parseUplink(c); up.String() != "auto" {
 		t.Fatalf("default uplink %q, want auto", up)
 	}
-	for _, spec := range []string{"auto", "usb", "usbecm", "rndis", "ncm", "iphone"} {
-		writeFile(t, p, "uids = 12990\nuplink = "+spec+"\n")
-		c, err := loadConfig(p)
-		if err != nil {
-			t.Fatal(err)
-		}
-		up, err := parseUplink(c)
-		if err != nil {
-			t.Fatal(err)
-		}
-		su, ok := up.(*scanUplink)
-		if !ok || up.String() != spec {
-			t.Fatalf("%s: uplink is %T %q", spec, up, up)
-		}
-		if want := 1; spec == "auto" {
-			if !reflect.DeepEqual(su.kinds, autoKinds) {
-				t.Fatalf("auto covers %v", su.kinds)
-			}
-		} else if len(su.kinds) != want || su.kinds[0] != spec {
-			t.Fatalf("%s covers %v", spec, su.kinds)
-		}
+	writeFile(t, p, "uids = 12990\nuplink = netdev:eth1\n")
+	if c, err = loadConfig(p); err != nil {
+		t.Fatal(err)
+	}
+	if up, err := parseUplink(c); err != nil || up.String() != "netdev:eth1" {
+		t.Fatalf("netdev: %v %v", up, err)
+	}
+	// The run flag takes the same two forms.
+	c.Uplink = "usbecm"
+	if err := c.validate(); err == nil {
+		t.Fatal("-uplink usbecm accepted")
 	}
 }
 
@@ -307,7 +279,8 @@ func TestIPhoneFunction(t *testing.T) {
 	info := usbDeviceInfo{vidpid: "05ac:12a8", config: 1, configs: parseDescriptors(iphoneDesc(true))}
 	fn, ok := info.function(kindIPhone)
 	want := netFunction{kind: kindIPhone, config: 4, commIface: 2, dataIface: 2, dataAlt: 1,
-		bulkIn: 0x86, bulkOut: 0x07, inPacket: 512, outPacket: 512}
+		bulkIn: 0x86, bulkOut: 0x07, inPacket: 512, outPacket: 512,
+		muxIface: 1, muxIn: 0x85, muxOut: 0x04, muxOutPacket: 512}
 	if !ok || fn != want {
 		t.Fatalf("got %+v %v, want %+v", fn, ok, want)
 	}

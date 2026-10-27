@@ -20,16 +20,16 @@ const Ifname = "vethuplink"
 const defaultConfig = "/var/opt/mgu-uplink/current/mgu-uplink.conf"
 
 type config struct {
-	Uplink    string   // see uplinkChoices
+	Uplink    string   // auto, or netdev:<ifname> (see uplinkChoices)
 	Apps      []string // OAP app names, resolved to uids through uids.txt
 	UIDs      []int    // static uids (non-app processes)
 	Table     int      // routing table holding the uplink's default route
 	Pref      int      // first of the three ip rule priorities this tool owns
 	OAPDir    string   // OAP install root: oap_<uid>/ per app
 	RunDir    string   // lease.json and the DHCP hook socket
-	USBDevice string   // optional VID:PID: the usb uplink uses only this adapter
 	LocalConf string   // read on top of this file when it exists; survives updates
 	StateDir  string   // uids.d/ and apps.d/; survives updates
+	Ignored   []string // settings that pick a device kind or adapter: the uplink takes whatever is plugged in
 }
 
 func defaults() config {
@@ -43,10 +43,7 @@ func defaults() config {
 	}
 }
 
-var (
-	appNameRe = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
-	vidPidRe  = regexp.MustCompile(`^[0-9a-f]{4}:[0-9a-f]{4}$`)
-)
+var appNameRe = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
 
 // loadConfig reads path and then, if it exists, the local_conf it names.
 func loadConfig(path string) (config, error) {
@@ -135,7 +132,16 @@ func (c *config) set(key, val string) error {
 	var err error
 	switch key {
 	case "uplink":
-		c.Uplink = val
+		// A device kind (usb, usbecm, rndis, ncm, iphone) is not a choice:
+		// the uplink takes whatever is plugged in. Such a setting, left on a
+		// unit by hand, is ignored rather than refused, so the service starts.
+		if val == "auto" || strings.HasPrefix(val, "netdev:") {
+			c.Uplink = val
+		} else if kindRank(val) < len(autoKinds) {
+			c.Ignored = append(c.Ignored, key+" = "+val)
+		} else {
+			return fmt.Errorf("uplink: %q is none of %s", val, uplinkChoices)
+		}
 	case "apps":
 		c.Apps = splitList(val)
 	case "uids":
@@ -152,7 +158,7 @@ func (c *config) set(key, val string) error {
 	case "rule_pref":
 		c.Pref, err = strconv.Atoi(val)
 	case "usb_device":
-		c.USBDevice = strings.ToLower(val)
+		c.Ignored = append(c.Ignored, key+" = "+val)
 	default:
 		return fmt.Errorf("unknown key %q", key)
 	}
@@ -184,9 +190,6 @@ func (c *config) validate() error {
 	if c.Pref <= 0 || c.Pref+rulePrefs > 32766 {
 		return fmt.Errorf("rule_pref: %d must leave room for %d rules before main (32766)", c.Pref, rulePrefs)
 	}
-	if c.USBDevice != "" && !vidPidRe.MatchString(c.USBDevice) {
-		return fmt.Errorf("usb_device: %q is not VID:PID in hex", c.USBDevice)
-	}
 	return nil
 }
 
@@ -195,6 +198,9 @@ func (c config) leaseFile() string  { return c.RunDir + "/lease.json" }
 func (c config) hookSocket() string { return c.RunDir + "/hook.sock" }
 func (c config) linkFile() string   { return c.RunDir + "/link.json" }
 func (c config) statusFile() string { return c.RunDir + "/status.json" }
+
+// pairDir holds the unit's host identity for iPhone pairing; updates keep it.
+func (c config) pairDir() string { return c.StateDir + "/pairing" }
 
 // Drop-in folders the deploy tool fills per installed component that
 // declares "internet": true: uids.d/<id> holds numeric uids, apps.d/<id>

@@ -18,22 +18,15 @@ const (
 )
 
 // openCDCLink takes the function over in the device's active
-// configuration. unbind lifts kernel drivers off its interfaces first (the
-// explicit uplinks); without it an interface a driver holds makes the
-// device busy.
-func openCDCLink(info usbDeviceInfo, fn netFunction, unbind bool) (Link, error) {
+// configuration.
+func openCDCLink(info usbDeviceInfo, fn netFunction) (Link, error) {
 	dev, err := openUSBDevice(info.bus, info.dev)
 	if err != nil {
 		return nil, err
 	}
-	var unbound unboundDrivers
-	if unbind {
-		unbound = unbindInterfaces(info, fn.commIface, fn.dataIface)
-	}
 	claimed, err := claimInterfaces(dev, info, fn.commIface, fn.dataIface)
 	if err != nil {
 		dev.Close()
-		unbound.rebind()
 		return nil, err
 	}
 	fail := func(err error) (Link, error) {
@@ -41,7 +34,6 @@ func openCDCLink(info usbDeviceInfo, fn netFunction, unbind bool) (Link, error) 
 			dev.releaseInterface(n)
 		}
 		dev.Close()
-		unbound.rebind()
 		return nil, err
 	}
 	pipe := usbPipe{dev: dev, in: fn.bulkIn, out: fn.bulkOut, outPacket: fn.outPacket}
@@ -85,7 +77,7 @@ func openCDCLink(info usbDeviceInfo, fn netFunction, unbind bool) (Link, error) 
 	default:
 		return fail(fmt.Errorf("%s: no driver for %s", info, fn.kind))
 	}
-	return startRelay(fn.kind, info, dev, claimed, unbound, fr, mac, mtu)
+	return startRelay(fn.kind, info, dev, claimed, fr, mac, mtu)
 }
 
 // ecmFramer is CDC-ECM: one Ethernet frame per bulk transfer, ended by a
