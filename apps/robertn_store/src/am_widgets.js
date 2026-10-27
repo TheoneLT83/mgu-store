@@ -62,19 +62,24 @@ function wrap(cv, s, x, y, w, size, c, max, font) {
 /** The iDrive 7 look (theme style 'id7', the idrive7-apps kit's screens) instead of the App Manager's. */
 const id7 = (t) => t.style === 'id7';
 
-/** A panel in the iDrive 7 look: square, dark, and with stripe the M stripe and a light line along its top. */
+/** A panel in the iDrive 7 look, as the kit draws its widgets (idrive7-apps kit/runtime/gauges.js drawPanel): a flat
+ * light grey overlay; with stripe, along the top a short bar in the stripe colours (the last with an angled end) and
+ * a thin white line. */
 function panel7(cv, t, x, y, w, h, stripe) {
-    cv.card(x, y, w, h, 2, [[0, t.panelTop], [1, t.panelBottom]]);
+    cv.fillRect(x, y, w, h, withAlpha('#b4bccc', 0.07));
     if (!stripe) return;
-    const sw = Math.max(14, Math.round(Math.min(32, w * 0.05))), sh = Math.max(3, Math.round(sw * 0.17)), cols = t.stripes || [];
-    cols.forEach((c, i) => cv.fillRect(x + i * (sw + 3), y, sw, sh, c));
-    const lx = x + cols.length * (sw + 3) + 3;
-    cv.fillRect(lx, y + sh / 2 - 1, x + w - lx, 2, withAlpha('#ffffff', 0.55));
+    const st = t.stripes || [t.accent], BW = 78, gap = 3, sw = (BW - gap * (st.length - 1)) / st.length;
+    st.forEach((c, i) => {
+        const sx = x + i * (sw + gap);
+        if (i === st.length - 1) cv.quad([[sx, y], [sx + sw, y], [sx + sw - 8, y + 5], [sx, y + 5]], c);
+        else cv.fillRect(sx, y, sw, 5, c);
+    });
+    cv.fillRect(x + BW + 2, y + 2, w - BW - 2, 1.5, withAlpha('#ffffff', 0.9));
 }
 
 /** Text in capitals with letter spacing, as the iDrive 7 look's tabs, buttons and badges have it. */
 function caps(cv, s, x, y, size, c, opts) {
-    return cv.text(String(s).toUpperCase(), x, y, size, c, Object.assign({ spacing: Math.round(size * 0.12) }, opts || {}));
+    return cv.text(String(s).toUpperCase(), x, y, size, c, Object.assign({ spacing: 2 }, opts || {}));
 }
 
 /** Card background in the app style; sel = highlighted (accent edge, tint and glow). */
@@ -157,18 +162,20 @@ function tabCells(b, o) {
     return { n, gap, cw: (b.w - gap * (n - 1)) / n };
 }
 
-/** Tabs in the iDrive 7 look: labels in capitals, the selected one on a red glow with a red line under it. */
+/** Tabs in the iDrive 7 look, as the kit's header has its page tabs (gauges.js header): names in capitals, the
+ * selected one lit from below with a line of the selection colour, thin separators, a light line along the bottom. */
 function tabs7(cv, t, b, o) {
-    const items = list(o.items), sz = o.size || Math.round(b.h * 0.34), { cw } = tabCells(b, o), acc = t.sel || t.accent;
-    cv.fillRect(b.x, b.y + b.h - 2, b.w, 2, t.panelEdge);
+    const items = list(o.items), sz = o.size || Math.round(b.h * 0.34), { cw } = tabCells(b, o), S = t.sel || t.accent;
+    cv.fillRect(b.x, b.y + b.h - 2, b.w, 2, withAlpha('#ffffff', 0.22));
     items.forEach((s, i) => {
         const x = b.x + i * cw, on = i === (o.sel | 0);
         if (on) {
-            cv.card(x, b.y, cw, b.h, 0, [[0, withAlpha(acc, 0)], [1, withAlpha(acc, 0.32)]]);
-            cv.fillRect(x, b.y + b.h - 5, cw, 5, acc);
-        } else if (i) cv.fillRect(x, b.y + b.h * 0.25, 1.5, b.h * 0.5, t.panelEdge);
-        const tw = cv.textWidth(String(s).toUpperCase(), sz, { font: on ? 'bold' : 'label', spacing: Math.round(sz * 0.12) });
-        caps(cv, s, x + (cw - tw) / 2, b.y + b.h / 2 + sz * 0.36, sz, on ? t.text : t.dim, { font: on ? 'bold' : 'label' });
+            cv.gradientRect(x, b.y, cw, b.h, [[0, withAlpha(S, 0)], [1, withAlpha(S, 0.25)]]);
+            cv.fillRect(x, b.y + b.h - 5, cw, 5, S);
+        }
+        cv.text(String(s).toUpperCase(), x + cw / 2, b.y + b.h / 2 + sz * 0.36, sz, on ? t.selText || '#ffffff' : t.dim,
+            { align: 'center', font: 'bold', spacing: 2 });
+        if (i < items.length - 1) cv.fillRect(x + cw, b.y + b.h * 0.28, 1, b.h * 0.44, withAlpha('#ffffff', 0.14));
     });
 }
 

@@ -75,9 +75,12 @@ icons the sources name, the Store's own tile icon for itself).
 
 **Two looks**, picked in Settings (iDrive 7 | iDrive 8; without a pick the
 head unit's own), kept in the app's data folder (`look`):
-- *iDrive 7*: the idrive7-apps kit's screens: black, square panels with
-  the M stripe, red selection, labels in capitals, the Ubuntu font
-  condensed (Ubuntu Font Licence 1.0, `src/LICENSE-Ubuntu-font.txt`);
+- *iDrive 7*: the idrive7-apps kit's screens (its kit/runtime/gauges.js):
+  the menu as its button bar along the bottom, tabs as its header's,
+  panels with the M stripe, badges, red selection, labels in capitals, the
+  Ubuntu font condensed (Ubuntu Font Licence 1.0,
+  `src/LICENSE-Ubuntu-font.txt`); on iDrive 7's box `src/store_compact.js`
+  lays the screens out for it with the menu at the bottom;
 - *iDrive 8*: App Manager 2's, in Inter (SIL OFL, `src/LICENSE-Inter.txt`).
 
 Both are baked by `tools/bake_fonts.py`; a look's atlases load on first

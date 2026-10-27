@@ -48,6 +48,14 @@ ok(I8.scale > 1 && I8.scale < 1.02 && !I8.layout, 'iDrive 8: the design scaled i
     });
     const grid = p.layout.screens.find((s) => s.name === 'store').components.find((c) => c.name === 'grid');
     eq(Math.floor(grid.h / grid.opts.tileH), 3, `${unit}: three rows of tiles`);
+    // the iDrive 7 look's layout: the same elements, in the box, the menu along the bottom under everything else
+    SCREENS.screens.forEach((def) => {
+        const own = p.layout.id7.screens.find((s) => s.name === def.name);
+        eq(own.components.map((c) => c.name).sort(), def.components.map((c) => c.name).sort(), `${unit} ${def.name} (id7): the design's elements`);
+        const nav = own.components.find((c) => c.name === 'nav');
+        ok(nav.w > nav.h && nav.y + nav.h <= vp.h && own.components.every((c) => c === nav || c.y + c.h <= nav.y),
+            `${unit} ${def.name} (id7): the menu along the bottom, under the rest`);
+    });
 });
 // every screen in both looks (Settings), in every box
 Object.keys(UNITS).forEach((unit) => ['id7', 'id8'].forEach((look) => fixture.screens().forEach(([n, over, stOver]) => {

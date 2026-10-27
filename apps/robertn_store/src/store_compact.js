@@ -15,6 +15,7 @@
 
 const M = 14;                 // the box's margin: the focus ring's room
 const RAIL = 150;
+const BAR = 64;               // the iDrive 7 look's menu bar
 const NAV_ITEMS = 'Store, grid\nInstalled, check\nUSB, usb\nSettings, gear';
 const TEXT = 'text';
 const DIM = 'dim';
@@ -28,17 +29,21 @@ const text = (name, x, y, w, h, t, size, font, color, extra) => el(name, 'text',
 const button = (name, x, y, w, h, t, style, size, extra) => el(name, 'vbutton', x, y, w, h,
     Object.assign({ text: t, vicon: '', style: style || 'outline', size }, extra || {}), `event:${name}`);
 
-function compact(W, H) {
-    const X = M + RAIL + 16;          // the content's left edge
-    const R = W - M;                  // its right edge
-    const B = H - M;                  // its bottom
+function compact(W, H, look) {
+    // the iDrive 7 look has the menu along the bottom, as the idrive7-apps have their buttons; the iDrive 8 look on the left
+    const low = look === 'id7';
+    const X = low ? M : M + RAIL + 16;    // the content's left edge
+    const R = W - M;                      // its right edge
+    const B = low ? H - M - BAR - 12 : H - M; // its bottom
     const CW = R - X;
-    const nav = (sel) => el('nav', 'sideNav', M, M, RAIL, H - 2 * M, { items: NAV_ITEMS, sel, labelSize: 24 });
+    const nav = (sel) => (low ? el('nav', 'sideNav', M, H - M - BAR, W - 2 * M, BAR, { items: NAV_ITEMS, sel, labelSize: 22 })
+        : el('nav', 'sideNav', M, M, RAIL, H - 2 * M, { items: NAV_ITEMS, sel, labelSize: 24 }));
     const screen = (name, sel, components) => ({ kind: 'gpu', name, theme: 'm_tricolour', bg: 'theme',
         components: [nav(sel)].concat(components) });
     // the header row: the title, then the status on its baseline
     const HEAD = M + 64;
-    const title = (t, x) => text('title', x === undefined ? X : x, M + 2, 640, 60, t, 50, 'bold');
+    // the iDrive 7 look's titles as the kit's header has the app's name: regular weight
+    const title = (t, x) => text('title', x === undefined ? X : x, M + 2, 640, 60, t, low ? 46 : 50, low ? 'label' : 'bold');
     const status = (name, x, w, color) => text(name, x, M + 24, w, 30, '', 23, 'label', color || DIM);
     const back = () => el('back', 'vbutton', X, M, 64, 64, { text: '', vicon: 'back', style: 'round', color: '#f4f7fb' }, 'event:back');
     const BTN_H = 76;
@@ -109,7 +114,7 @@ function compact(W, H) {
         text('author', ix, M + 76, lw - 224, 32, '', 27, 'label', DIM),
         el('facts', 'chips', ix, M + 114, lw - 224, 44, { items: '' }),
         text('desc', X, M + 176, lw, B - M - 176, '', 27, 'label', TEXT, { wrap: true }),
-        el('panel', 'rect', px, M, PW, H - 2 * M, { color: 'panelTop', radius: 20 }),
+        el('panel', 'rect', px, M, PW, B - M, { color: 'panelTop', radius: 20 }),
         text('instLabel', px + 20, M + 16, 200, 28, '', 22, 'label', DIM),
         text('instValue', px + 20, M + 46, 200, 58, '', 46, 'num'),
         text('availLabel', px + 230, M + 16, 220, 28, '', 22, 'label', DIM),
@@ -127,7 +132,7 @@ function compact(W, H) {
     const SW = Math.min(1200, CW);
     const SH = 380;
     const sx = X + (CW - SW) / 2;
-    const sy = (H - SH) / 2;
+    const sy = (B + M - SH) / 2;
     const BW = (SW - 100) / 2;
     const confirm = screen('confirm', 0, [
         el('sheet', 'sheet', sx, sy, SW, SH, { radius: 24 }),
@@ -150,7 +155,7 @@ function compact(W, H) {
         el('facts', 'chips', ix, M + 104, sw, 44, { items: [] }),
         text('desc', X, M + 166, qx - X - 24, B - BTN_H - 24 - M - 166, '', 26, 'label', AMBER, { wrap: true }),
         button('remove', X, B - BTN_H, 420, BTN_H, 'Remove', 'outline', 29, { vicon: 'trash' }),
-        el('panel', 'rect', qx, M, QR_PW, H - 2 * M, { color: 'panelTop', radius: 20 }),
+        el('panel', 'rect', qx, M, QR_PW, B - M, { color: 'panelTop', radius: 20 }),
         text('appLabel', qx + 20, M + 14, QR_PW - 40, 34, '', 26, 'bold'),
         el('appQr', 'qr', qx + 30, M + 58, QR_PW - 60, QR_PW - 60, { text: '' }),
         text('appUrl', qx + 20, B - 40, QR_PW - 40, 26, '', 17, 'label', DIM)

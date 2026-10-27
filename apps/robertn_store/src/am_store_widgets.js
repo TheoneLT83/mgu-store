@@ -69,12 +69,12 @@ const chipItems = (items) => (Array.isArray(items) ? items
     : String(items || '').split(';').map((s) => s.split('|').map((x) => x.trim())).filter((p) => p[0])
         .map((p) => ({ text: p[0], color: p[1], dot: p[2] === 'dot' })));
 
-/** A badge in the iDrive 7 look (the Fault Scanner's ACTIVE / STORED): a tinted box, capitals. Returns its width. */
+/** A badge in the iDrive 7 look, as the kit draws them (gauges.js badgeRow): a tinted box, bold capitals. Its width. */
 function chip7(cv, text, x, y, h, c, dot, right) {
-    const s = Math.round(h * 0.42), sp = Math.round(s * 0.12), label = String(text).toUpperCase();
-    const w = cv.textWidth(label, s, { font: 'bold', spacing: sp }) + h * 0.8, x0 = right ? x - w : x;
-    cv.roundRect(x0, y, w, h, Math.min(6, h / 4), withAlpha(c, 0.24));
-    W.caps(cv, label, x0 + h * 0.4, y + h / 2 + s * 0.36, s, c, { font: 'bold' });
+    const s = Math.round(h * 0.42), label = String(text).toUpperCase(), opt = { align: 'center', font: 'bold', spacing: 1.5 };
+    const w = Math.max(h * 2.5, cv.textWidth(label, s, opt) + h), x0 = right ? x - w : x;
+    cv.roundRect(x0, y, w, h, h * 0.2, withAlpha(c, 0.2));
+    cv.text(label, x0 + w / 2, y + h / 2 + s * 0.36, s, c, opt);
     return w;
 }
 
@@ -160,7 +160,7 @@ function appList(cv, t, b, o) {
     const v = listView(b, o), gap = Math.round(v.rh * 0.13), q = o.ctlK || 1, ts = o.titleSize || 40, ss = o.subSize || 30;
     v.all.slice(v.top, v.top + v.n).forEach((it, k) => {
         const y = b.y + k * v.rh, h = v.rh - gap, s = Math.round(h * 0.73);
-        if (W.id7(t)) W.panel7(cv, t, b.x, y, b.w, h, false);
+        if (W.id7(t)) W.panel7(cv, t, b.x, y, b.w, h, false);   // the kit's flat overlay
         else cv.card(b.x, y, b.w, h, 22 * q, [[0, t.panelTop], [1, t.panelBottom]]);
         let tx = b.x + 28 * q;
         if (it.icon || it.vicon || it.colors || it.letter) {
@@ -190,7 +190,33 @@ function appList(cv, t, b, o) {
 const navItems = (o) => (Array.isArray(o.items) ? o.items
     : lines(o.items).map((l, i) => ({ id: l[0].toLowerCase(), label: l[0], vicon: l[1] || '', badge: l[2] || '' })));
 // (the Store: o.labelSize for a narrower menu; the default is the design's)
+/* The menu as the iDrive 7 look has it: along the bottom, the kit's button bar (gauges.js menuBar): names in capitals,
+ * the selected one lit with a line of the selection colour, thin separators; a count after a name. */
+function bottomNav(cv, t, b, o) {
+    const items = navItems(o), n = Math.max(1, items.length), iw = b.w / n, S = t.sel || t.accent, size = o.labelSize || 22;
+    cv.fillRect(b.x, b.y, b.w, b.h, t.bg);
+    cv.gradientRect(b.x, b.y, b.w, b.h, [[0, withAlpha('#ffffff', 0.09)], [1, withAlpha('#ffffff', 0.03)]]);
+    cv.fillRect(b.x, b.y, b.w, 2, withAlpha('#ffffff', 0.2));
+    items.forEach((it, i) => {
+        const x = b.x + i * iw, on = i === (o.sel | 0), label = String(it.label).toUpperCase(), opt = { align: 'center', font: 'bold', spacing: 2 };
+        if (on) {
+            cv.gradientRect(x, b.y, iw, b.h, [[0, withAlpha(S, 0.08)], [1, withAlpha(S, 0.4)]]);
+            cv.fillRect(x, b.y + b.h - 4, iw, 4, S);
+        }
+        const cy = b.y + b.h / 2, badge = it.badge && String(it.badge) !== '0' ? String(it.badge) : '';
+        const lw = cv.textWidth(label, size, opt), bw = badge ? size * 1.5 : 0, lx = x + iw / 2 - (badge ? (bw + 10) / 2 : 0);
+        cv.text(label, lx, cy + size * 0.36, size, on ? t.selText || '#ffffff' : t.dim, opt);
+        if (badge) {
+            const bx = lx + lw / 2 + 10 + bw / 2;
+            cv.roundRect(bx - bw / 2, cy - size * 0.7, bw, size * 1.4, size * 0.28, S);
+            cv.text(badge, bx, cy + size * 0.3, Math.round(size * 0.82), '#ffffff', { align: 'center', font: 'bold' });
+        }
+        if (i < n - 1) cv.fillRect(x + iw, b.y + b.h * 0.25, 1, b.h * 0.5, withAlpha('#ffffff', 0.13));
+    });
+}
+
 function sideNav(cv, t, b, o) {
+    if (b.w > b.h) return bottomNav(cv, t, b, o);
     const items = navItems(o), ih = b.h / Math.max(1, items.length), is = Math.min(68, ih * 0.38), ls = o.labelSize || 34;
     cv.fillRect(b.x, b.y, b.w, b.h, withAlpha(t.panelBottom, 0.85));
     cv.fillRect(b.x + b.w - 1.5, b.y, 1.5, b.h, t.panelEdge);
@@ -232,22 +258,27 @@ function vbutton(cv, t, b, o) {
     cv.text(String(o.text || ''), x1 + (hasIcon ? is + 18 : 0), b.y + b.h / 2 + s * 0.36, s, fg, { font: 'bold' });
 }
 
-/* A button in the iDrive 7 look (the kit's bottom bar): square and dark, label in capitals; primary on a glow of
- * its colour with a bar of it along the bottom. */
+/* A button in the iDrive 7 look: a cell of the kit's button bar (gauges.js menuBar) - a soft light gradient with a light
+ * line along the top, the name in capitals; primary lit with the selection colour and a line of it along the bottom. */
 function vbutton7(cv, t, b, o, c, s, is, off) {
-    const primary = o.style === 'primary' && !off;
-    cv.card(b.x, b.y, b.w, b.h, 2, primary ? [[0, mix(t.panelTop, c, 0.18)], [1, mix(t.panelBottom, c, 0.42)]] : [[0, t.panelTop], [1, t.panelBottom]]);
-    if (primary) cv.fillRect(b.x, b.y + b.h - 5, b.w, 5, c);
-    else cv.strokeRoundRect(b.x, b.y, b.w, b.h, 2, 1.5, t.panelEdge);
-    const fg = off ? t.dim : primary ? '#ffffff' : o.style === 'tinted' ? c : t.text;
+    const primary = o.style === 'primary' && !off, S = t.sel || t.accent;
+    cv.fillRect(b.x, b.y, b.w, b.h, t.bg);
+    cv.gradientRect(b.x, b.y, b.w, b.h, [[0, withAlpha('#ffffff', 0.09)], [1, withAlpha('#ffffff', 0.03)]]);
+    cv.fillRect(b.x, b.y, b.w, 2, withAlpha('#ffffff', 0.2));
+    if (primary) {
+        cv.gradientRect(b.x, b.y, b.w, b.h, [[0, withAlpha(S, 0.08)], [1, withAlpha(S, 0.4)]]);
+        cv.fillRect(b.x, b.y + b.h - 4, b.w, 4, S);
+    }
+    const fg = off ? withAlpha(t.dim, 0.5) : primary ? t.selText || '#ffffff' : t.text;
     const label = String(o.text || '').toUpperCase(), hasIcon = !!o.vicon, room = b.w - 32;
-    // a label too wide for the button: less letter spacing, then a smaller size
-    let sp = Math.round(s * 0.12), w = () => cv.textWidth(label, s, { font: 'bold', spacing: sp }) + (hasIcon ? is + 18 : 0);
-    if (w() > room) sp = Math.round(s * 0.04);
+    // a name too wide for the button: less letter spacing, then a smaller size
+    let sp = 2;
+    const w = () => cv.textWidth(label, s, { font: 'bold', spacing: sp }) + (hasIcon ? is + 16 : 0);
+    if (w() > room) sp = 0.5;
     while (w() > room && s > 14) s -= 1;
     const x1 = b.x + (b.w - w()) / 2;
     if (hasIcon) vicon(cv, o.vicon, x1, b.y + (b.h - is) / 2, is, fg);
-    W.caps(cv, label, x1 + (hasIcon ? is + 18 : 0), b.y + b.h / 2 + s * 0.36, s, fg, { font: 'bold', spacing: sp });
+    cv.text(label, x1 + (hasIcon ? is + 16 : 0), b.y + b.h / 2 + s * 0.36, s, fg, { font: 'bold', spacing: sp });
 }
 
 // ---- on-screen keyboard (URLs and tokens) --------------------------------------------------------------------

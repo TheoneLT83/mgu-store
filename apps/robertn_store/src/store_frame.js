@@ -43,7 +43,8 @@ const measure = new Recorder(1, 1);       // text widths, as drawn
  * design's VIEWPORT fitted in, centred, on whole device pixels. */
 function placement(w, h) {
     if (h < COMPACT_H) {
-        return { scale: 1, ox: 0, oy: 0, viewport: { x: 0, y: 0, w, h }, layout: compact(w, h) };
+        // the iDrive 7 look's own layout beside it: the menu along the bottom
+        return { scale: 1, ox: 0, oy: 0, viewport: { x: 0, y: 0, w, h }, layout: Object.assign(compact(w, h), { id7: compact(w, h, 'id7') }) };
     }
     const scale = Math.min(w / VIEWPORT.w, h / VIEWPORT.h);
     return { scale, ox: Math.round((w - VIEWPORT.w * scale) / 2 - VIEWPORT.x * scale),
@@ -74,7 +75,11 @@ function itemsOf(st, page) {
         if (o.hidden) {
             return;
         }
-        if (c.gpu === 'sideNav') {
+        if (c.gpu === 'sideNav' && b.w > b.h) {         // along the bottom (the iDrive 7 look)
+            const list = navItems(o);
+            const iw = b.w / Math.max(1, list.length);
+            list.forEach((it, i) => items.push({ x: b.x + i * iw + 8, y: b.y + 8, w: iw - 16, h: b.h - 16, r: 2, label: it.label, act: it.act }));
+        } else if (c.gpu === 'sideNav') {
             const list = navItems(o);
             const ih = b.h / Math.max(1, list.length);
             list.forEach((it, i) => items.push({ x: b.x + 8, y: b.y + i * ih + 8, w: b.w - 24, h: ih - 16, r: 16, label: it.label, act: it.act }));
@@ -147,7 +152,7 @@ function frame(m, opts) {
     const v = view(m);
     fonts.setLook(v.look);              // before anything measures text
     const page = m.stack.length > 1;
-    const layout = o.layout || null;
+    const layout = o.layout && v.look === 'id7' && o.layout.id7 ? o.layout.id7 : o.layout || null;
     let st = screenOf(v, scroll, layout);
     let laid = itemsOf(st, page);
     const it = laid.items[o.focus];
