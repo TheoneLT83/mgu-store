@@ -201,14 +201,22 @@ test('boot exits 0 on a mismatch and leaves the files', () => withBundles((b) =>
     assert.strictEqual(b.read('main'), 'not a bundle');
 }));
 
-// sha256 of JSON.stringify(PATCH_SETS) as shipped by 1.2.1, and of the
-// 1.1.0 entry of EARLIER_PATCH_SETS.
-const PATCH_SETS_SHA256 = 'd494bf13326a07a6275f762b25d0639efb6eb12258718289000bb05ecbca5d8c';
-const PATCH_SETS_SHA256_1_1_0 = '65fdf5a71cb95d465b37811cb2f326495686d4edcbd33566c07bad6c3ddc484e';
+// sha256 of JSON.stringify(PATCH_SETS) as shipped by 1.3.0, and of the
+// earlier entries of EARLIER_PATCH_SETS.
+const PATCH_SETS_SHA256 = 'a83ed0b557ee2ab52871388768f6e06bad255fbcb08c947e378db2872a310eed';
+const EARLIER_SETS_SHA256 = {
+    '1.2.2': 'd494bf13326a07a6275f762b25d0639efb6eb12258718289000bb05ecbca5d8c',
+    '1.1.0': '65fdf5a71cb95d465b37811cb2f326495686d4edcbd33566c07bad6c3ddc484e'
+};
 // sha256 of the reference firmware bundles as each release patches them:
-// the current edits (1.2.0 and later) and 1.1.0's (and 1.0.0's).
+// the current edits (1.3.0), 1.2.2's (and 1.2.0's, 1.2.1's) and 1.1.0's
+// (and 1.0.0's).
 const PATCHED_SHA256 = {
     current: {
+        main: '51d714ea0cd3e1127924fd1779b3cac82938715ee89c9e89e83351c80f347c8e',
+        appmanagement: '4582ab2a6a674a9fb6e1d544dd10674f9785d0906d4478b1dae625734d609997'
+    },
+    '1.2.2': {
         main: '67419d74a77fa17ec4d13bef88c9deb3fb70c7bd8ba893ba62ad5129b12ff8ad',
         appmanagement: '4582ab2a6a674a9fb6e1d544dd10674f9785d0906d4478b1dae625734d609997'
     },
@@ -235,10 +243,9 @@ test('the patch set is recorded', () => {
         'then record ' + sha + ' here (the reference firmware case checks the edits\' output)');
 });
 
-test('the earlier release\'s patch set is recorded', () => {
-    const earlier = patcher.EARLIER_PATCH_SETS.filter((s) => s.version === '1.1.0')[0];
-    assert.ok(earlier, 'EARLIER_PATCH_SETS has no 1.1.0 entry');
-    assert.strictEqual(setsSha(earlier), PATCH_SETS_SHA256_1_1_0);
+test('the earlier releases\' patch sets are recorded', () => {
+    assert.deepStrictEqual(patcher.EARLIER_PATCH_SETS.map((s) => s.version), Object.keys(EARLIER_SETS_SHA256));
+    patcher.EARLIER_PATCH_SETS.forEach((s) => assert.strictEqual(setsSha(s), EARLIER_SETS_SHA256[s.version], s.version));
 });
 
 /* A later release whose helper and inventory filter differ from this
@@ -695,7 +702,10 @@ test('reference firmware bundles patch, upgrade, parse and revert exactly', () =
                 fs.writeFileSync(paths[kind], patcher.applyPatches(stock[kind], earlier[kind])));
             r = runTool(['check', '--json'].concat(args));
             assert.strictEqual(r.code, 1, r.stdout);
-            lastJson(r.stdout).files.forEach((f) => assert.strictEqual(f.patchedBy, earlier.version));
+            // A bundle whose edits this release keeps is patched already.
+            lastJson(r.stdout).files.forEach((f) => assert.strictEqual(f.patchedBy,
+                JSON.stringify(earlier[f.kind]) === JSON.stringify(patcher.PATCH_SETS[f.kind]) ?
+                    null : earlier.version));
             r = runTool(['apply'].concat(args));
             assert.strictEqual(r.code, 0, r.stdout);
             Object.keys(paths).forEach((kind) => assert.strictEqual(fs.readFileSync(paths[kind], 'utf8'),
@@ -725,15 +735,164 @@ test('reference firmware bundles patch, upgrade, parse and revert exactly', () =
     return null;
 });
 
-let failed = 0;
-tests.forEach((t) => {
-    try {
-        const note = t.fn();
-        console.log('ok   ' + t.name + (typeof note === 'string' ? ' (' + note + ')' : ''));
-    } catch (e) {
-        failed += 1;
-        console.log('FAIL ' + t.name + '\n     ' + (e.stack || e).toString().split('\n').join('\n     '));
+/* The reference firmware's CorruptAppsHandler module, patched, run against
+ * fake collaborators. apps maps appId to { start } (start(args) returns a
+ * promise); local-only apps are named by the override list, which reads
+ * as missing while state.unreadable is set. Returns the handler, what it
+ * did (events), the clock and state (shuttingDown: the head unit shuts
+ * down). */
+function crashHandler(root, apps, localOnly) {
+    const main = patcher.applyPatches(fs.readFileSync(path.join(root, 'src', 'main.js'), 'utf8'),
+        patcher.PATCH_SETS.main);
+    const source = main.split('\n').filter((l) => l.indexOf('class CorruptAppsHandler{') >= 0)[0];
+    const events = [];
+    const clock = { now: 1e12 };
+    const state = { unreadable: false, shuttingDown: false };
+    const log = (kind) => (id) => { events.push([kind, id]); return Promise.resolve(); };
+    const fakeFs = { readFileSync: (file) => {
+        if (file === patcher.OVERRIDE_FILE && !state.unreadable) {
+            return JSON.stringify(localOnly);
+        }
+        const e = new Error('ENOENT: ' + file);
+        e.code = 'ENOENT';
+        throw e;
+    }, readdirSync: () => [] };
+    const logger = { info() {}, debug() {}, warn(m) { events.push(['warn', m.split(' ')[1], m]); } };
+    const modules = {
+        util: require('util'),
+        fs: fakeFs,
+        'oap-sdk/src/analytics/AnalyticsServiceBuilders': { buildAnalyticsService: () => ({
+            sendPlatformEvent: (e) => events.push(['analytics', e.payload.appName]) }) },
+        'oap-sdk/src/analytics/interface/analyticsservice': {
+            AnalyticsPlatformEventType: { APP_CRASH: 'APP_CRASH' }, AnalyticsPlatformLogLevel: { ERROR: 'ERROR' } },
+        'oap-sdk/src/errors/OAPError': Error,
+        'oap-sdk/src/logging/logging': { getLogger: () => logger, logMarker() {} },
+        'lodash/defaults': (o, d) => { Object.keys(d).forEach((k) => { if (o[k] === undefined) o[k] = d[k]; }); return o; },
+        './StartableCouncil': { NOT_CORRUPTED: 'NOT_CORRUPTED' }
+    };
+    const registry = {};
+    Object.keys(apps).forEach((id) => {
+        registry[id] = {
+            getAppId: () => id, getSettings: () => ({ version: '1.0.0' }), getUserId: () => Promise.resolve(id),
+            unregisterAllParticipantIds: () => Promise.resolve(), isHeadUnitShuttingDown: () => state.shuttingDown,
+            council: {}, updateStartableCouncil(k, v) { this.council[k] = v; },
+            isStartable() { return Object.keys(this.council).every((k) => this.council[k]); },
+            getLastStartArguments: () => [], on() {},
+            start: (args) => { events.push(['start', id]); return apps[id].start(args); },
+            disableAllEntryPoints: () => log('disable')(id)
+        };
+    });
+    const module = { exports: null };
+    vm.runInNewContext(source, { require: (name) => {
+        assert.ok(name in modules, 'module requires ' + name);
+        return modules[name];
+    }, module, Date: { now: () => clock.now }, Promise, Object, Array, JSON, String });
+    const Handler = module.exports;
+    const handler = new Handler({
+        backendTransport: { reportCorruptApp: log('report') },
+        appFolderControl: { removeAppPersonalDataFolder: log('wipe'), removeAppDataFolder: log('wipe'),
+            removeAppShareFolder: log('wipe'), removeAppKeyValueStorageFolder: log('wipe'),
+            createAppDataFolder: log('create'), initializeAppSharedFolders: log('create'),
+            createAppKeyValueStorageFolder: log('create') },
+        getVin: () => Promise.resolve('VIN'),
+        appManager: { uninstall: log('uninstall'), install: log('install') },
+        appRegistry: { getAll: () => Object.keys(registry).map((id) => registry[id]), on() {},
+            getById: (id) => registry[id] },
+        appsRuntimeController: { updateEntryPointStartArguments: (id, args) => args }
+    });
+    const crash = (id) => handler._handleAppTerminated(registry[id]);
+    const kinds = (id) => events.filter((e) => e[1] === id).map((e) => e[0]);
+    return { events, clock, state, crash, kinds, registry, handler };
+}
+
+/* n crashes of appId, one after the other. */
+function crashes(h, id, n) {
+    let p = Promise.resolve();
+    for (let i = 0; i < n; i += 1) {
+        p = p.then(() => h.crash(id));
     }
+    return p;
+}
+
+test('reference firmware: a local-only app is only restarted, a stock app keeps its recovery', () => {
+    const root = firmwareDir();
+    if (!root) {
+        return 'skipped: decoded oap-mainapp not available';
+    }
+    const ok = () => Promise.resolve();
+    const h = crashHandler(root, { ours: { start: ok }, stock: { start: ok } }, ['ours']);
+    return crashes(h, 'ours', 5).then(() => crashes(h, 'stock', 4)).then(() => {
+        assert.deepStrictEqual(h.kinds('ours'), ['start', 'start', 'start', 'start', 'start']);
+        assert.strictEqual(h.registry.ours.isStartable(), true);
+        const stock = h.kinds('stock');
+        assert.deepStrictEqual(stock.filter((k) => k !== 'wipe' && k !== 'create'), [
+            'analytics', 'start', 'analytics', 'start', 'analytics', 'uninstall', 'install', 'start',
+            'analytics', 'disable', 'report']);
+        assert.strictEqual(stock.filter((k) => k === 'wipe').length, 8);
+        assert.strictEqual(h.registry.stock.isStartable(), false);
+        // A sixth crash within ten minutes leaves it stopped, still startable.
+        return h.crash('ours');
+    }).then(() => {
+        assert.strictEqual(h.kinds('ours').filter((k) => k === 'start').length, 5);
+        assert.deepStrictEqual(h.events.filter((e) => e[0] === 'warn').map((e) => e[2]), [
+            'CorruptAppsHandler::_tryRecoverApp ours is local-only and was restarted 5 times in 10 minutes; ' +
+            'left stopped until it is started again.']);
+        assert.strictEqual(h.registry.ours.isStartable(), true);
+        // Ten minutes after the first restart, a crash is restarted again.
+        h.clock.now += 10 * 60 * 1000;
+        return h.crash('ours');
+    }).then(() => {
+        assert.strictEqual(h.kinds('ours').filter((k) => k === 'start').length, 6);
+        assert.deepStrictEqual(h.kinds('ours').filter((k) => k !== 'start' && k !== 'warn'), []);
+    });
 });
-console.log((tests.length - failed) + '/' + tests.length + ' passed');
-process.exitCode = failed ? 1 : 0;
+
+test('reference firmware: a local-only app whose restart fails is tried 5 times', () => {
+    const root = firmwareDir();
+    if (!root) {
+        return 'skipped: decoded oap-mainapp not available';
+    }
+    const h = crashHandler(root, { ours: { start: () => Promise.reject(new Error('no start')) } }, ['ours']);
+    return h.crash('ours').then(() => {
+        assert.deepStrictEqual(h.kinds('ours'), ['start', 'start', 'start', 'start', 'start', 'warn']);
+        assert.strictEqual(h.registry.ours.isStartable(), true);
+    });
+});
+
+test('reference firmware: a local-only app stays so through a failed read, and shutdown deaths do not count', () => {
+    const root = firmwareDir();
+    if (!root) {
+        return 'skipped: decoded oap-mainapp not available';
+    }
+    const ok = () => Promise.resolve();
+    const h = crashHandler(root, { ours: { start: ok } }, ['ours']);
+    const starts = () => h.kinds('ours').filter((k) => k === 'start').length;
+    return h.crash('ours').then(() => {
+        assert.strictEqual(h.handler.getRecoveryAttempt('ours'), 0);
+        h.state.unreadable = true;
+        return crashes(h, 'ours', 2);
+    }).then(() => {
+        assert.strictEqual(starts(), 3);
+        h.state.unreadable = false;
+        h.state.shuttingDown = true;
+        return crashes(h, 'ours', 4);
+    }).then(() => {
+        assert.strictEqual(starts(), 3);
+        h.state.shuttingDown = false;
+        return crashes(h, 'ours', 3);
+    }).then(() => {
+        assert.strictEqual(starts(), 5);
+        assert.deepStrictEqual(h.kinds('ours').filter((k) => k !== 'start'), ['warn']);
+    });
+});
+
+let failed = 0;
+tests.reduce((p, t) => p.then(() => t.fn()).then((note) => {
+    console.log('ok   ' + t.name + (typeof note === 'string' ? ' (' + note + ')' : ''));
+}, (e) => {
+    failed += 1;
+    console.log('FAIL ' + t.name + '\n     ' + (e.stack || e).toString().split('\n').join('\n     '));
+}), Promise.resolve()).then(() => {
+    console.log((tests.length - failed) + '/' + tests.length + ' passed');
+    process.exitCode = failed ? 1 : 0;
+});

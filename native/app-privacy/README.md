@@ -1,10 +1,12 @@
 # app-privacy
 
-Keeps this repository's apps off BMW's backend. `oap-mainapp` (the Online
-Apps Platform manager on the head unit) enumerates every app in its
-registry in several off-car paths; the patch in this directory makes each
-of them skip local-only apps. Genuine backend-delivered apps are reported,
-updated and diagnosed exactly as before.
+Keeps this repository's apps off BMW's backend, and keeps their data and
+installs through crashes. `oap-mainapp` (the Online Apps Platform manager
+on the head unit) enumerates every app in its registry in several off-car
+paths; the patch in this directory makes each of them skip local-only
+apps. It also makes MainApp only restart a local-only app that crashed.
+Genuine backend-delivered apps are reported, updated, diagnosed and
+recovered exactly as before.
 
 ## Which apps are local-only
 
@@ -39,9 +41,29 @@ All sites are in `/usr/lib/oap-mainapp/src/main.js` and
 | Backend-triggered update of every app | `AppManagementFfProviderImpl.updateAllApps` |
 | App-repository version queries (`GET <repo_url>/<appId>` with a `BMW-Vin` header) | `NpmPackageManager.getLatestAppVersion`; the sweeps in `AppManagementController.getAvailableUpdatesFromBackend`, `AppsAutoupdater._performUpdate` and `MainApp._contextUpdateHandler` skip local-only apps as well |
 | App-repository package downloads | `NpmPackageManager.download` (preinstalled folder only) |
-| Platform analytics events carrying an app name (`APP_INSTALL`, `APP_CRASH`), forwarded via the CDC app | `AppManagementController.queuedRecursiveRetry`, `CorruptAppsHandler._tryRecoverApp`; `APP_DOWNLOAD` and `APP_SIGNATURE_CHECK` fire only for app-repository downloads, which local-only apps never make |
+| Platform analytics events carrying an app name (`APP_INSTALL`, `APP_CRASH`), forwarded via the CDC app | `AppManagementController.queuedRecursiveRetry`, `CorruptAppsHandler._tryRecoverApp` (with the crash recovery below); `APP_DOWNLOAD` and `APP_SIGNATURE_CHECK` fire only for app-repository downloads, which local-only apps never make |
 | Corrupt-app reports (`appId`, version, VIN) | `CorruptAppsHandler._handleAsIrrecoverable`, `AppManager._reportCorruptApp` |
 | Diagnostic readout `DiagOap.StatusOap` (`STAT_OAP_TEXT`: installation, crash and download status) | `DiagOapProvider` list building and crash-status persistence |
+
+## Crash recovery
+
+Stock MainApp handles each crash of an app (it exits on its own, is killed
+for memory or CPU, or stops answering its heartbeat for a minute) with the
+next step of a ladder, counted from MainApp's start: restart it; delete
+its data and restart it; uninstall, reinstall and restart it; then block
+it, delete its data, disable its tile and report it to the backend.
+
+A local-only app is restarted on every crash instead. Its data stays, it
+stays installed and its tile stays enabled. When it has been restarted 5
+times in the last 10 minutes, the next crash leaves it stopped, with
+MainApp logging `<appId> is local-only and was restarted 5 times in 10
+minutes; left stopped until it is started again`: an app that crashes on
+every start stops after a few tries. Opening it from its tile starts it
+again, MainApp may start it again on its own (as it does an app it keeps
+running), and the next boot starts it too. A restart that fails counts;
+a death while the head unit shuts down does not.
+
+Other apps keep the stock ladder.
 
 The apps in this repository carry no analytics themselves: their bundles
 link an oap-sdk closure without the analytics modules and declare no
@@ -63,7 +85,7 @@ that rewrites all of it removes the unit too, and the component has to be
 installed again.
 
 ```sh
-node patch_mainapp.js --version          # app-privacy 1.2.2
+node patch_mainapp.js --version          # app-privacy 1.3.0
 node patch_mainapp.js check [--json]     # 0 patched, 1 unpatched, 2 mismatch
 node patch_mainapp.js apply [--json]     # 0 patched, 2 refused, 1 write error
 node patch_mainapp.js revert [--json]    # 0 unpatched, 2 refused, 1 write error
@@ -106,9 +128,5 @@ node native/app-privacy/test/test_patch_mainapp.js
 node native/app-privacy/patch_mainapp.js check-apps apps
 ```
 
-The tests cover the check/apply/revert state machine, fail-closed
-behaviour on a mismatched bundle, composition with other edits, the
-runtime marker and override decision, build-time stamping, `check-apps`
-over this repository's apps, and — when `FIRMWARE_MAINAPP_DIR` names a decoded oap-mainapp —
-patching, parsing and exactly reverting the reference firmware
-bundles.
+Set `FIRMWARE_MAINAPP_DIR` to a decoded oap-mainapp folder to also test
+against its bundles; `run.sh` passes it into the container.

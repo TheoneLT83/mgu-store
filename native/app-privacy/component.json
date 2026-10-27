@@ -1,9 +1,9 @@
 {
   "id": "app-privacy",
   "kind": "tool",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "title": "App privacy",
-  "description": "Keeps our apps out of the head unit's backend app reporting",
+  "description": "Keeps our apps out of the head unit's backend app reporting and restarts them after a crash",
   "versionFiles": ["patch_mainapp.js"],
   "mguHmi": ["ID7"],
   "files": [
