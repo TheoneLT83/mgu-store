@@ -172,9 +172,11 @@ function storeView(m) {
 
 function installedView(m) {
     const busy = busyOf(m);
+    // those with an update first, each group in its usual order
+    const firstUpdates = (list) => list.filter((c) => c.status === 'update').concat(list.filter((c) => c.status !== 'update'));
     const all = comps(m).filter((c) => c.installed);
-    const apps = all.filter((c) => !isTool(c));
-    const tools = all.filter(isTool);
+    const apps = firstUpdates(all.filter((c) => !isTool(c)));
+    const tools = firstUpdates(all.filter(isTool));
     const updates = all.filter((c) => c.status === 'update' && rowAction(c, busy) === 'install');
     const item = (c) => {
         const s = tileState(c, busy);

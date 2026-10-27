@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.5
+
+The Installed page lists the apps and tools that have an update first.
+
 ## 0.9.4
 
 Each Store and USB tile names its source under the title: the repo's

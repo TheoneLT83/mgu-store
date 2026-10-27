@@ -1,5 +1,9 @@
 # mgu-render changelog
 
+## 0.3.3
+
+- `gate_legacy = 0` by default: another renderer's apps (the idrive7-apps kit's mgu-renderd next to this one) are no longer hidden by the foreground gate - on a G20 they were hidden altogether.
+
 ## 0.3.2
 
 - iDrive 7: apps may claim touch in the title strip too (`touch_area` 84,0,1836,720), where the idrive7-apps kit draws its page tabs.
