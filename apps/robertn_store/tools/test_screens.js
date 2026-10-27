@@ -201,7 +201,7 @@ eq(f.labels[4], 'Update all (1)', 'DOOM downloads and Extended dashboard waits: 
 eq(f.items.find((i) => i.label === 'Update').act, { do: 'install', id: 'gauges' });
 ok(f.labels.indexOf('Display bridge') >= 0 && f.labels.indexOf('M Vitals') < 0, 'installed ones only');
 eq(f.values.apps.items.filter((i) => i.id === 'gauges' || i.id === 'robertn_store').map((i) => i.sub),
-    ['0.7.0 · mgu-store', '1.2.0 → a1b2c3d · idrive7-apps'], 'a row names its source');
+    ['1.2.0 > a1b2c3d · idrive7-apps', '0.7.0 · mgu-store'], 'a row names its source (an update first)');
 
 // a tile's three lines (title, source, state) stay inside it, in either unit's box
 const { DRAW } = require(path.join(__dirname, '..', 'src', 'am_store_widgets.js'));
@@ -300,7 +300,7 @@ f = screen('internet');
 eq([own(f), text(f, 'status')], [['Back'], 'Connected']);
 ok(/USB LTE stick/.test(text(f, 'steps')) && /USB tethering/.test(text(f, 'steps')) && /Personal Hotspot/.test(text(f, 'steps')), 'the ways to connect');
 eq(text(screen('internet-offline'), 'status'), 'Not connected');
-eq(text(screen('store-no-internet'), 'subtitle'), 'No internet: Settings → Internet shows how to connect the car');
+eq(text(screen('store-no-internet'), 'subtitle'), 'No internet: Settings > Internet shows how to connect the car');
 // every character on these screens is in the baked fonts (tools/bake_fonts.py TEXT); others draw as '?'
 const BAKED = new Set(Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)).concat(Array.from('·…→–—°×\n')));
 ['internet', 'store-no-internet'].forEach((name) => ['steps', 'subtitle'].forEach((k) => {
