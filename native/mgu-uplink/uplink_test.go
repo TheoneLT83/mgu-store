@@ -21,17 +21,17 @@ func writeFile(t *testing.T, path, body string) {
 func TestLoadConfig(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "c.conf")
-	writeFile(t, p, "# comment\napps = store, voice # trailing\nuids = 12990,12991\nuplink = netdev:vethuplink\nusb_device = 0B95:1790\n")
+	writeFile(t, p, "# comment\napps = store, voice # trailing\nuids = 12990,12991\nuplink = netdev:vethuplink\n")
 	c, err := loadConfig(p)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(c.Apps, []string{"store", "voice"}) || !reflect.DeepEqual(c.UIDs, []int{12990, 12991}) ||
-		c.Uplink != "netdev:vethuplink" || c.USBDevice != "0b95:1790" || c.Table != 110 || c.Pref != 1100 {
+		c.Uplink != "netdev:vethuplink" || c.Table != 110 || c.Pref != 1100 || c.Ignored != nil {
 		t.Fatalf("parsed %+v", c)
 	}
 	for _, bad := range []string{"uids = 0\n", "uids = x\n", "nope = 1\n", "table = 254\n", "uplink = ppp\n",
-		"usb_device = 0b95\n", "apps = a/b\n", "uplink = netdev:\n", "rule_pref = 32765\n",
+		"apps = a/b\n", "uplink = netdev:\n", "rule_pref = 32765\n",
 		"uids = 4294967296\n", "uids = -1\n", "run_dir = /tmp\n"} {
 		writeFile(t, p, bad)
 		if _, err := loadConfig(p); err == nil {
@@ -43,9 +43,9 @@ func TestLoadConfig(t *testing.T) {
 func TestLocalConf(t *testing.T) {
 	dir := t.TempDir()
 	p, local := filepath.Join(dir, "c.conf"), filepath.Join(dir, "local.conf")
-	writeFile(t, p, "local_conf = "+local+"\napps = store\nuids = 12990\nuplink = usb\n")
+	writeFile(t, p, "local_conf = "+local+"\napps = store\nuids = 12990\nuplink = auto\n")
 	c, err := loadConfig(p)
-	if err != nil || !reflect.DeepEqual(c.Apps, []string{"store"}) || c.Uplink != "usb" {
+	if err != nil || !reflect.DeepEqual(c.Apps, []string{"store"}) || c.Uplink != "auto" {
 		t.Fatalf("without a local file: %+v %v", c, err)
 	}
 	writeFile(t, local, "apps = voice, store\nuplink = netdev:vethuplink\n")
@@ -61,6 +61,29 @@ func TestLocalConf(t *testing.T) {
 		writeFile(t, local, bad)
 		if _, err := loadConfig(p); err == nil {
 			t.Errorf("local %q: accepted", bad)
+		}
+	}
+}
+
+// A device kind or adapter left in a unit's local conf (a stick-only
+// "uplink = usbecm", a usb_device) is ignored: the uplink stays on auto and
+// takes whatever is plugged in, and the other settings still apply.
+func TestDeviceChoiceIgnored(t *testing.T) {
+	dir := t.TempDir()
+	p, local := filepath.Join(dir, "c.conf"), filepath.Join(dir, "local.conf")
+	writeFile(t, p, "local_conf = "+local+"\napps = store\nuplink = auto\n")
+	for _, kind := range []string{"usb", "usbecm", "rndis", "ncm", "iphone"} {
+		writeFile(t, local, "# This unit: the stick\nuplink = "+kind+"\nusb_device = 12d1:14dc\napps = voice\n")
+		c, err := loadConfig(p)
+		if err != nil {
+			t.Fatalf("%s: %v", kind, err)
+		}
+		if c.Uplink != "auto" || !reflect.DeepEqual(c.Apps, []string{"voice"}) ||
+			!reflect.DeepEqual(c.Ignored, []string{"uplink = " + kind, "usb_device = 12d1:14dc"}) {
+			t.Fatalf("%s: %+v", kind, c)
+		}
+		if up, err := parseUplink(c); err != nil || up.String() != "auto" {
+			t.Fatalf("%s: uplink %v %v", kind, up, err)
 		}
 	}
 }
@@ -179,17 +202,11 @@ func TestUSBNetdevs(t *testing.T) {
 	fakeNetdev(t, sys, "eth3", "1", "unknown_drv", "abcd", "0001")
 	writeFile(t, filepath.Join(class, "eth0", "type"), "1\n") // not USB
 
-	if got := usbNetdevs(class, ""); !reflect.DeepEqual(got, []string{"eth1", "eth2"}) {
+	if got := usbNetdevs(class); !reflect.DeepEqual(got, []string{"eth1", "eth2"}) {
 		t.Errorf("any adapter: %v", got)
 	}
-	if got := usbNetdevs(class, "0b95:1790"); !reflect.DeepEqual(got, []string{"eth2"}) {
-		t.Errorf("by VID:PID: %v", got)
-	}
-	if got := usbNetdevs(class, "abcd:0001"); !reflect.DeepEqual(got, []string{"eth3"}) {
-		t.Errorf("named device on another driver: %v", got)
-	}
 	fakeNetdev(t, sys, Ifname, "1", "asix", "0b95", "7720")
-	if got := usbNetdevs(class, ""); len(got) == 0 || got[0] != Ifname {
+	if got := usbNetdevs(class); len(got) == 0 || got[0] != Ifname {
 		t.Errorf("leftover %s not first: %v", Ifname, got)
 	}
 }

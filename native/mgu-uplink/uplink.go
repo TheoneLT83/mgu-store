@@ -41,13 +41,13 @@ type Link interface {
 	String() string
 }
 
-const uplinkChoices = "auto, usb, usbecm, rndis, ncm, iphone, netdev:<ifname>"
+const uplinkChoices = "auto, netdev:<ifname>"
 
 func parseUplink(c config) (Uplink, error) {
 	spec := c.Uplink
 	switch {
-	case spec == "auto" || spec == kindUSB || spec == kindECM || spec == kindRNDIS || spec == kindNCM || spec == kindIPhone:
-		return newScanUplink(spec, c), nil
+	case spec == "auto":
+		return newScanUplink(c), nil
 	case strings.HasPrefix(spec, "netdev:"):
 		name := strings.TrimPrefix(spec, "netdev:")
 		if name == "" || len(name) > 15 || strings.ContainsAny(name, "/ \t") {

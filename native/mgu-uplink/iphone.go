@@ -1,9 +1,10 @@
 package main
 
-// An iPhone's Personal Hotspot over USB. An iPhone needs no host-side
-// pairing for tethering: it drops packets until its owner taps "Trust This
-// Computer?" on the phone itself, so the host only has to reach the hotspot
-// interface and run DHCP. The obstacle on the head unit is the stock media
+// An iPhone's Personal Hotspot over USB. The phone serves the hotspot only
+// to a host it trusts, so besides the hotspot interface the uplink claims
+// the phone's usbmux interface and opens a lockdown session as a paired
+// host on every connection, pairing once when the phone does not know the
+// unit (pairing.go). The other obstacle on the head unit is the stock media
 // daemon, which grabs a connected iPhone and holds it on configuration 2
 // (iAP/iPod media). The uplink takes the device away from it:
 //
@@ -14,7 +15,8 @@ package main
 //	                         default configuration with a new device number
 //	open /dev/bus/usb/...    on the re-enumerated node
 //	SET_CONFIGURATION 4      the configuration holding the hotspot interface
-//	CLAIM_INTERFACE          the hotspot interface (ff/fd/01, Linux's ipheth)
+//	CLAIM_INTERFACE          the hotspot interface (ff/fd/01, Linux's ipheth),
+//	                         then the usbmux interface (ff/fe/02)
 //
 // The media daemon races to put the device back on configuration 2, so the
 // claim is retried: inner retries for 2 s after each reauthorize, up to six
@@ -24,22 +26,30 @@ package main
 // media daemon re-enumerates and reclaims it). Only the one Apple device is
 // touched; the media daemon keeps serving every other device.
 //
-// With the hotspot interface claimed the frames flow as ipheth does:
+// With the hotspot interface claimed it is brought up as IterioDev's
+// ipheth-tether does, and the frames flow as Linux's ipheth and the tether
+// carry them:
 //
+//	alt setting 1  the bulk endpoints, selected first
 //	GET_MACADDR    0xc0/0x00: the host-side MAC
 //	ENABLE_NCM     0x41/0x04: accepted means NCM framing for what the phone
 //	               sends; refused means legacy framing
-//	alt setting 1  the bulk endpoints
-//	TX             one raw Ethernet frame per transfer, no padding; a frame
-//	               that is a whole number of packets is ended by a
+//	CARRIER_CHECK  0xc0/0x45: 0x04 means Personal Hotspot is sharing; polled
+//	               up to 10 times, 500 ms apart, before frames flow, then
+//	               every second to report the hotspot's state
+//	CLEAR_HALT     on both bulk endpoints, before frames flow
+//	TX             one raw Ethernet frame per transfer, no padding, no
 //	               zero-length packet
-//	RX legacy      2 bytes of padding, then one frame (1516-byte buffer)
-//	RX NCM         an NTH16 with its NDP16 at offset 12, 96 bytes long
-//	CARRIER_CHECK  0xc0/0x45: 0x04 means Personal Hotspot is sharing
+//	RX             64 KiB transfers, 1 s timeout
+//	RX legacy      2 bytes of padding, then one frame
+//	RX NCM         an NTH16 with its NDP16 at offset 12, up to 22 entries;
+//	               an entry that does not fit the transfer is skipped
+//	               (4-byte transfers starting 00 01 are the phone's own
+//	               control messages, in both framings)
 //
-// Until the owner taps Trust (and turns Personal Hotspot on) the phone
-// sends nothing, so no DHCP lease arrives: the uplink then reports
-// `trust-needed` ("Tap Trust on the iPhone").
+// Until the phone trusts the unit it sends nothing and refuses what it is
+// sent, so no DHCP lease arrives: while pairing waits for its owner the
+// uplink reports `trust-needed` with what to do.
 
 import (
 	"context"
@@ -56,11 +66,17 @@ const (
 	iphethEnableNCM   = 0x04
 	iphethCarrier     = 0x45
 	iphethCarrierOn   = 0x04
-	iphethLegacyRx    = 2 + 1514
-	iphethNCMRx       = 65536
-	iphethNCMHeader   = nth16Len + 96 // NTH16 and the fixed-size NDP16
+	iphethRx          = 65536
+	iphethRxTimeout   = 1000          // ms
+	iphethNCMMin      = nth16Len + 8  // NTH16 and the NDP16 header
+	iphethNCMHeader   = nth16Len + 96 // NTH16 and the fixed-size NDP16 the phone sends
 	iphethNDPMaxDPE   = 22
 	iphethCarrierPoll = time.Second
+
+	// iphoneCarrierTries CARRIER_CHECK polls, iphoneCarrierWait apart,
+	// before frames flow.
+	iphoneCarrierTries = 10
+	iphoneCarrierWait  = 500 * time.Millisecond
 
 	// iphoneGrabTries reauthorize rounds, iphoneGrabWindow of inner claim
 	// retries after each, with the paced sleeps the media daemon is raced
@@ -72,21 +88,50 @@ const (
 	iphoneClaimRetry   = 50 * time.Millisecond
 	iphoneEnumPoll     = 20 * time.Millisecond
 
-	// iphoneTrustGrace: with the hotspot interface up but nothing received,
-	// the phone is waiting for Trust (or the hotspot is off).
-	iphoneTrustGrace = 6 * time.Second
+	// iphoneTrustRetry: a lockdown session or pairing that failed is tried
+	// again after this long.
+	iphoneTrustRetry = 10 * time.Second
+
+	// iphoneStallAfter: a phone that trusts the unit and shares its hotspot
+	// but has sent nothing this long after the session is taken again, as
+	// unplugging and replugging it would.
+	iphoneStallAfter = 20 * time.Second
 )
 
 // openIPhoneLink takes the iPhone from the media daemon, brings its hotspot
-// interface up and starts the relay. checkPreferred, called between
-// reauthorize rounds, ends the attempt when a preferred (wired) device
-// appears.
-func openIPhoneLink(ctx context.Context, info usbDeviceInfo, fn netFunction, checkPreferred func() error) (Link, error) {
+// interface up and starts the relay; the relay then gets the phone to
+// trust the unit, with the host identity kept in pairDir. checkPreferred,
+// called between reauthorize rounds, ends the attempt when a preferred
+// (wired) device appears.
+func openIPhoneLink(ctx context.Context, info usbDeviceInfo, fn netFunction, pairDir string, checkPreferred func() error) (Link, error) {
 	dev, cur, fn, err := grabIPhone(ctx, info, fn, checkPreferred)
 	if err != nil {
 		return nil, err
 	}
+	claimed := []int{fn.dataIface}
+	var mux *usbPipe
+	if fn.muxIface < 0 {
+		logf("iPhone %s: no usbmux interface, so no pairing", cur)
+	} else if err := dev.claimInterface(fn.muxIface); err != nil {
+		logf("iPhone %s: %v; no pairing", cur, err)
+	} else {
+		claimed = append(claimed, fn.muxIface)
+		mux = &usbPipe{dev: dev, in: fn.muxIn, out: fn.muxOut, outPacket: fn.muxOutPacket}
+	}
 	iface := uint16(fn.dataIface)
+	// The hotspot interface carries its bulk endpoints on an alternate
+	// setting (alt 1 on current iPhones), selected before the vendor
+	// requests. A device that exposes them on the default setting has
+	// dataAlt 0 and needs no switch.
+	if fn.dataAlt != 0 {
+		if err := dev.setInterface(fn.dataIface, fn.dataAlt); err != nil {
+			for _, n := range claimed {
+				dev.releaseInterface(n)
+			}
+			dev.Close()
+			return nil, fmt.Errorf("%s: set interface %d alt %d: %w", cur, fn.dataIface, fn.dataAlt, err)
+		}
+	}
 	buf := make([]byte, 64)
 	var mac []byte
 	if n, err := dev.control(0xc0, iphethGetMAC, 0, iface, buf, 5000); err == nil && n >= 6 {
@@ -97,23 +142,32 @@ func openIPhoneLink(ctx context.Context, info usbDeviceInfo, fn netFunction, che
 	}
 	_, err = dev.control(0x41, iphethEnableNCM, 0, iface, nil, 5000)
 	ncm := err == nil
-	// The hotspot interface carries its bulk endpoints on an alternate
-	// setting (alt 1 on current iPhones); select it so they are live. A
-	// device that exposes them on the default setting has dataAlt 0 and
-	// needs no switch.
-	if fn.dataAlt != 0 {
-		if err := dev.setInterface(fn.dataIface, fn.dataAlt); err != nil {
-			dev.releaseInterface(fn.dataIface)
-			dev.Close()
-			return nil, fmt.Errorf("%s: set interface %d alt %d: %w", cur, fn.dataIface, fn.dataAlt, err)
-		}
-	}
-	logf("iPhone %s: hotspot interface %d, MAC %s, NCM receive %v", cur, fn.dataIface, net.HardwareAddr(mac), ncm)
-	fr := &iphethFramer{dev: dev, iface: iface, ncm: ncm, authPath: authorizedPath(cur), up: time.Now(),
-		p: usbPipe{dev: dev, in: fn.bulkIn, out: fn.bulkOut, outPacket: fn.outPacket}}
+	carrier := iphoneWaitCarrier(ctx, dev, iface)
+	dev.clearHalt(fn.bulkIn)
+	dev.clearHalt(fn.bulkOut)
+	logf("iPhone %s: hotspot interface %d, MAC %s, NCM receive %v, carrier %v", cur, fn.dataIface, net.HardwareAddr(mac), ncm, carrier)
+	fr := &iphethFramer{dev: dev, iface: iface, ncm: ncm, authPath: authorizedPath(cur),
+		p: usbPipe{dev: dev, in: fn.bulkIn, out: fn.bulkOut, outPacket: fn.outPacket}, mux: mux, pairDir: pairDir}
 	setLinkNote("")
 	setLinkTrust(false, "")
-	return startRelay(kindIPhone, cur, dev, []int{fn.dataIface}, nil, fr, mac, 0)
+	return startRelay(kindIPhone, cur, dev, claimed, fr, mac, 0)
+}
+
+// iphoneWaitCarrier polls CARRIER_CHECK until the phone reports Personal
+// Hotspot sharing, up to iphoneCarrierTries times. A phone that does not is
+// used anyway: an untrusted phone, or one with the hotspot off, says so
+// later.
+func iphoneWaitCarrier(ctx context.Context, dev *usbDevice, iface uint16) bool {
+	buf := make([]byte, 64)
+	for i := 0; i < iphoneCarrierTries; i++ {
+		if n, err := dev.control(0xc0, iphethCarrier, 0, iface, buf, 5000); err == nil && carrierOn(buf[:n]) {
+			return true
+		}
+		if sleepCtx(ctx, iphoneCarrierWait) != nil {
+			return false
+		}
+	}
+	return false
 }
 
 func sysDevDir(sysName string) string          { return sysBusUSB + "/" + sysName }
@@ -225,28 +279,28 @@ type iphethFramer struct {
 	iface    uint16
 	ncm      bool
 	authPath string
-	up       time.Time
-	gotRx    int32 // a transfer has arrived: carrier checks begin
+	mux      *usbPipe // the usbmux interface, nil when it could not be claimed
+	pairDir  string
+	gotRx    int32 // a transfer has arrived, or the phone trusts the unit: carrier checks begin
+	rxData   int32 // a transfer with data has arrived
 	carrier  int32 // 0 unknown, 1 on, 2 off
 }
 
 func (f *iphethFramer) pipe() usbPipe { return f.p }
 
-func (f *iphethFramer) rxSize() int {
-	if f.ncm {
-		return iphethNCMRx
-	}
-	return iphethLegacyRx
-}
+func (f *iphethFramer) rxSize() int { return iphethRx }
 
-func (f *iphethFramer) send(frame []byte) error { return f.p.write(frame, true) }
+func (f *iphethFramer) send(frame []byte) error { return f.p.write(frame, false) }
 
 func (f *iphethFramer) recv(buf []byte, emit func([]byte)) error {
-	n, err := f.p.read(buf, 500)
+	n, err := f.p.read(buf, iphethRxTimeout)
 	if err != nil {
 		return err
 	}
-	atomic.StoreInt32(&f.gotRx, 1) // background withdraws any Trust note
+	atomic.StoreInt32(&f.gotRx, 1)
+	if n > 0 {
+		atomic.StoreInt32(&f.rxData, 1)
+	}
 	if n == 0 || n == 4 && buf[0] == 0 && buf[1] == 1 {
 		return nil
 	}
@@ -264,53 +318,71 @@ func iphethUnpackLegacy(b []byte, emit func([]byte)) {
 	}
 }
 
-// iphethUnpackNCM reads the phone's NTB as ipheth does: the NDP16 right
-// after the header, at most 22 entries, each datagram after the fixed
-// headers and inside the transfer, the list ended by a null entry.
+// iphethUnpackNCM reads the phone's NTB as IterioDev's tether does: the
+// NDP16 right after the header, at most 22 entries, the list ended by a
+// null entry or the end of the transfer; an empty entry, or one whose
+// datagram does not fit the transfer, is skipped.
 func iphethUnpackNCM(b []byte, emit func([]byte)) {
 	le := binary.LittleEndian
-	if len(b) < iphethNCMHeader || le.Uint32(b) != nth16Sign || le.Uint16(b[10:]) != nth16Len ||
+	if len(b) < iphethNCMMin || le.Uint32(b) != nth16Sign || le.Uint16(b[10:]) != nth16Len ||
 		le.Uint32(b[nth16Len:]) != ndp16NoCRC {
 		return
 	}
 	for i := 0; i < iphethNDPMaxDPE; i++ {
 		e := nth16Len + 8 + 4*i
+		if e+4 > len(b) {
+			return
+		}
 		idx, n := int(le.Uint16(b[e:])), int(le.Uint16(b[e+2:]))
 		if idx == 0 && n == 0 {
 			return
 		}
-		if idx < iphethNCMHeader || idx >= len(b) || n > len(b)-idx {
-			return
+		if n == 0 || idx+n > len(b) {
+			continue
 		}
 		emit(b[idx : idx+n])
 	}
 }
 
-// background polls the carrier and, while nothing arrives, reports that the
-// phone is waiting for Trust. It is the only writer of the Trust note, so the
-// note cannot stick: once frames arrive it withdraws it.
+// background gets the phone to trust the unit and polls the carrier once
+// the phone trusts it (or sends anything).
 func (f *iphethFramer) background(stop <-chan struct{}, fail func(error)) {
+	trusted := make(chan struct{})
+	if f.mux != nil {
+		// The relay releases the interfaces once background returns, so the
+		// pairing ends first.
+		ctx, cancel := context.WithCancel(context.Background())
+		ended := make(chan struct{})
+		go func() {
+			defer close(ended)
+			f.trust(ctx, trusted)
+		}()
+		defer func() {
+			cancel()
+			<-ended
+		}()
+	}
 	t := time.NewTicker(iphethCarrierPoll)
 	defer t.Stop()
 	buf := make([]byte, 64)
-	reported := false
+	var trustedAt time.Time
 	for {
 		select {
 		case <-stop:
 			return
+		case <-trusted:
+			atomic.StoreInt32(&f.gotRx, 1)
+			trusted, trustedAt = nil, time.Now()
+			continue
 		case <-t.C:
 		}
 		if atomic.LoadInt32(&f.gotRx) == 0 {
-			if !reported && time.Since(f.up) > iphoneTrustGrace {
-				reported = true
-				logf("iPhone: no frames yet; waiting for Trust")
-				setLinkTrust(true, "Tap Trust on the iPhone")
-			}
 			continue
 		}
-		if reported { // frames now arrive: withdraw the Trust note
-			reported = false
-			setLinkTrust(false, "")
+		if !trustedAt.IsZero() && atomic.LoadInt32(&f.rxData) == 0 && atomic.LoadInt32(&f.carrier) != 2 &&
+			time.Since(trustedAt) > iphoneStallAfter {
+			fail(fmt.Errorf("the iPhone trusts the unit but sent nothing in %s; taking it again", iphoneStallAfter))
+			return
 		}
 		n, err := f.dev.control(0xc0, iphethCarrier, 0, f.iface, buf, 5000)
 		if err != nil || n <= 0 {
@@ -331,6 +403,38 @@ func (f *iphethFramer) background(stop <-chan struct{}, fail func(error)) {
 			}
 		}
 	}
+}
+
+// trust runs the lockdown session (pairing first when needed) on the
+// usbmux interface until it succeeds or ctx ends, and closes trusted when
+// it succeeds. It is the only writer of the Trust note.
+func (f *iphethFramer) trust(ctx context.Context, trusted chan<- struct{}) {
+	defer setLinkTrust(false, "")
+	for {
+		err := f.trustOnce(ctx)
+		if err == nil {
+			logf("iPhone: trusted (lockdown session as the paired host)")
+			close(trusted)
+			return
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		logf("iPhone: %v; trying again in %s", err, iphoneTrustRetry)
+		if sleepCtx(ctx, iphoneTrustRetry) != nil {
+			return
+		}
+	}
+}
+
+func (f *iphethFramer) trustOnce(ctx context.Context) error {
+	m, err := openMux(*f.mux)
+	if err != nil {
+		return err
+	}
+	defer m.Close()
+	defer context.AfterFunc(ctx, m.Close)() // a stop ends any request in flight
+	return iphoneTrust(ctx, m, f.pairDir, func(msg string) { setLinkTrust(msg != "", msg) })
 }
 
 // halt reauthorizes the device on stop, so it re-enumerates at its default

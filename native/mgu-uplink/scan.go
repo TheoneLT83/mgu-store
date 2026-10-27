@@ -9,16 +9,14 @@ package main
 //	ncm     an Android phone in NCM tethering (Pixel 6 and later)
 //	iphone  an iPhone's Personal Hotspot
 //
-// "auto" covers all of them. For the kernel-driven and CDC kinds it takes
-// only devices no driver or process holds; an iPhone, the lowest-priority
-// kind, it takes from the media daemon itself (iphone.go), so auto reaches
-// and takes an iPhone only when no wired adapter, stick or Android phone is
-// present. Once on a later kind it ends that link when an earlier kind's
-// device appears, so a stick plugged in next to a phone takes over. An
-// unplugged device ends its link and the next scan finds whatever is
-// there, so devices can be unplugged, replugged and swapped while the
-// service runs. A named uplink (usb, usbecm, rndis, ncm, iphone) covers
-// one kind and takes the function it names.
+// For the kernel-driven and CDC kinds it takes only devices no driver or
+// process holds; an iPhone, the lowest-priority kind, it takes from the
+// media daemon itself (iphone.go), so it reaches and takes an iPhone only
+// when no wired adapter, stick or Android phone is present. Once on a later
+// kind it ends that link when an earlier kind's device appears, so a stick
+// plugged in next to a phone takes over. An unplugged device ends its link
+// and the next scan finds whatever is there, so devices can be unplugged,
+// replugged and swapped while the service runs.
 
 import (
 	"context"
@@ -52,10 +50,8 @@ func kindRank(kind string) int {
 }
 
 type scanUplink struct {
-	spec   string   // auto, usb, usbecm, rndis, ncm, iphone
-	kinds  []string // what it covers, in preference order
-	device string   // usb_device: only this VID:PID
-	record string   // link.json, for a kernel adapter it renames
+	record  string // link.json, for a kernel adapter it renames
+	pairDir string // the iPhone pairing's host identity
 
 	mu       sync.Mutex
 	failed   map[string]time.Time // device key -> last failed open
@@ -63,26 +59,13 @@ type scanUplink struct {
 	logged   map[string]string // device key -> last message logged
 }
 
-func newScanUplink(spec string, c config) *scanUplink {
-	u := &scanUplink{spec: spec, device: c.USBDevice, record: c.linkFile(),
+func newScanUplink(c config) *scanUplink {
+	return &scanUplink{record: c.linkFile(), pairDir: c.pairDir(),
 		failed: map[string]time.Time{}, switched: map[string]time.Time{},
 		logged: map[string]string{}}
-	if spec == "auto" {
-		u.kinds = autoKinds
-	} else {
-		u.kinds = []string{spec}
-	}
-	return u
 }
 
-func (u *scanUplink) String() string {
-	if u.device != "" {
-		return u.spec + ":" + u.device
-	}
-	return u.spec
-}
-
-func (u *scanUplink) auto() bool { return u.spec == "auto" }
+func (u *scanUplink) String() string { return "auto" }
 
 // candidate is one device the uplink could open.
 type candidate struct {
@@ -98,32 +81,21 @@ type candidate struct {
 
 func (c candidate) rank() int { return kindRank(c.kind) }
 
-// candidates lists what is plugged in that the uplink covers, best first.
+// candidates lists what is plugged in, best first.
 func (u *scanUplink) candidates() []candidate {
 	var out []candidate
-	covers := map[string]bool{}
-	for _, k := range u.kinds {
-		covers[k] = true
+	for _, n := range usbNetdevs(sysClassNet) {
+		// The interface index is new for each attachment, the name may not be.
+		idx, _ := readSysctl(sysClassNet + "/" + n + "/ifindex")
+		out = append(out, candidate{kind: kindUSB, key: "netdev:" + n + "#" + idx, netdev: n, dev: netdevDevice(sysClassNet, n)})
 	}
-	if covers[kindUSB] {
-		for _, n := range usbNetdevs(sysClassNet, u.device) {
-			// The interface index is new for each attachment, the name may not be.
-			idx, _ := readSysctl(sysClassNet + "/" + n + "/ifindex")
-			out = append(out, candidate{kind: kindUSB, key: "netdev:" + n + "#" + idx, netdev: n, dev: netdevDevice(sysClassNet, n)})
-		}
-	}
-	var devs []usbDeviceInfo
-	if covers[kindECM] || covers[kindRNDIS] || covers[kindNCM] || covers[kindIPhone] {
-		devs = scanUSBDevices()
-	}
-	for _, info := range devs {
-		named := u.device == "" || info.vidpid == u.device
+	for _, info := range scanUSBDevices() {
 		apple := strings.HasPrefix(info.vidpid, "05ac:")
 		for _, kind := range []string{kindECM, kindRNDIS, kindNCM, kindIPhone} {
 			// An Apple device's own CDC functions (a Mac's, an iPhone's reverse
 			// tethering) are not internet for the unit: Apple devices are taken
 			// only as iPhones.
-			if !covers[kind] || apple && kind != kindIPhone {
+			if apple && kind != kindIPhone {
 				continue
 			}
 			// The iPhone path reauthorizes the device, which changes its
@@ -135,28 +107,19 @@ func (u *scanUplink) candidates() []candidate {
 			}
 			c := candidate{kind: kind, key: key, info: info,
 				dev: statusDevice{Kind: kind, Name: info.name()}}
-			if kind == kindECM && u.switchable(info) {
+			if kind == kindECM && switchDevices[info.vidpid] {
 				c.toSwitch = true
 				out = append(out, c)
-				continue
-			}
-			if !named {
 				continue
 			}
 			fn, ok := info.function(kind)
 			if !ok {
 				continue
 			}
-			// A named usbecm takes the HiLink ids unless usb_device names the stick.
-			if kind == kindECM && !u.auto() && u.device == "" && !ecmStickDevices[info.vidpid] {
-				continue
-			}
 			c.fn = fn
-			switch {
-			case kind == kindIPhone:
-				// The uplink takes the iPhone from the media daemon itself
-				// (iphone.go), so a held device is not left alone.
-			case u.auto():
+			// The uplink takes an iPhone from the media daemon itself
+			// (iphone.go), so a held iPhone is not left alone.
+			if kind != kindIPhone {
 				var held []string
 				for _, n := range []int{fn.commIface, fn.dataIface} {
 					if d := info.ifaceDriver(n); d != "" {
@@ -173,18 +136,6 @@ func (u *scanUplink) candidates() []candidate {
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].rank() < out[j].rank() })
 	return out
-}
-
-// switchable reports whether the device is a stick in CD-ROM mode that
-// modeSwitch turns into an ECM stick the uplink takes.
-func (u *scanUplink) switchable(info usbDeviceInfo) bool {
-	if !switchDevices[info.vidpid] {
-		return false
-	}
-	if u.device != "" {
-		return u.device[:5] == info.vidpid[:5] // same vendor
-	}
-	return true
 }
 
 // say logs msg for key once until it changes.
@@ -233,7 +184,7 @@ func (u *scanUplink) Open(ctx context.Context) (Link, error) {
 				delete(u.failed, c.key)
 				delete(u.logged, c.key)
 				u.mu.Unlock()
-				if u.auto() && c.rank() > 0 {
+				if c.rank() > 0 {
 					l = u.watchPreferred(l, c)
 				}
 				return l, nil
@@ -285,14 +236,14 @@ func (u *scanUplink) open(ctx context.Context, c candidate) (Link, error) {
 		l.dev = c.dev
 		return l, nil
 	case kindIPhone:
-		return openIPhoneLink(ctx, c.info, c.fn, func() error {
+		return openIPhoneLink(ctx, c.info, c.fn, u.pairDir, func() error {
 			if p := u.preferred(c); p != nil {
 				return &preferredError{*p}
 			}
 			return nil
 		})
 	}
-	return openCDCLink(c.info, c.fn, !u.auto())
+	return openCDCLink(c.info, c.fn)
 }
 
 func (u *scanUplink) modeSwitch(info usbDeviceInfo) {
@@ -310,15 +261,12 @@ func (u *scanUplink) modeSwitch(info usbDeviceInfo) {
 	}
 }
 
-// preferred returns a device of an earlier kind than cur that the auto
-// uplink should open instead: one not busy and never failed to open in
+// preferred returns a device of an earlier kind than cur that the uplink
+// should open instead: one not busy and never failed to open in
 // this attachment, so a device that cannot be opened does not take a
 // working link down again and again. A stick in CD-ROM mode is switched
 // from here; it is preferred once it returns as a network device.
 func (u *scanUplink) preferred(cur candidate) *candidate {
-	if !u.auto() {
-		return nil
-	}
 	for _, c := range u.candidates() {
 		if c.rank() >= cur.rank() || c.busy != "" {
 			continue
@@ -345,7 +293,7 @@ func (e *preferredError) Error() string {
 	return fmt.Sprintf("%s %s is preferred", e.c.kind, e.c.dev.Name)
 }
 
-// preferLink is an auto link on a later kind, ended when a device of an
+// preferLink is a link on a later kind, ended when a device of an
 // earlier kind appears.
 type preferLink struct {
 	Link
