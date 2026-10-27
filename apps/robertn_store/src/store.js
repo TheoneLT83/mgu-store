@@ -70,6 +70,13 @@ const { PHASE, percent, rowState, rowAction, groupState, statusLine, sourceLabel
 
 const logger = logging.getSDKLogger();
 
+function withOwnIcon(st) {
+    if (!st || !Array.isArray(st.components) || !st.components.some((c) => c.id === OWN_ID && !c.icon) || !fs.existsSync(OWN_ICON)) {
+        return st;
+    }
+    return Object.assign({}, st, { components: st.components.map((c) => (c.id === OWN_ID && !c.icon ? Object.assign({}, c, { icon: OWN_ICON }) : c)) });
+}
+
 const SOCKET = '/dev/shm/mgu-updater/updater.sock';
 /* The updater writes the privileged secret, and while the phone page is on
  * its access URL, into this app's data folder (owner this app's uid, 0400);
@@ -78,6 +85,10 @@ const DATA_DIR = path.join(__dirname, '..', '..', 'data');
 const SECRET_FILE = path.join(DATA_DIR, 'updater-secret');
 const WEB_URL_FILE = path.join(DATA_DIR, 'web-url');
 const RECONNECT_MS = 2000;
+/* The Store's own tile icon (its package's), its picture in its own lists
+ * when the catalog names none. */
+const OWN_ID = 'robertn_store';
+const OWN_ICON = path.join(__dirname, '..', 'rhmiData', 'variantGroups', 'Common', 'images', 'store_icon.png');
 const PRESS_DEDUPE_MS = 400;
 const HIDE_SETTLE_MS = 800;
 const WEB_URL_POLL_MS = 1000;           // web-url re-read while Phone access is open and on
@@ -249,7 +260,7 @@ class Store extends OnlineApp {
         this._client = new UpdaterClient(SOCKET, { reconnectMs: RECONNECT_MS });
         this._client.on('state', (st) => {
             this._connected = true;
-            this._st = st;
+            this._st = withOwnIcon(st);
             this._tokenAdded(st);
             this._reprobe();
             this._render();
