@@ -4078,6 +4078,34 @@ function testRequests(certs) {
         });
 }
 
+/* The deploy tool still running after deploy_timeout_s: it and what it
+ * started are stopped, and the run fails with that reason. */
+function testDeployTimeout() {
+    const { Updater } = require('../js/updater');
+    const dir = path.join(T, 'deploy-timeout');
+    mkdirp(dir);
+    const pidFile = path.join(dir, 'child.pid');
+    const tool = path.join(dir, 'hang.sh');
+    // a child of its own that ignores nothing, then a wait that never ends
+    fs.writeFileSync(tool, `#!/bin/sh\nsleep 300 &\necho $! > ${pidFile}\necho 'working'\nwait\n`, { mode: 0o755 });
+    const u = Object.create(Updater.prototype);
+    u.conf = { deploy: tool, deploy_timeout_s: '1' };
+    const t0 = Date.now();
+    return u.deployTool(['install', '--artifact', 'x', '--yes']).then((code) => {
+        const child = Number(fs.readFileSync(pidFile, 'utf8'));
+        let alive = true;
+        try {
+            process.kill(child, 0);
+        } catch (e) {
+            alive = false;
+        }
+        ok('deploy timeout: a deploy tool run past deploy_timeout_s fails with that reason',
+            code === 1 && u.deployError === 'the deploy tool did not finish within 1 s and was stopped' &&
+            Date.now() - t0 < 15000, `${code} ${u.deployError}`);
+        ok('deploy timeout: what the deploy tool started is stopped with it', !alive);
+    });
+}
+
 /* ---- run ---------------------------------------------------------------------- */
 
 function main() {
@@ -4089,6 +4117,7 @@ function main() {
     testCollect();
     testFileLog();
     return testTar()
+        .then(() => testDeployTimeout())
         .then(() => testReboot())
         .then(() => testUidsDaemon())
         .then(() => Promise.all([startDns(), startHttps(certs, pubDir)]))

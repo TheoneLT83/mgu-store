@@ -2262,11 +2262,29 @@ class Updater {
     }
 
     /* Runs the deploy tool; resolves with its exit status. deployError keeps
-     * the reason it gave for its last failure ("mgu-deploy: <reason>"). */
+     * the reason it gave for its last failure ("mgu-deploy: <reason>"). It
+     * runs in a process group of its own: one still running after
+     * deploy_timeout_s is stopped with everything it started (SIGTERM, then
+     * SIGKILL 10 s later) and counts as failed. */
     deployTool(args) {
         this.deployError = null;
+        const limitS = Number(this.conf.deploy_timeout_s) || 3600;
+        const limit = limitS >= 120 ? `${Math.round(limitS / 60)} min` : `${limitS} s`;
         return new Promise((resolve) => {
-            const child = cp.spawn(this.conf.deploy, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+            const child = cp.spawn(this.conf.deploy, args, { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+            let timedOut = false;
+            let kill = null;
+            const group = (sig) => {
+                try {
+                    process.kill(-child.pid, sig);
+                } catch (e) { /* gone */ }
+            };
+            const timer = setTimeout(() => {
+                timedOut = true;
+                console.log(`deploy: still running after ${limit}; stopping it`);
+                group('SIGTERM');
+                kill = setTimeout(() => group('SIGKILL'), 10000);
+            }, limitS * 1000);
             const log = (d) => d.toString().split('\n').filter(Boolean).forEach((l) => {
                 console.log(`deploy: ${l}`);
                 const m = /^mgu-deploy: (.+)/.exec(l);
@@ -2274,10 +2292,23 @@ class Updater {
                     this.deployError = m[1];
                 }
             });
+            const done = (code) => {
+                clearTimeout(timer);
+                if (kill) {
+                    clearTimeout(kill);
+                    group('SIGKILL');
+                }
+                if (timedOut) {
+                    this.deployError = `the deploy tool did not finish within ${limit} and was stopped`;
+                    resolve(1);
+                    return;
+                }
+                resolve(code);
+            };
             child.stdout.on('data', log);
             child.stderr.on('data', log);
-            child.on('error', () => resolve(1));
-            child.on('close', (code) => resolve(code));
+            child.on('error', () => done(1));
+            child.on('close', (code) => done(code));
         });
     }
 

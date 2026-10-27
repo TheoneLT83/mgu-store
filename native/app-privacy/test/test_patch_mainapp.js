@@ -202,18 +202,23 @@ test('boot exits 0 on a mismatch and leaves the files', () => withBundles((b) =>
     assert.strictEqual(b.read('main'), 'not a bundle');
 }));
 
-// sha256 of JSON.stringify(PATCH_SETS) as shipped by 1.3.0, and of the
+// sha256 of JSON.stringify(PATCH_SETS) as shipped by 1.5.0, and of the
 // earlier entries of EARLIER_PATCH_SETS.
-const PATCH_SETS_SHA256 = 'a83ed0b557ee2ab52871388768f6e06bad255fbcb08c947e378db2872a310eed';
+const PATCH_SETS_SHA256 = '6598d28199d4003fed2494ff6381c777206a85a1f3d7cdcd865196e2f8912ce0';
 const EARLIER_SETS_SHA256 = {
+    '1.4.0': 'a83ed0b557ee2ab52871388768f6e06bad255fbcb08c947e378db2872a310eed',
     '1.2.2': 'd494bf13326a07a6275f762b25d0639efb6eb12258718289000bb05ecbca5d8c',
     '1.1.0': '65fdf5a71cb95d465b37811cb2f326495686d4edcbd33566c07bad6c3ddc484e'
 };
 // sha256 of the reference firmware bundles as each release patches them:
-// the current edits (1.3.0), 1.2.2's (and 1.2.0's, 1.2.1's) and 1.1.0's
-// (and 1.0.0's).
+// the current edits (1.5.0), 1.4.0's (and 1.3.0's), 1.2.2's (and 1.2.0's,
+// 1.2.1's) and 1.1.0's (and 1.0.0's).
 const PATCHED_SHA256 = {
     current: {
+        main: '51d714ea0cd3e1127924fd1779b3cac82938715ee89c9e89e83351c80f347c8e',
+        appmanagement: 'fbd85004e927f2ff28f33bef15540fb677026dda53e85cc4a07a98ab284bbc2a'
+    },
+    '1.4.0': {
         main: '51d714ea0cd3e1127924fd1779b3cac82938715ee89c9e89e83351c80f347c8e',
         appmanagement: '4582ab2a6a674a9fb6e1d544dd10674f9785d0906d4478b1dae625734d609997'
     },
@@ -774,10 +779,13 @@ test('reference firmware bundles patch, upgrade, parse and revert exactly', () =
                 fs.writeFileSync(paths[kind], patcher.applyPatches(stock[kind], earlier[kind])));
             r = runTool(['check', '--json'].concat(args));
             assert.strictEqual(r.code, 1, r.stdout);
-            // A bundle whose edits this release keeps is patched already.
+            // A bundle whose edits this release keeps is patched already; edits
+            // several releases shipped are named by the newest of them.
+            const same = (kind) => patcher.EARLIER_PATCH_SETS.find((e) =>
+                JSON.stringify(e[kind]) === JSON.stringify(earlier[kind])).version;
             lastJson(r.stdout).files.forEach((f) => assert.strictEqual(f.patchedBy,
                 JSON.stringify(earlier[f.kind]) === JSON.stringify(patcher.PATCH_SETS[f.kind]) ?
-                    null : earlier.version));
+                    null : same(f.kind)));
             r = runTool(['apply'].concat(args));
             assert.strictEqual(r.code, 0, r.stdout);
             Object.keys(paths).forEach((kind) => assert.strictEqual(fs.readFileSync(paths[kind], 'utf8'),

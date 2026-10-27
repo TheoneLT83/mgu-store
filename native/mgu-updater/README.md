@@ -679,7 +679,8 @@ updates. Keys: `sources`, `credentials_dir`, `builtin_repo`, `default_sources`,
 `check_interval_s`, `first_check_s`, `mounts`, `usb_roots`, `usb_poll_s`,
 `repo_max_bytes`, `build_uid`, `build_gid`, `build_timeout_s`,
 `build_max_bytes`, `python`, `fetch_uid`, `fetch_gid`, `lease`, `deploy`,
-`deploy_tool`, `uplink_tool`, `bootstrap_check_s`, `privacy_tool`,
+`deploy_timeout_s` (3600: a deploy tool run still going then is stopped with
+what it started, and fails), `deploy_tool`, `uplink_tool`, `bootstrap_check_s`, `privacy_tool`,
 `state_dir`, `tool_root`, `oap_root`, `mainapp_uid`, `store_app`,
 `reboot`, `log_file`, `socket`, `socket_group`, `web_uid`, `web_gid`,
 `web_port`, `web_iface`, `web_secret`. Relative paths are relative to

@@ -1,5 +1,9 @@
 # Updater changelog
 
+## 0.7.6
+
+- A deploy tool run still going after `deploy_timeout_s` (3600) is stopped together with everything it started, and the install fails with `the deploy tool did not finish within 60 min and was stopped`. No `mgu-deploy` process is left running.
+
 ## 0.7.5
 
 - Requires `mgu-python` 1.0.2, and so does every app that builds with Python: `mgu-python` 1.0.1 and older cannot start on the head unit, so an updater update, or the install of such an app, updates it first.

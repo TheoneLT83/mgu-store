@@ -858,6 +858,11 @@ the other apps and their tiles keep running; there is no bounce.
   the app manager is on it (15s): in the installer's queue since +0s; update other_app running for 15s; AppManagement child started +0s to +3s
   the app manager done after 21s: installing since +16s, ended +21s; update other_app ran until +16s; AppManagement child started +0s to +3s
   ```
+- When the manager ran the app's install or update in its installer and
+  it failed there, leaving the app as it was, the install fails at once
+  (exit 1, rolled back) with the manager's reason in one line, and no
+  bounce: a restarted manager runs the same install, and the bounce stops
+  every app.
 - When the manager never had the install in hand (no hook, the request not
   taken, refused or failed, or the manager restarted meanwhile) the
   installer says why and installs through the bounce above, under the same
@@ -872,6 +877,20 @@ the other apps and their tiles keep running; there is no bounce.
   install not done within 10 minutes, or a result that does not match,
   fails like a bounced install that is not done (exit 1, rolled back), with
   no bounce, which could cut the manager's install short.
+
+**Keychain wait.** The manager's install creates the app's keychain with
+`/usr/lib/oap-mainapp/src/scripts/CertificateManager.js`, run as the app's
+uid: the head unit's certificate service creates it, the script gives up
+after 30 s with nothing on stderr, and the install fails. Each app install
+binds `/var/opt/mgu-deploy/CertificateManager.js` over it: the same script
+waiting 120 s, which, when it gives up or cannot write the keychain, says
+on stderr the states the service reported and when, the security folder's
+files before the request (`name:uid:size`) and its uid. The manager puts
+that in the install's error, and the installer's reason carries it. The
+manager stops the script after 35 s; app-privacy 1.5.0 gives our apps' 125
+s. When the stock script is not the one these edits anchor on, it runs as
+it is (said in the output). The copy is bound until the next start of the
+head unit, and again at the next app install; `fallback off` removes it.
 
 `uninstall <id>` removes the app from `custom_apps.json` first, so the
 manager does not install it again meanwhile, then asks the running manager

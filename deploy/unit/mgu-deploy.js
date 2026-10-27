@@ -44,7 +44,7 @@ var cp = require('child_process');
 
 /* deploy/component.json's version; bumped when a file under deploy/unit/
  * changes. */
-var VERSION = '0.5.6';
+var VERSION = '0.5.7';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -106,6 +106,7 @@ var INPLACE_REQUEST = path.join(INPLACE_DIR, 'request.json');
 /* fallback_build.js's marker around the in-place hook in the copy */
 var INPLACE_MARK = '/* mgu-deploy in-place install */';
 var SHIM = path.join(DEPLOY_DIR, 'mgu-deploy.sh');
+var CERT_COPY = path.join(DEPLOY_DIR, 'CertificateManager.js');
 /* This tool's own manifest, as deploy/component.json has it. */
 var SELF_TITLE = 'Deploy tool';
 var SELF_DESCRIPTION = 'Installs, updates, rolls back and removes our tools and apps on the head unit, ' +
@@ -128,6 +129,7 @@ function privacyTool() {
 }
 function mainJs() { return path.join(CFG.mainapp, 'src', 'main.js'); }
 function appManagementJs() { return path.join(CFG.mainapp, 'src', 'AppManagement', 'AppManagement.js'); }
+function certManagerJs() { return path.join(CFG.mainapp, 'src', 'scripts', 'CertificateManager.js'); }
 function baseJson() { return path.join(CFG.mainapp, 'config', 'base.json'); }
 /* MainApp's own folder: oap-mainapp on iDrive 7, oap-mainapp21 on iDrive 8. */
 function mainappRoot() { return unitInfo().hmi === 'ID8' ? CFG.mainapp21 : CFG.mainapp; }
@@ -790,7 +792,7 @@ function acquireLock() {
 /* Files a killed run left: its staging, rootfs-window and temp files (named
  * after its pid, gone now), its in-place request, and a deploy/hu kit
  * folder a day old. */
-var RUN_TEMP = /^(?:stage-|window-|main\.fallback-|lock\.|\.mgu-deploy-probe-)(\d+)(?:\.sh|\.js)?$|^write-(\d+)-\d+$|\.(?:tmp|partial|old)-(\d+)$/;
+var RUN_TEMP = /^(?:stage-|window-|main\.fallback-|CertificateManager\.tmp-|lock\.|\.mgu-deploy-probe-)(\d+)(?:\.sh|\.js)?$|^write-(\d+)-\d+$|\.(?:tmp|partial|old)-(\d+)$/;
 function pidAlive(pid) {
     if (pid === process.pid) return true;
     try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
@@ -1908,15 +1910,15 @@ function installState(a) {
             ', source ' + (pkg ? pkg.version : 'absent') + ', keychain ' + (keychain ? 'present' : 'absent') };
 }
 function watchInstall(a) {
-    var waited = 0, s;
+    var t0 = Date.now(), s;
     for (;;) {
         s = installState(a);
         if (s.done) {
             say(a.id + ' ' + a.version + ' installed by the app manager as uid ' + s.uid + ' (source ' + s.source + ')');
             return s.uid;
         }
-        if (waited >= CFG.watchTimeoutMs) break;
-        sleepMs(CFG.watchPollMs); waited += CFG.watchPollMs;
+        if (Date.now() - t0 >= CFG.watchTimeoutMs) break;
+        sleepMs(CFG.watchPollMs);
     }
     throw fail('app manager did not install ' + a.id + ' ' + a.version + ' within ' +
         Math.round(CFG.watchTimeoutMs / 1000) + 's (' + s.seen + ')');
@@ -2006,6 +2008,8 @@ function inplaceManager() {
  * installer ("q") and its run in the AppManagement child ("run"), what
  * else runs or ran meanwhile, the child's start, and a pending network
  * retry delay or NSM resume. */
+/* An error's first line: the manager's errors carry their stack. */
+function oneLine(e) { return String(e).split('\n')[0]; }
 function inplaceTrace(st, app) {
     var tr = st.trace, t0 = st.taken, now = Date.now(), out = [];
     if (!tr || !Array.isArray(tr.ops) || typeof t0 !== 'number') return 'no trace from the app manager';
@@ -2018,15 +2022,15 @@ function inplaceTrace(st, app) {
     var q = mine('q'), run = mine('run');
     if (!q) out.push('not yet handed to the installer');
     else if (!run) out.push('in the installer\'s queue since ' + s(q.t));
-    else out.push((run.m === 'uninstall' ? 'uninstalling' : 'installing') + ' since ' + s(run.t) + (run.end ? ', ended ' + s(run.end) + (run.err ? ' (' + run.err + ')' : '') : ''));
+    else out.push((run.m === 'uninstall' ? 'uninstalling' : 'installing') + ' since ' + s(run.t) + (run.end ? ', ended ' + s(run.end) + (run.err ? ' (' + oneLine(run.err) + ')' : '') : ''));
     tr.ops.filter(function (o) { return o.app !== app && o.k === 'run' && (!o.end || o.end >= t0); }).forEach(function (o) {
         out.push(o.m + ' ' + o.app + ' ' + (o.end ? 'ran until ' + s(o.end) : 'running for ' +
-            Math.round((now - o.t) / 1000) + 's') + (o.err ? ' (' + o.err + ')' : ''));
+            Math.round((now - o.t) / 1000) + 's') + (o.err ? ' (' + oneLine(o.err) + ')' : ''));
     });
     if (tr.fork && (!tr.fork.end || tr.fork.end >= t0)) {
         var from = (tr.fork.early ? 'before ' : '') + s(tr.fork.t);
         out.push('AppManagement child ' + (!tr.fork.end ? 'starting since ' + from :
-            (tr.fork.err ? 'failed to start (' + from + ' to ' + s(tr.fork.end) + ': ' + tr.fork.err + ')' :
+            (tr.fork.err ? 'failed to start (' + from + ' to ' + s(tr.fork.end) + ': ' + oneLine(tr.fork.err) + ')' :
                 'started ' + from + ' to ' + s(tr.fork.end))));
     } else if (!tr.child) out.push('no AppManagement child');
     if (tr.backoff) out.push('network retry delay pending (retries ' + tr.retries + ')');
@@ -2055,6 +2059,29 @@ function inplaceAsk(app, version, action) {
     if (!st) return { why: 'the app manager did not take the request within ' + Math.round(CFG.inplaceAckMs / 1000) + 's' };
     return { pid: m.pid, id: id, st: st };
 }
+/* The manager ran this app's install, update or uninstall in its
+ * AppManagement child and it failed there (the hook's trace). */
+function ranAndFailed(st, app) {
+    var ops = st.trace && Array.isArray(st.trace.ops) ? st.trace.ops : [];
+    return ops.some(function (o) {
+        return o.k === 'run' && o.app === app && !!o.err && typeof st.taken === 'number' && o.t >= st.taken - 1000;
+    });
+}
+/* The manager's failure in one line: what the copy of CertificateManager.js
+ * said, else its first line without the wrappers of the stub and
+ * AppManager around the cause. */
+function managerReason(err) {
+    var text = String(err || 'no reason given'), line = text.split('\n')[0];
+    var told = /keychain of \S+ [^\n]*/.exec(text), m = /uidrun exited with return code (\d+)/.exec(line);
+    if (told) return "MainApp's CertificateManager: " + told[0];
+    if (/CertificateManager\.js/.test(text)) {
+        return "MainApp's CertificateManager did not create the app's keychain (" +
+            (m ? 'uidrun exited ' + m[1] : /#timeout after (\d+) sec/.test(text) ? 'killed after ' + /#timeout after (\d+) sec/.exec(text)[1] + ' s' : 'failed') + ')';
+    }
+    line = line.replace(/^AppManagerStub::_callMethod appManager\.\w+\([^)]*\) failed due to (Error: )?/, '')
+        .replace(/^AppManager::\w+ Failed due to \{? ?(Error: )?/, '');
+    return line.length > 200 ? line.slice(0, 200) + '...' : line;
+}
 /* { uid } when the running manager installed or updated it in place.
  * { why } when the manager never had the install in hand, so a bounce is
  * safe: no hook, the request not taken, refused or failed, or the manager
@@ -2067,7 +2094,7 @@ function installInPlace(a, existing) {
     var action = existing ? 'update' : 'install', q = inplaceAsk(a.id, a.version, action);
     if (!q.pid) return { why: q.why };
     var m = { pid: q.pid }, id = q.id, st = q.st, poll = Math.min(CFG.watchPollMs, 1000);
-    var waited = 0, doneAt = null, t0 = Date.now(), reported = t0, s, cur;
+    var doneAt = null, t0 = Date.now(), reported = t0, s, cur;
     var secs = function () { return Math.round((Date.now() - t0) / 1000) + 's'; };
     for (;;) {
         if (st.state === 'running' && Date.now() - reported >= CFG.inplaceReportMs) {
@@ -2081,24 +2108,24 @@ function installInPlace(a, existing) {
             say('the app manager ' + st.state + ' after ' + secs() + ': ' + inplaceTrace(st, a.id));
         }
         if (st.state === 'refused' || st.state === 'failed') {
-            return { why: 'the app manager ' + st.state + ' the in-place ' + action + (st.error ? ' (' + st.error + ')' : ''),
-                state: st.state, error: st.error };
+            return { why: 'the app manager ' + st.state + ' the in-place ' + action + (st.error ? ' (' + oneLine(st.error) + ')' : ''),
+                state: st.state, error: st.error, ranFailed: st.state === 'failed' && !s.done && ranAndFailed(st, a.id) };
         }
         if (st.state === 'done' && s.done && (!existing || s.uid === existing.uid)) {
             say(a.id + ' ' + a.version + ' ' + (existing ? 'updated' : 'installed') + ' in place by the app manager (pid ' +
                 m.pid + ') as uid ' + s.uid + ' (source ' + s.source + ')');
             return { uid: s.uid };
         }
-        if (doneAt !== null && waited - doneAt >= 2 * CFG.watchPollMs) {
+        if (doneAt !== null && Date.now() - doneAt >= 2 * CFG.watchPollMs) {
             throw fail('the app manager ' + (existing ? 'updated ' : 'installed ') + a.id + ' in place, but not as ' +
                 a.version + ' (' + s.seen + ')');
         }
-        if (waited >= CFG.watchTimeoutMs) {
+        if (Date.now() - t0 >= CFG.watchTimeoutMs) {
             throw fail('app manager did not ' + action + ' ' + a.id + ' ' + a.version + ' in place within ' +
                 Math.round(CFG.watchTimeoutMs / 1000) + 's (' + s.seen + '); not bounced, it may still be installing');
         }
-        if (st.state === 'done' && doneAt === null) doneAt = waited;
-        sleepMs(poll); waited += poll;
+        if (st.state === 'done' && doneAt === null) doneAt = Date.now();
+        sleepMs(poll);
         st = inplaceAnswer(id) || st;
     }
 }
@@ -2112,6 +2139,75 @@ function installedAlready(a, why) {
     say(a.id + ' ' + a.version + ' installed by the app manager on its own as uid ' + s.uid + ' (source ' + s.source +
         '); ' + why);
     return s.uid;
+}
+
+/* ---- MainApp's CertificateManager.js --------------------------------------- */
+/* MainApp's install of an app runs CertificateManager.js as the app's uid:
+ * it has the head unit's certificate service create the app's keychain,
+ * gives up after 30 s, and exits 1 with nothing on stderr, which MainApp
+ * reports as the install's failure. A copy of it, bound over it, waits
+ * CERT_WAIT_S and, when it gives up or cannot write the keychain, writes
+ * on stderr the states the service reported and when, the security
+ * folder's files before the request (name:uid:size) and its uid (the
+ * record is an expression, as the stock call it precedes is); MainApp
+ * puts the script's stderr in the install's error. MainApp kills the
+ * script after 35 s; app-privacy 1.5.0 gives our apps' 125 s. Each
+ * edit's anchor must occur once in the stock script and the copy must
+ * parse, or no copy is bound and the stock script runs. */
+var CERT_WAIT_S = 120;
+var CERT_PROBE = '__mgu={t0:Date.now(),states:[],before:(()=>{try{const fs=require("fs"),p=require("path");' +
+    'return fs.readdirSync(keyChainPath).map(n=>{const s=fs.lstatSync(p.join(keyChainPath,n));' +
+    'return n+":"+s.uid+":"+s.size}).join(" ")||"empty"}catch(e){return String(e&&e.code||e)}})(),' +
+    'tell:w=>{try{process.stderr.write("keychain of "+appName+" "+w+"; certificate service states: "+' +
+    '(__mgu.states.join(", ")||"none")+"; "+keyChainPath+" before the request: "+__mgu.before+"; uid "+process.getuid()+"\\n")}catch(e){}}},';
+var CERT_EDITS = [
+    ['TIMEOUT=3e4', 'TIMEOUT=' + CERT_WAIT_S + 'e3'],
+    ['function requestKeyChain(process){', 'var __mgu;function requestKeyChain(process){'],
+    ['certmgr.setupKeychain(appName,keyChainPath);', CERT_PROBE + 'certmgr.setupKeychain(appName,keyChainPath);'],
+    ['const handle=certmgr.useKeychain(keyChainPath,(state,_chain)=>{',
+        'const handle=certmgr.useKeychain(keyChainPath,(state,_chain)=>{__mgu.states.length<30&&' +
+        '__mgu.states.push(Math.round((Date.now()-__mgu.t0)/1e3)+"s "+state);'],
+    ['logger.error(`${logPrefix} Error while requesting keyChain due to ${e}.`),',
+        '__mgu.tell("not written ("+e+")"),logger.error(`${logPrefix} Error while requesting keyChain due to ${e}.`),'],
+    ['logger.error(`${logPrefix} Terminating due to ${TIMEOUT}ms timeout.`),',
+        '__mgu.tell("not ready after "+TIMEOUT/1e3+"s"),logger.error(`${logPrefix} Terminating due to ${TIMEOUT}ms timeout.`),']
+];
+/* The copy's text, or null when an anchor does not occur exactly once. */
+function certCopySource(text) {
+    for (var i = 0; i < CERT_EDITS.length; i++) {
+        if (text.split(CERT_EDITS[i][0]).length !== 2) return null;
+        text = text.replace(CERT_EDITS[i][0], function () { return CERT_EDITS[i][1]; });
+    }
+    return text;
+}
+/* Built from the stock script (a bound copy is unmounted for the read)
+ * and bound over it; written only when its bytes change. */
+function ensureCertCopy() {
+    var stock = certManagerJs(), wasBound = !FAKE && bindMounted(stock), built;
+    if (!wasBound && !fs.existsSync(stock)) return;
+    if (wasBound) runOk(CFG.umount, [stock]);
+    try { built = certCopySource(fs.readFileSync(stock, 'utf8')); } catch (e) { built = null; }
+    if (built === null) {
+        warn(stock + ' is not the script this tool knows: MainApp keeps its 30 s keychain wait, without the diagnosis');
+        return;
+    }
+    if (!bytesEqualFile(Buffer.from(built), CERT_COPY)) {
+        var tmp = path.join(DEPLOY_DIR, 'CertificateManager.tmp-' + process.pid + '.js');
+        writeAtomic(tmp, built, 0o755);
+        if (run(CFG.node, ['--check', tmp], { allowFail: true, timeout: 60000 }).status !== 0) {
+            rmrf(tmp);
+            rmrf(CERT_COPY);
+            warn('the copy of ' + stock + ' does not parse: MainApp keeps its 30 s keychain wait, without the diagnosis');
+            return;
+        }
+        fs.renameSync(tmp, CERT_COPY);
+    }
+    if (!FAKE) runOk(CFG.mount, ['--bind', CERT_COPY, stock]);
+    if (!wasBound) say('keychain wait of MainApp\'s installs: ' + CERT_WAIT_S + ' s, its failures explained (' + CERT_COPY + ')');
+}
+function unbindCertCopy() {
+    if (!FAKE && bindMounted(certManagerJs())) runOk(CFG.umount, [certManagerJs()]);
+    rmrf(CERT_COPY);
 }
 
 /* Privacy, the fallback, the package, the app listed by the fallback; then
@@ -2132,6 +2228,7 @@ function installApp(a, state, decision) {
     var existing = decision.existing || null, entry;
     say('installing app ' + a.id + ' ' + a.version + (existing ? ' (update of ' + existing.version + ')' : ''));
     ensurePrivacy();
+    ensureCertCopy();
     var kept = ensureFallback(state, true);
     if (existing && managerStale() && fs.existsSync(FALLBACK_COPY) &&
         inplaceHookOf(fs.readFileSync(FALLBACK_COPY, 'utf8')) !== null) {
@@ -2146,6 +2243,13 @@ function installApp(a, state, decision) {
     placePreinstalled(a);
     customAppsPut(a.id, entry ? entry.provisioningCache : null, a.pkg.mguAppStartType || 'manually');
     var r = installInPlace(a, existing), uid = r.uid;
+    /* The manager's own install or update of the app failed in its
+     * installer: a restarted manager runs the same install, and restarting
+     * it stops every app. */
+    if (r.ranFailed) {
+        throw fail('the app manager could not ' + (existing ? 'update ' : 'install ') + a.id + ' ' + a.version + ': ' +
+            managerReason(r.error));
+    }
     /* A fresh app the manager may be installing by itself: looked at once
      * the bounce's wait is over, unless the manager failed the request for
      * any reason but that install. */
@@ -2208,7 +2312,7 @@ function cleanNpmCache(id) {
 function uninstallInPlace(id, version) {
     var q = inplaceAsk(id, version, 'uninstall');
     if (!q.pid) return { why: q.why };
-    var st = q.st, waited = 0, t0 = Date.now(), reported = t0, poll = Math.min(CFG.watchPollMs, 1000), cur;
+    var st = q.st, t0 = Date.now(), reported = t0, poll = Math.min(CFG.watchPollMs, 1000), cur;
     var secs = function () { return Math.round((Date.now() - t0) / 1000) + 's'; };
     for (;;) {
         if (st.state === 'running' && Date.now() - reported >= CFG.inplaceReportMs) {
@@ -2221,16 +2325,16 @@ function uninstallInPlace(id, version) {
             say('the app manager ' + st.state + ' after ' + secs() + ': ' + inplaceTrace(st, id));
         }
         if (st.state === 'refused' || st.state === 'failed') {
-            return { why: 'the app manager ' + st.state + ' the in-place uninstall' + (st.error ? ' (' + st.error + ')' : '') };
+            return { why: 'the app manager ' + st.state + ' the in-place uninstall' + (st.error ? ' (' + oneLine(st.error) + ')' : '') };
         }
         if (st.state === 'done') {
             say(id + ' uninstalled in place by the app manager (pid ' + q.pid + ')');
             return { done: true };
         }
-        if (waited >= CFG.watchTimeoutMs) {
+        if (Date.now() - t0 >= CFG.watchTimeoutMs) {
             return { why: 'the app manager did not uninstall ' + id + ' in place within ' + Math.round(CFG.watchTimeoutMs / 1000) + 's' };
         }
-        sleepMs(poll); waited += poll;
+        sleepMs(poll);
         st = inplaceAnswer(q.id) || st;
     }
 }
@@ -3225,6 +3329,7 @@ function fallbackOff(state, opts) {
         rootfsWindow(ops);
         runOk(CFG.systemctl, ['daemon-reload']);
         unbindFallback();
+        unbindCertCopy();
         pruneCreatedDirs(state);
         bounceManager();
     } catch (e) {

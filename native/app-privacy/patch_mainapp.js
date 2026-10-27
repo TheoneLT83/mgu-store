@@ -47,7 +47,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 const MARKER_KEY = 'mguLocalOnly';
 const OAP_ROOT = '/var/opt/public/oap/';
 const OVERRIDE_FILE = OAP_ROOT + 'oap_12201/data/local-only-apps.json';
@@ -217,6 +217,15 @@ const APPMANAGEMENT_PATCHES = [
     // Corrupt-app report on package verification failure.
     ins('vin=>{', 'isLocalOnlyApp(appId)||', 'this._backendTransport.reportCorruptApp(', 1)
 ];
+// MainApp kills CertificateManager.js, which has the head unit's
+// certificate service create an app's keychain, after 35 s. A local-only
+// app's gets CERT_KILL_S: the deploy tool's copy of the script waits up to
+// 120 s and, when it gives up, says why on stderr, which MainApp puts in
+// the install's error.
+const CERT_KILL_S = 125;
+const CERT_EDIT = ins('config.get("certificateManagerGids")),', 'isLocalOnlyApp(appId)?' + CERT_KILL_S + ':', '35)', 2);
+const APPMANAGEMENT_PATCHES_1_4_0 = APPMANAGEMENT_PATCHES.slice();
+APPMANAGEMENT_PATCHES.push(CERT_EDIT);
 
 const PATCH_SETS = { main: MAIN_PATCHES, appmanagement: APPMANAGEMENT_PATCHES };
 
@@ -225,18 +234,19 @@ const PATCH_SETS = { main: MAIN_PATCHES, appmanagement: APPMANAGEMENT_PATCHES };
 // text an edit writes or HELPER_JS moves the outgoing sets here under the
 // last version that shipped them; an anchor that pins the same insertion
 // point needs no entry (tests: "the patch set is recorded", and the
-// reference firmware case). 1.2.2 (and 1.2.0, 1.2.1) differs from this
-// release in the crash-recovery edit only; 1.1.0 (and 1.0.0) in that edit
-// and the helper.
+// reference firmware case). 1.4.0 (and 1.3.0) differs from this release in
+// the CertificateManager kill time only; 1.2.2 (and 1.2.0, 1.2.1) also in
+// the crash-recovery edit; 1.1.0 (and 1.0.0) in those and the helper.
 function withHelper(patches, helper) {
     return patches.map((p) => [p[0], p[1].split(HELPER_JS).join(helper), p[2]]);
 }
 const MAIN_PATCHES_1_2_2 = MAIN_PATCHES.filter((p) => p !== CRASH_EDITS[1]).map((p) => p === CRASH_EDITS[0] ?
     ins('Corruption:0});', 'isLocalOnlyApp(appId)||', 'buildAnalyticsService()', 1) : p);
 const EARLIER_PATCH_SETS = [
-    { version: '1.2.2', main: MAIN_PATCHES_1_2_2, appmanagement: APPMANAGEMENT_PATCHES },
+    { version: '1.4.0', main: MAIN_PATCHES, appmanagement: APPMANAGEMENT_PATCHES_1_4_0 },
+    { version: '1.2.2', main: MAIN_PATCHES_1_2_2, appmanagement: APPMANAGEMENT_PATCHES_1_4_0 },
     { version: '1.1.0', main: withHelper(MAIN_PATCHES_1_2_2, HELPER_JS_1_1_0),
-        appmanagement: withHelper(APPMANAGEMENT_PATCHES, HELPER_JS_1_1_0) }
+        appmanagement: withHelper(APPMANAGEMENT_PATCHES_1_4_0, HELPER_JS_1_1_0) }
 ];
 
 // MainApp-21 (iDrive 8). Its predicate decides an app MainApp-21 is
