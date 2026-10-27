@@ -8,6 +8,9 @@
  *
  *   frame(model, { textScale, focus, scroll, layout }) -> { screen, rec, items, regions, icons }
  *
+ * model.look: 'id7' or 'id8' (Settings), else the head unit's own
+ * (store_ui.js lookOf); it picks the theme and the fonts.
+ *
  * layout: placement()'s; the iDrive 8 design when null.
  *
  * items: { x, y, w, h, r, label, act, reveal? }; an item scrolled out of view
@@ -22,6 +25,7 @@ const { view, icons } = require('./store_ui.js');
 const { tabCells } = require('./am_widgets.js');
 const { gridView, listView, navItems, rightBoxes } = require('./am_store_widgets.js');
 const { compact } = require('./store_compact.js');
+const fonts = require('./kit_fonts.js');
 
 /* The part of the design the renderer's box shows: the screens' content
  * (the side menu at x 126 to the right edge, the title at y 114 to the
@@ -124,7 +128,7 @@ function itemsOf(st, page) {
  * scroll. */
 function screenOf(v, scroll, layout) {
     const def = (layout || SCREENS).screens.find((s) => s.name === v.screen);
-    return { kind: 'gpu', name: def.name, theme: def.theme, bg: 'theme',
+    return { kind: 'gpu', name: def.name, theme: v.look === 'id7' ? 'idrive7' : def.theme, bg: 'theme',
         components: def.components.map((c) => {
             const opts = Object.assign({}, c.opts, v.values[c.name] || {});
             if (layout) {
@@ -141,6 +145,7 @@ function frame(m, opts) {
     const o = opts || {};
     const scroll = o.scroll || {};
     const v = view(m);
+    fonts.setLook(v.look);              // before anything measures text
     const page = m.stack.length > 1;
     const layout = o.layout || null;
     let st = screenOf(v, scroll, layout);
@@ -155,7 +160,8 @@ function frame(m, opts) {
         area: { x: 0, y: 0, w: layout.design.w, h: layout.design.h } } : { textScale: o.textScale || 1, view: 'id8' });
     const f = laid.items[o.focus];
     if (f && !f.reveal) {
-        rec.strokeRoundRect(f.x - 8, f.y - 8, f.w + 16, f.h + 16, f.r + 8, 5, FOCUS);
+        // the iDrive 7 look's boxes are square
+        rec.strokeRoundRect(f.x - 8, f.y - 8, f.w + 16, f.h + 16, v.look === 'id7' ? Math.min(f.r + 8, 12) : f.r + 8, 5, FOCUS);
     }
     return { screen: v.screen, rec, items: laid.items, regions: laid.regions, icons: icons(v), values: v.values };
 }

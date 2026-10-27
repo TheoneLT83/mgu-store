@@ -3805,7 +3805,7 @@ function testFirstStart() {
     // no sources.json: the built-in source alone, and the file is left for the installers to seed
     let u = new Updater(conf());
     ok('sources: without sources.json, the built-in source alone and nothing written', u.stored.length === 1 && u.stored[0].builtin &&
-        u.stored[0].repo === 'robertnisipeanu/mgu-store' && !fs.existsSync(path.join(D, 'sources.json')));
+        u.stored[0].repo === 'TheoneLT83/mgu-store' && !fs.existsSync(path.join(D, 'sources.json')));
     u.saveSources(u.stored.concat([{ id: 'idrive7-apps', type: 'github', repo: 'someone/idrive7-apps' }]));
     const saved = JSON.parse(fs.readFileSync(path.join(D, 'sources.json'), 'utf8'));
     ok('sources: a change writes sources.json, root-only, the built-in source first', saved.sources.map((x) => `${x.id}:${!!x.builtin}`).join() ===
@@ -3861,7 +3861,7 @@ function testDefaultSources() {
         stored().length === 2, JSON.stringify(stored()));
     u = new Updater(conf());
     ok('default sources: one the owner removed is not added again', stored().length === 2 && u.stored.length === 2 &&
-        JSON.parse(fs.readFileSync(path.join(D, 'state', 'default-sources.json'), 'utf8')).added.join() === 'TheoneLT83/idrive7-apps');
+        JSON.parse(fs.readFileSync(path.join(D, 'state', 'default-sources.json'), 'utf8')).added.join() === 'theonelt83/idrive7-apps');
     // a unit the installers seeded with it (as deploy/sources.json): recorded, not doubled
     fs.unlinkSync(path.join(D, 'state', 'default-sources.json'));
     fs.writeFileSync(file, JSON.stringify({ schema: 1, sources: [
@@ -3875,7 +3875,7 @@ function testDefaultSources() {
     fs.unlinkSync(path.join(D, 'state', 'default-sources.json'));
     u = new Updater(conf());
     ok('default sources: without sources.json, written with the built-in source first', stored().map((s) => `${s.id}:${s.repo}`).join() ===
-        'mgu-store:robertnisipeanu/mgu-store,idrive7-apps:TheoneLT83/idrive7-apps', JSON.stringify(stored()));
+        'mgu-store:TheoneLT83/mgu-store,idrive7-apps:TheoneLT83/idrive7-apps', JSON.stringify(stored()));
 }
 
 /* A unit whose sources each had a token file of their own (mgu-updater 0.2):

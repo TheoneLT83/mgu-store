@@ -85,6 +85,9 @@ const DATA_DIR = path.join(__dirname, '..', '..', 'data');
 const SECRET_FILE = path.join(DATA_DIR, 'updater-secret');
 const WEB_URL_FILE = path.join(DATA_DIR, 'web-url');
 const RECONNECT_MS = 2000;
+/* The look picked in Settings (store_ui.js LOOKS), kept in this app's data
+ * folder; without it the head unit's own. */
+const LOOK_FILE = path.join(DATA_DIR, 'look');
 /* The Store's own tile icon (its package's), its picture in its own lists
  * when the catalog names none. */
 const OWN_ID = 'robertn_store';
@@ -255,6 +258,7 @@ class Store extends OnlineApp {
             this._focusedPage = `drawn:${page.name}`;
             this._render();
         });
+        this._look = readFile(LOOK_FILE).trim() || null;
         this._st = null;
         this._connected = false;
         this._client = new UpdaterClient(SOCKET, { reconnectMs: RECONNECT_MS });
@@ -605,7 +609,7 @@ class Store extends OnlineApp {
     _drawnModel() {
         const web = this._connected && this._st && this._st.web;
         return { st: this._connected ? this._st : null, connected: this._connected && !!this._st, secret: !!readSecret(),
-            version: this._version(), note: this._sourcesNote, login: this._login,
+            version: this._version(), note: this._sourcesNote, login: this._login, look: this._look,
             webText: web && web.enabled ? readFile(WEB_URL_FILE) : '', accountsNote: this._accountsNote,
             pick: this._pick && { repo: this._pick.repo, probe: this._pick.probe, tokenNote: !!this._pick.tokenNote } };
     }
@@ -648,9 +652,20 @@ class Store extends OnlineApp {
         case 'pick': this._pickChannel(act.channel); break;
         case 'pick-retry': this._probe(); break;
         case 'pick-add-token': this._pickAddToken(); break;
+        case 'look': this._setLook(act.look); break;
         default: break;
         }
         this._render();
+    }
+
+    /* Settings' look: shown at once, kept for the next start. */
+    _setLook(look) {
+        this._look = look;
+        try {
+            fs.writeFileSync(LOOK_FILE, `${look}\n`);
+        } catch (e) {
+            logger.warn(`look not kept: ${e.message}`);
+        }
     }
 
     _openState(name) {

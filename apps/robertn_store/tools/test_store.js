@@ -960,6 +960,11 @@ function runDrawn() {
         eq(drawn.top(), { name: 'accounts' });
         eq(drawn.items.some((i) => i.label === 'Sign in with GitHub'), true, 'Sign in with GitHub with state.signin');
         eq(drawn.items.find((i) => i.label === 'Add token').act, { do: 'add-token' });
+        // Settings' look: shown at once and kept in the data folder for the next start
+        app._act({ do: 'look', look: 'id8' });
+        eq([app._drawnModel().look, fs.readFileSync(path.join(DATA, 'look'), 'utf8')], ['id8', 'id8\n'], 'the picked look, kept');
+        app._act({ do: 'look', look: 'id7' });
+        eq(fs.readFileSync(path.join(DATA, 'look'), 'utf8'), 'id7\n', 'and changed');
         // the speller hides the renderer's picture while it is up (Add source)
         drawn.setTab('settings');
         spellerAnswers.push('o/r');

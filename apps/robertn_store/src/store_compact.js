@@ -77,9 +77,11 @@ function compact(W, H) {
     const rx = X + leftW + 24;
     const rw = R - rx;
     const SET_H = 72;
+    const LOOK_W = 360;
     const settings = screen('settings', 3, [
         title('Settings'),
-        status('note', X + 230, CW - 230, AMBER),
+        status('note', X + 230, CW - 230 - LOOK_W - 20, AMBER),
+        el('look', 'tabs', R - LOOK_W, M + 2, LOOK_W, 60, { items: 'iDrive 7,iDrive 8', sel: 0, style: 'joined', size: 24 }),
         label('reposLabel', X, HEAD + 8, 'SOURCES'),
         list('repos', X, LIST_Y, leftW, B - SET_H - 12 - LIST_Y),
         button('addRepo', X, B - SET_H, leftW, SET_H, 'Add source', 'tinted', 25, { vicon: 'plus', color: BLUE }),

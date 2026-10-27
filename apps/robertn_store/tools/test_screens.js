@@ -14,6 +14,7 @@ const path = require('path');
 const { frame, hit, placement } = require(path.join(__dirname, '..', 'src', 'store_frame.js'));
 const SCREENS = require(path.join(__dirname, '..', 'src', 'am_screens.js'));
 const fixture = require('./fixture.js');
+const { view } = require(path.join(__dirname, '..', 'src', 'store_ui.js'));
 
 let checks = 0;
 const eq = (got, want, msg) => { checks += 1; assert.deepStrictEqual(got, want, msg); };
@@ -48,19 +49,21 @@ ok(I8.scale > 1 && I8.scale < 1.02 && !I8.layout, 'iDrive 8: the design scaled i
     const grid = p.layout.screens.find((s) => s.name === 'store').components.find((c) => c.name === 'grid');
     eq(Math.floor(grid.h / grid.opts.tileH), 3, `${unit}: three rows of tiles`);
 });
-Object.keys(UNITS).forEach((unit) => fixture.screens().forEach(([name, over, stOver]) => {
+// every screen in both looks (Settings), in every box
+Object.keys(UNITS).forEach((unit) => ['id7', 'id8'].forEach((look) => fixture.screens().forEach(([n, over, stOver]) => {
     const p = UNITS[unit];
     const vp = p.viewport;
     const ring = p.layout ? RING : 0;
+    const name = `${n} (${look} look)`;
     const st = stOver ? Object.assign(fixture.state(), stOver) : undefined;
-    const m = fixture.model(over, st);
+    const m = Object.assign(fixture.model(over, st), { look });
     const f = frame(m, { textScale: p.scale, focus: m.focus, scroll: {}, layout: p.layout });
     ok(!f.rec.errors, `${unit} ${name}: every element draws (${f.rec.errors})`);
     ok(f.items.length && f.items.every((it) => it.label && it.act), `${unit} ${name}: every item has a label and a press`);
     const out = f.items.filter((it) => !it.reveal && !(it.x - ring >= vp.x - 1 && it.x + it.w + ring <= vp.x + vp.w + 1 &&
         (!p.layout || (it.y - ring >= vp.y && it.y + it.h + ring <= vp.y + vp.h))));
     eq(out.map((it) => it.label), [], `${unit} ${name}: items and their focus ring in view`);
-}));
+})));
 
 // the Store tab: side menu, filters, a tile per component with its state
 let f = screen('store');
@@ -177,8 +180,13 @@ eq(text(f, 'subtitle'), 'USB STICK · 2 packages');
 
 // Settings: sources, Add source, Accounts, Phone access, the unit; no restart while busy
 f = screen('settings');
-eq(f.labels.slice(4), ['robertnisipeanu/mgu-store', 'cauliflower/idrive7-apps', 'IterioDev/car-apps', 'USB STICK', 'Add source',
-    'Internet', 'Accounts', 'Phone access', 'Check now']);
+eq(f.labels.slice(4), ['iDrive 7', 'iDrive 8', 'robertnisipeanu/mgu-store', 'cauliflower/idrive7-apps', 'IterioDev/car-apps', 'USB STICK',
+    'Add source', 'Internet', 'Accounts', 'Phone access', 'Check now']);
+// the look: the head unit's own until one is picked; each pick is a press
+eq(f.items.filter((i) => /^iDrive/.test(i.label)).map((i) => i.act), [{ do: 'look', look: 'id7' }, { do: 'look', look: 'id8' }]);
+eq(view(fixture.model({ tab: 'settings' })).look, 'id7', 'an iDrive 7 unit: the iDrive 7 look');
+eq(view(fixture.model({ tab: 'settings' }, { unit: { hmi: 'ID8' } })).look, 'id8', 'an iDrive 8 unit: the iDrive 8 look');
+eq(view(fixture.model({ tab: 'settings', look: 'id8' })).values.look.sel, 1, 'the picked look is selected');
 eq(text(f, 'unit'), 'iDrive 7 · BMW MGU P18_23w44.2-1-3 mgu-high');
 eq(text(f, 'versions'), 'Updater 0.4.0 · Store 0.7.0 · Renderer mgu-renderd 1.1.0');
 eq(text(screen('settings', {}, { allProviders: { renderer: [{ id: 'mgu-render', version: '0.2.0' }, { id: 'mgu-renderd', version: '1.1.2' }] } }),

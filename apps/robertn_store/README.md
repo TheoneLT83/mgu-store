@@ -69,11 +69,20 @@ cap) into the renderer's box: embed (inside the page, iDrive 7 once the
 template is loaded) or layer (over the page, on the app area). On iDrive 8
 they are App Manager 2's design (2880 x 960) scaled into the box; on
 iDrive 7 (a box under 700 px high) `src/store_compact.js` lays the same
-screens out for the box itself at full size. Text is
-Inter (SIL OFL, `src/LICENSE-Inter.txt`), baked by `tools/bake_fonts.py`;
-the atlases are at most 1024 px wide and use about a quarter of the
-renderer's glyph texture, which all apps share. Nothing from the HMI is
-drawn: icons are the kit's vector icons or package pictures.
+screens out for the box itself at full size. Nothing from the HMI is
+drawn: icons are the kit's vector icons or package pictures (the app
+icons the sources name, the Store's own tile icon for itself).
+
+**Two looks**, picked in Settings (iDrive 7 | iDrive 8; without a pick the
+head unit's own), kept in the app's data folder (`look`):
+- *iDrive 7*: the idrive7-apps kit's screens: black, square panels with
+  the M stripe, red selection, labels in capitals, the Ubuntu font
+  condensed (Ubuntu Font Licence 1.0, `src/LICENSE-Ubuntu-font.txt`);
+- *iDrive 8*: App Manager 2's, in Inter (SIL OFL, `src/LICENSE-Inter.txt`).
+
+Both are baked by `tools/bake_fonts.py`; a look's atlases load on first
+use, are at most 1024 px wide and each look's use about a quarter of the
+renderer's glyph texture, which all apps share.
 
 **The HMI's own widgets** (below) whenever the renderer is not there, not
 yet answering at start (1.5 s), or gone (the Store installs or updates it):
@@ -250,12 +259,13 @@ src/am_screens.js          the screens (App Manager 2's screens.json, with the S
 src/am_gpu.js, src/am_elements.js, src/am_widgets.js, src/am_store_widgets.js
                            App Manager 2's element drawing (no gauges, no HMI icon atlas)
 src/kit_*.js               the kit: record, canvas, vicons, png, themes (MIT, src/LICENSE-kit.txt);
-                           kit_fonts.js maps its families onto Inter
-src/font_regular.js, src/font_semibold.js   Inter glyph atlases (tools/bake_fonts.py)
+                           kit_fonts.js maps its families onto the look's faces; kit_themes.js idrive7 is the iDrive 7 look
+src/font_regular.js, src/font_semibold.js   Inter glyph atlases, the iDrive 8 look (tools/bake_fonts.py)
+src/font_id7_regular.js, src/font_id7_semibold.js   Ubuntu condensed atlases, the iDrive 7 look (tools/bake_fonts.py --ubuntu)
 lib/mgu_render_client.js   mgu-render's client, copied by tools/build.js
 tools/gen_rhmi.js          application.xml + uiDescription.json for iDrive 7 and 8 from one table
 tools/build.js             RHMI, lib/, the source package, and given a donor the OAP tgz
-tools/bake_fonts.py        the Inter atlases (Pillow, Inter 4.1's TTFs)
+tools/bake_fonts.py        the font atlases (Pillow; Inter 4.1's TTFs, the Ubuntu font's Ubuntu[wdth,wght].ttf)
 tools/gen_screens.py       src/am_screens.js from App Manager 2's screens.json
 tools/fixture.js           an updater state with one of everything, and the drawn screens over it
 tools/test_view.js         the texts for every row, source, account, sign-in and phone state
@@ -265,7 +275,7 @@ tools/test_speller.js      src/speller.js against a fake use case factory
 tools/test_screens.js      every drawn screen in iDrive 7's and 8's boxes: in the box, values, presses, focus order, scrolling, touch
 tools/test_store.js        src/store.js's flows against stand-in SDK, RHMI, updater, speller and renderer
 tools/shots.js             screenshots of the drawn screens through mgu-render --replay
-tools/make_icon.py         the 140x140 tile icon
+tools/make_icon.py         the 140x140 tile icon from tools/store_icon.svg (headless Chromium)
 robertn_store@0.9.2/       staged package tree (no javascript/: the build writes it)
 ```
 

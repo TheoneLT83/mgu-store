@@ -69,8 +69,27 @@ const chipItems = (items) => (Array.isArray(items) ? items
     : String(items || '').split(';').map((s) => s.split('|').map((x) => x.trim())).filter((p) => p[0])
         .map((p) => ({ text: p[0], color: p[1], dot: p[2] === 'dot' })));
 
+/** A badge in the iDrive 7 look (the Fault Scanner's ACTIVE / STORED): a tinted box, capitals. Returns its width. */
+function chip7(cv, text, x, y, h, c, dot, right) {
+    const s = Math.round(h * 0.42), sp = Math.round(s * 0.12), label = String(text).toUpperCase();
+    const w = cv.textWidth(label, s, { font: 'bold', spacing: sp }) + h * 0.8, x0 = right ? x - w : x;
+    cv.roundRect(x0, y, w, h, Math.min(6, h / 4), withAlpha(c, 0.24));
+    W.caps(cv, label, x0 + h * 0.4, y + h / 2 + s * 0.36, s, c, { font: 'bold' });
+    return w;
+}
+
 function chips(cv, t, b, o) {
     const items = chipItems(o.items), gap = b.h * 0.25;
+    if (W.id7(t) && o.align === 'right') {
+        let x = b.x + b.w;
+        for (let i = items.length - 1; i >= 0; i--) x -= chip7(cv, items[i].text, x, b.y, b.h, C(t, items[i].color, t.text), items[i].dot, true) + gap;
+        return;
+    }
+    if (W.id7(t)) {
+        let x = b.x;
+        for (const it of items) x += chip7(cv, it.text, x, b.y, b.h, C(t, it.color, t.text), it.dot) + gap;
+        return;
+    }
     if (o.align === 'right') {
         let x = b.x + b.w;
         for (let i = items.length - 1; i >= 0; i--) x -= chip(cv, items[i].text, x, b.y, b.h, C(t, items[i].color, t.text), items[i].dot, true) + gap;
@@ -141,7 +160,8 @@ function appList(cv, t, b, o) {
     const v = listView(b, o), gap = Math.round(v.rh * 0.13), q = o.ctlK || 1, ts = o.titleSize || 40, ss = o.subSize || 30;
     v.all.slice(v.top, v.top + v.n).forEach((it, k) => {
         const y = b.y + k * v.rh, h = v.rh - gap, s = Math.round(h * 0.73);
-        cv.card(b.x, y, b.w, h, 22 * q, [[0, t.panelTop], [1, t.panelBottom]]);
+        if (W.id7(t)) W.panel7(cv, t, b.x, y, b.w, h, false);
+        else cv.card(b.x, y, b.w, h, 22 * q, [[0, t.panelTop], [1, t.panelBottom]]);
         let tx = b.x + 28 * q;
         if (it.icon || it.vicon || it.colors || it.letter) {
             if (it.plain && it.vicon) vicon(cv, it.vicon, b.x + 28 * q, y + (h - s) / 2, s, C(t, it.iconColor, t.text));
@@ -160,7 +180,7 @@ function appList(cv, t, b, o) {
                 const on = rb.arg === 'on', tw = 150 * q, th = 76 * q, tx0 = re - tw;
                 cv.roundRect(tx0, cy - th / 2, tw, th, th / 2, on ? GREEN : '#3a4352');
                 cv.circle(on ? tx0 + tw - th / 2 : tx0 + th / 2, cy, th / 2 - 8 * q, '#ffffff');
-            } else if (rb.kind === 'chip') chip(cv, rb.arg, re, cy - 30 * q, 60 * q, C(t, it.chipColor, BLUE), it.chipDot, true);
+            } else if (rb.kind === 'chip') (W.id7(t) ? chip7 : chip)(cv, rb.arg, re, cy - 30 * q, 60 * q, C(t, it.chipColor, BLUE), it.chipDot, true);
         }
     });
     if (!v.all.length && o.empty) mid(cv, o.empty, b.x + b.w / 2, b.y + b.h / 2, 36, t.dim, { align: 'center' });
@@ -176,7 +196,10 @@ function sideNav(cv, t, b, o) {
     cv.fillRect(b.x + b.w - 1.5, b.y, 1.5, b.h, t.panelEdge);
     items.forEach((it, i) => {
         const y = b.y + i * ih, on = i === (o.sel | 0), c = on ? t.text : t.dim, iy = y + ih * 0.18;
-        if (on) {
+        if (on && W.id7(t)) {           // the iDrive 7 look: a lit square with the red bar
+            cv.card(b.x, y + 4, b.w - 1.5, ih - 8, 0, [[0, withAlpha('#ffffff', 0.12)], [1, withAlpha('#ffffff', 0.03)]]);
+            cv.fillRect(b.x, y + 4, 6, ih - 8, t.sel);
+        } else if (on) {
             cv.card(b.x + 8, y + 8, b.w - 24, ih - 16, 16, [[0, withAlpha('#ffffff', 0.16)], [1, withAlpha('#ffffff', 0.04)]]);
             cv.roundRect(b.x + 8, y + ih * 0.22, 6, ih * 0.56, 3, t.text);
         }
@@ -184,7 +207,7 @@ function sideNav(cv, t, b, o) {
         cv.text(String(it.label), b.x + b.w / 2, iy + is + ls * 1.47, ls, c, { align: 'center' });
         if (it.badge && String(it.badge) !== '0') {
             const bx = b.x + b.w / 2 + is * 0.97, by = iy + 6;
-            cv.circle(bx, by, 30, t.bg); cv.circle(bx, by, 26, BLUE);
+            cv.circle(bx, by, 30, t.bg); cv.circle(bx, by, 26, W.id7(t) ? t.sel : BLUE);
             cv.text(String(it.badge), bx, by + 12, 32, '#ffffff', { align: 'center', font: 'bold' });
         }
     });
@@ -200,12 +223,31 @@ function vbutton(cv, t, b, o) {
         vicon(cv, o.vicon, b.x + (b.w - g) / 2, b.y + (b.h - g) / 2, g, off ? t.dim : c);
         return;
     }
+    if (W.id7(t)) return vbutton7(cv, t, b, o, c, s, is, off);
     if (o.style === 'primary') cv.card(b.x, b.y, b.w, b.h, r, off ? [[0, '#2a3341'], [1, '#232a35']] : [[0, c], [1, withAlpha(c, 0.78)]]);
     else cv.strokeRoundRect(b.x, b.y, b.w, b.h, r, 3, off ? t.panelEdge : o.style === 'outline' ? withAlpha(t.text, 0.6) : withAlpha(c, 0.6));
     const fg = off ? t.dim : o.style === 'primary' ? '#ffffff' : o.style === 'outline' ? t.text : c;
     const hasIcon = !!o.vicon, tw = cv.textWidth(String(o.text || ''), s, { font: 'bold' }) + (hasIcon ? is + 18 : 0), x1 = b.x + (b.w - tw) / 2;
     if (hasIcon) vicon(cv, o.vicon, x1, b.y + (b.h - is) / 2, is, fg);
     cv.text(String(o.text || ''), x1 + (hasIcon ? is + 18 : 0), b.y + b.h / 2 + s * 0.36, s, fg, { font: 'bold' });
+}
+
+/* A button in the iDrive 7 look (the kit's bottom bar): square and dark, label in capitals; primary on a glow of
+ * its colour with a bar of it along the bottom. */
+function vbutton7(cv, t, b, o, c, s, is, off) {
+    const primary = o.style === 'primary' && !off;
+    cv.card(b.x, b.y, b.w, b.h, 2, primary ? [[0, mix(t.panelTop, c, 0.18)], [1, mix(t.panelBottom, c, 0.42)]] : [[0, t.panelTop], [1, t.panelBottom]]);
+    if (primary) cv.fillRect(b.x, b.y + b.h - 5, b.w, 5, c);
+    else cv.strokeRoundRect(b.x, b.y, b.w, b.h, 2, 1.5, t.panelEdge);
+    const fg = off ? t.dim : primary ? '#ffffff' : o.style === 'tinted' ? c : t.text;
+    const label = String(o.text || '').toUpperCase(), hasIcon = !!o.vicon, room = b.w - 32;
+    // a label too wide for the button: less letter spacing, then a smaller size
+    let sp = Math.round(s * 0.12), w = () => cv.textWidth(label, s, { font: 'bold', spacing: sp }) + (hasIcon ? is + 18 : 0);
+    if (w() > room) sp = Math.round(s * 0.04);
+    while (w() > room && s > 14) s -= 1;
+    const x1 = b.x + (b.w - w()) / 2;
+    if (hasIcon) vicon(cv, o.vicon, x1, b.y + (b.h - is) / 2, is, fg);
+    W.caps(cv, label, x1 + (hasIcon ? is + 18 : 0), b.y + b.h / 2 + s * 0.36, s, fg, { font: 'bold', spacing: sp });
 }
 
 // ---- on-screen keyboard (URLs and tokens) --------------------------------------------------------------------
@@ -242,7 +284,8 @@ function keyboard(cv, t, b, o) {
 function sheet(cv, t, b, o) {
     const a = o.area || { x: 0, y: 0, w: 2880, h: 960 };
     cv.fillRect(a.x, a.y, a.w, a.h, withAlpha('#000000', o.dim == null ? 0.55 : o.dim));
-    cv.card(b.x, b.y, b.w, b.h, o.radius == null ? 32 : o.radius, [[0, '#1e2632'], [1, '#121820']]);
+    if (W.id7(t)) W.panel7(cv, t, b.x, b.y, b.w, b.h, true);
+    else cv.card(b.x, b.y, b.w, b.h, o.radius == null ? 32 : o.radius, [[0, '#1e2632'], [1, '#121820']]);
 }
 
 const DRAW = { appIcon: appIconEl, chips, appGrid, appList, sideNav, vbutton, keyboard, sheet };

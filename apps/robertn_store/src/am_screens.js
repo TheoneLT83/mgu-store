@@ -763,6 +763,21 @@ module.exports = {
      }
     },
     {
+     "name": "look",
+     "rtype": "gpu",
+     "gpu": "tabs",
+     "x": 2080,
+     "y": 140,
+     "w": 760,
+     "h": 92,
+     "opts": {
+      "items": "iDrive 7,iDrive 8",
+      "sel": 0,
+      "style": "joined",
+      "size": 34
+     }
+    },
+    {
      "name": "reposLabel",
      "rtype": "gpu",
      "gpu": "text",

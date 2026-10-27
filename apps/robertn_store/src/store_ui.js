@@ -234,6 +234,7 @@ function settingsView(m) {
     const renderers = st && st.allProviders && Array.isArray(st.allProviders.renderer) ? st.allProviders.renderer : [];
     return {
         note: { text: m.note || '' },
+        look: { sel: LOOKS.indexOf(lookOf(m)), acts: LOOKS.map((l) => ({ do: 'look', look: l })) },
         repos: srcs ? { items: srcs.map(sourceRow), empty: 'None' } : { items: [], empty: '' },
         addRepo: srcs ? button('Add source', { do: 'add-source' }, { vicon: 'plus', style: 'tinted', color: BLUE }) : hidden,
         access: { items: access },
@@ -452,6 +453,16 @@ function internetView(m) {
     };
 }
 
+/* The Store's looks (Settings): iDrive 7, the idrive7-apps kit's screens,
+ * and iDrive 8, App Manager 2's. Without a choice: the head unit's own. */
+const LOOKS = ['id7', 'id8'];
+function lookOf(m) {
+    if (LOOKS.indexOf(m.look) >= 0) {
+        return m.look;
+    }
+    return m.st && m.st.unit && m.st.unit.hmi === 'ID8' ? 'id8' : 'id7';
+}
+
 /* The screen and its values for the page on top. */
 function view(m) {
     const page = m.stack[m.stack.length - 1] || { name: 'main' };
@@ -477,7 +488,7 @@ function view(m) {
     if (values.back === undefined) {
         values.back = { act: { do: 'back' } };
     }
-    return { screen, values };
+    return { screen, values, look: lookOf(m) };
 }
 
 /* The picture files a view shows (components[].icon). */

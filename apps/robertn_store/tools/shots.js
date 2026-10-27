@@ -23,6 +23,8 @@ const kit = require(path.join(HERE, 'src', 'kit_record.js'));
 const { frame, placement } = require(path.join(HERE, 'src', 'store_frame.js'));
 const fixture = require('./fixture.js');
 const { crc32 } = require(path.join(HERE, 'src', 'qr.js'));
+const pngLib = require(path.join(HERE, 'src', 'kit_png.js'));
+const { picture, setPicture } = require(path.join(HERE, 'src', 'am_widgets.js'));
 
 const UNITS = [{ name: 'id7', w: 1796, h: 632 }, { name: 'id8', w: 2880, h: 764 }];
 
@@ -49,7 +51,18 @@ function png(w, h, rgba) {
         chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
 }
 
+/* The package pictures a screen shows (components[].icon files), loaded as the Store does (store_drawn.js). */
+function pictures(m, p) {
+    frame(m, { textScale: p.scale, focus: m.focus, scroll: {}, layout: p.layout }).icons.forEach((f) => {
+        if (!picture(`key:${f}`) && fs.existsSync(f)) {
+            const img = pngLib.fit(pngLib.decode(fs.readFileSync(f)), 256);
+            setPicture(f, kit.makeImage(img.w, img.h, img.data));
+        }
+    });
+}
+
 function session(file, unit, m) {
+    pictures(m, placement(unit.w, unit.h));
     return new Promise((resolve) => {
         const gpu = new RenderClient('robertn_store', { warn() {}, info() {} }, { file, kit, mode: 'embed' });
         gpu.on('ready', () => {

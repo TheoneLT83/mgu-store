@@ -49,7 +49,7 @@ function atlasId(f, family) {
     if (id === undefined) {
         // stable across runs and apps (the daemon shares atlases by id): family + size
         id = 0;
-        const k = family + '@' + f.size;
+        const k = (f.face ? f.face + ':' : '') + family + '@' + f.size;
         for (let i = 0; i < k.length; i++) id = (Math.imul(id, 31) + k.charCodeAt(i)) >>> 0;
         id = (id | 1) >>> 0;
         atlasIds.set(f, id); atlasList.push({ id, f });

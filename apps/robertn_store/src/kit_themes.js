@@ -41,6 +41,18 @@ const THEMES = {
         glow: '#ff9d0050', stripes: ['#ff9d00'], oil: '#ff9d00', bar: '#ff9d00', sel: '#ff9d00', marker: '#ffe2b0', ramp: ['#8a4b00', '#ff9d00', '#ffd27a'],
         hotRamp: ['#8a4b00', '#ff9d00', '#ff9d00', '#ff6a1f', '#ff3b1f'],
     },
+    // the Store's iDrive 7 look: the idrive7-apps kit's screens (M Tricolour on black, square panels with
+    // the M stripe, red selection); the widgets draw their iDrive 7 variants for style 'id7'
+    idrive7: {
+        name: 'iDrive 7',
+        style: 'id7',
+        bg: '#000000', panelTop: '#1b1d22', panelBottom: '#0e0f12', panelEdge: '#2c2f36',
+        tab: '#e6e6e6', track: '#1b1d22', tick: '#4c5666', text: '#ffffff', dim: '#9aa0aa',
+        accent: '#ef2b2d', accent2: '#81c4ff', ok: '#f4f7fb', warn: '#ffb020', crit: '#ef2b2d', cold: '#7fd1ff',
+        glow: '#ffffff40', stripes: ['#81c4ff', '#16588e', '#e7222e'], oil: '#ef2b2d', ramp: ['#7d8694', '#c9d0da', '#ffffff'],
+        bar: '#a8101c', hang: '#ef2b2d', sel: '#ef2b2d', selText: '#ffffff', marker: '#ef2b2d',
+        hotRamp: ['#1f5fd0', '#3d9bff', '#3d9bff', '#c04cdc', '#ef2b2d'],
+    },
 };
 
 function theme(id) { return THEMES[id] || THEMES.m_tricolour; }

@@ -6,6 +6,12 @@ The Store lists only what is for this head unit: an app or tool for the
 other iDrive only no longer shows on the Store, Apps, Tools and USB lists,
 unless it is installed, so it can still be removed.
 
+Two looks, picked in Settings: iDrive 7, the look of the idrive7-apps
+(square panels with the M stripe, red selection, capitals, the Ubuntu
+font), and iDrive 8, the App Manager's; without a pick, the head unit's
+own. The app icons the sources name are shown; screenshots (tools/shots.js)
+show them too.
+
 ## 0.9.1
 
 On iDrive 8 the Store has its tile and opens, drawn by the renderer; touch,
