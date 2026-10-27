@@ -1,11 +1,13 @@
 # Publishes new versions of the Store's apps and tools to this repository's
 # GitHub Releases, with the catalog.json the car's updater reads
-# (release/README.md). Push a v* tag, or run it by hand with the component
-# ids to publish (empty: every component).
+# (release/README.md). Runs on every push to main (a component whose version
+# is already published is left as it is), on a v* tag, or by hand with the
+# component ids to publish (empty: every component).
 name: Release
 
 on:
   push:
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
     inputs:
