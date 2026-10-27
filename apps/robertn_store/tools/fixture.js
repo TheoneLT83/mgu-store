@@ -103,7 +103,10 @@ function screens() {
         ['pick-private', { tab: 'settings', stack: main.concat([{ name: 'pick' }]), pick: { repo: 'someone/private-apps',
             probe: { status: 'auth-needed' } } }],
         ['pick-offline', { tab: 'settings', stack: main.concat([{ name: 'pick' }]), pick: { repo: 'someone/apps', probe: { status: 'offline' } } }],
-        ['offline', { tab: 'store', stack: main, connected: false, st: null, secret: false }]
+        ['offline', { tab: 'store', stack: main, connected: false, st: null, secret: false }],
+        ['internet', { tab: 'settings', stack: main.concat([{ name: 'internet' }]) }],
+        ['internet-offline', { tab: 'settings', stack: main.concat([{ name: 'internet' }]) }, { online: false }],
+        ['store-no-internet', { tab: 'store', stack: main }, { online: false, busy: null }]
     ];
 }
 

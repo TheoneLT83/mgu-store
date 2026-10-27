@@ -156,7 +156,8 @@ function storeView(m) {
     return {
         title: { text: 'Store' },
         subtitle: busyRow ? { text: `${busy.phase === 'download' ? `Downloading ${percent(busy)} %` : PHASE[busy.phase] || 'Installing'} · ${busyRow.title}`, color: BLUE }
-            : { text: m.connected ? statusLine(m.st, true) : statusLine(null, false, m.secret), color: DIM },
+            : m.connected && !checking && !online ? { text: 'No internet: Settings › Internet shows how to connect the car', color: AMBER }
+                : { text: m.connected ? statusLine(m.st, true) : statusLine(null, false, m.secret), color: DIM },
         filter: { sel: Math.max(0, FILTERS.indexOf(m.filter)), acts: FILTERS.map((f) => ({ do: 'filter', filter: f })) },
         online: { items: !m.connected ? [] : checking ? [{ text: 'Checking', color: BLUE, dot: true }]
             : online ? [{ text: 'Online', color: GREEN, dot: true }] : [{ text: 'Offline', color: AMBER, dot: true }] },
@@ -217,6 +218,10 @@ function settingsView(m) {
     const toks = tokens(m);
     const web = m.connected && st && st.web && typeof st.web === 'object' ? st.web : null;
     const access = [];
+    if (m.connected && st) {
+        access.push({ id: 'internet', title: 'Internet', sub: st.online ? 'Online' : 'Offline', subColor: st.online ? GREEN : AMBER,
+            plain: true, vicon: 'tether', iconColor: 'text', right: 'chevron', act: { do: 'open', page: { name: 'internet' } } });
+    }
     if (toks) {
         access.push({ id: 'accounts', title: 'Accounts', sub: accountsState(toks), plain: true, vicon: 'lock', iconColor: 'text',
             right: 'chevron', act: { do: 'open', page: { name: 'accounts' } } });
@@ -426,6 +431,27 @@ function phoneView(m) {
     };
 }
 
+/* How the car gets internet: the head unit has none of its own; the uplink
+ * gives it through a USB device. */
+const INTERNET_STEPS = [
+    'The head unit has no internet of its own. Plug one of these into a USB port in the car:',
+    '•  a USB LTE stick with a SIM card that has mobile data (e.g. Huawei E3372h)',
+    '•  a USB network adapter, cabled to a mobile router',
+    '•  an Android phone: Settings › Network › Hotspot & tethering › USB tethering on',
+    '•  an iPhone: Personal Hotspot on, phone unlocked, tap Trust when it asks',
+    'Within a minute this page says Connected and the Store finds new apps and updates.',
+    'No internet at all? Apps on a USB stick show under USB.'
+].join('\n');
+
+function internetView(m) {
+    const online = !!(m.connected && m.st && m.st.online);
+    return {
+        title: { text: 'Internet' },
+        status: { text: !m.connected ? '' : online ? 'Connected' : 'Not connected', color: online ? GREEN : AMBER },
+        steps: { text: INTERNET_STEPS }
+    };
+}
+
 /* The screen and its values for the page on top. */
 function view(m) {
     const page = m.stack[m.stack.length - 1] || { name: 'main' };
@@ -444,6 +470,7 @@ function view(m) {
     case 'pick': values = pickView(m); break;
     case 'login': values = loginView(m); break;
     case 'phone': values = phoneView(m); break;
+    case 'internet': values = internetView(m); break;
     default: screen = 'store'; values = storeView(m);
     }
     values.nav = nav(m, tabSel);

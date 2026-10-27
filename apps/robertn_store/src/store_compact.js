@@ -193,7 +193,13 @@ function compact(W, H) {
         text('error', X, HEAD + 264, phoneW, 130, '', 26, 'label', AMBER, { wrap: true }),
         el('qr', 'qr', R - PQR, M, PQR, PQR, { text: '' })
     ]);
-    return { design: { w: W, h: H }, screens: [store, app, confirm, installed, usb, settings, source, accounts, pick, login, phone] };
+    const internet = screen('internet', 3, [
+        back(),
+        title('Internet', titleX),
+        text('status', X, HEAD + 14, CW, 44, '', 32, 'bold'),
+        text('steps', X, HEAD + 72, CW, B - HEAD - 72, '', 25, 'label', undefined, { wrap: true })
+    ]);
+    return { design: { w: W, h: H }, screens: [store, app, confirm, installed, usb, settings, source, accounts, pick, login, phone, internet] };
 }
 
 module.exports = { compact };

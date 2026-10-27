@@ -1596,6 +1596,24 @@ module.exports = {
      }
     }
    ]
+  },
+  {
+   "kind": "gpu",
+   "name": "internet",
+   "theme": "m_tricolour",
+   "bg": "theme",
+   "components": [
+    { "name": "nav", "rtype": "gpu", "gpu": "sideNav", "x": 126, "y": 114, "w": 300, "h": 726,
+      "opts": { "items": "Store, grid\nInstalled, check\nUSB, usb\nSettings, gear", "sel": 3 } },
+    { "name": "back", "rtype": "gpu", "gpu": "vbutton", "x": 480, "y": 138, "w": 96, "h": 96,
+      "opts": { "text": "", "vicon": "back", "style": "round", "color": "#f4f7fb" }, "onTap": "event:back" },
+    { "name": "title", "rtype": "gpu", "gpu": "text", "x": 610, "y": 138, "w": 1200, "h": 90,
+      "opts": { "text": "Internet", "size": 72, "font": "bold", "align": "left", "color": "text" } },
+    { "name": "status", "rtype": "gpu", "gpu": "text", "x": 610, "y": 260, "w": 2100, "h": 60,
+      "opts": { "text": "", "size": 44, "font": "bold", "align": "left", "color": "text" } },
+    { "name": "steps", "rtype": "gpu", "gpu": "text", "x": 610, "y": 340, "w": 2140, "h": 500,
+      "opts": { "text": "", "size": 34, "font": "label", "align": "left", "color": "text", "wrap": true } }
+   ]
   }
  ]
 };
