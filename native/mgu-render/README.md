@@ -211,7 +211,7 @@ The unit-specific ones:
 |---|---|---|
 | screen, app area | read from Winston's output: 1920×720, area 108,82,1790,638 | 2880×960, area 0,76,2880,764 |
 | `touch_iface`, `touch_saddr` | `vlan73`, `160.48.199.115` (`auto`: `lo` when there is no vlan73, as in the emulator) | same |
-| `touch_area` | 84,76,1836,644 (`auto` by screen size) | 0,76,2880,764 |
+| `touch_area` | 84,0,1836,720 (`auto` by screen size) | 0,76,2880,764 |
 | `embed`, `embed_area` | 1, 104,88,1796,632 | never offered: no HmiMain3D, so no template is loaded |
 | `foreground_gate`, `hmi_process` | node + `foreground_gate.js`, `HmiMain3D` | the gate reads `RemoteHmiApplication2` from `oap-mainapp21` |
 
@@ -277,7 +277,7 @@ the car can show:
 - [ ] Embed: DOOM-style pixmap frames inside the page: presented rate (`fps` in `test/pixel_client.js`), and the readback cost at 1796×632 (STATS avg µs) on the HD 505.
 - [ ] display-bridge's apps: after the update and a head-unit restart, display-bridge's units inactive (condition), DOOM, draw_gallery and display_bridge_demo drawn in their pages, DOOM's presented rate (`doom fps` in `/tmp/doom.log`) and touch on display_bridge_demo.
 - [ ] Embed: whether HmiMain3D's compositor offers `wl_drm`/`zwp_linux_dmabuf_v1` (`verbose = 1` logs its globals): an EGL surface there would skip the readback.
-- [ ] Touch: finger PDUs on UDP 30567 from 160.48.199.115 on vlan73, finger PDUs told by their finger count (payload byte 37) whatever their word type; the claim area 84,76,1836,644.
+- [ ] Touch: finger PDUs on UDP 30567 from 160.48.199.115 on vlan73, finger PDUs told by their finger count (payload byte 37) whatever their word type; the claim area 84,0,1836,720.
 - [ ] Touch in embed mode: a claimed area inside the page reaches the app and the HMI's hidden components under it do not react.
 - [ ] The foreground gate as root:root (gid 0) under the unit's SOME/IP credentials.
 - [ ] GRAB with upstream's `mgu-inputgate.so` loaded (installed separately).

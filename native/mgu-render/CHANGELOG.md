@@ -1,5 +1,9 @@
 # mgu-render changelog
 
+## 0.3.2
+
+- iDrive 7: apps may claim touch in the title strip too (`touch_area` 84,0,1836,720), where the idrive7-apps kit draws its page tabs.
+
 ## 0.3.1
 
 - iDrive 8: an app's screens drawn by the renderer show there (the renderer finds which app is in front on its HMI).
