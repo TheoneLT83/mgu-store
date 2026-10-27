@@ -608,7 +608,7 @@ const REPLACED = { [APP_MANAGER]: 'Replaced by Store', 'ipheth-tether': 'Replace
 // the origin of an app the App Manager installed from no source the updater reads
 const IMPORTED = 'imported';
 // the repository whose own installer (deploy/mgu-app-install.sh) the deploy tool recognises
-const IDRIVE7_REPO = 'cauliflowermossgrape/idrive7-apps';
+const IDRIVE7_REPO = 'theonelt83/idrive7-apps';
 
 /* entry as it installs under id, its own id as listedId (Updater.place). */
 function under(entry, id) {
@@ -746,7 +746,7 @@ class Updater {
     }
 
     builtin() {
-        return { id: SELF_SOURCE_ID, type: 'github', repo: this.conf.builtin_repo || 'robertnisipeanu/mgu-store', builtin: true };
+        return { id: SELF_SOURCE_ID, type: 'github', repo: this.conf.builtin_repo || 'TheoneLT83/mgu-store', builtin: true };
     }
 
     /* sources.json (seeded by the installers, then written by the updater);

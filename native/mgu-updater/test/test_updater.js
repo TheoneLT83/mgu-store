@@ -2869,8 +2869,8 @@ function testIdrive7(certs) {
     const iconReads = (from) => seen.slice(from).filter((x) => /\/contents\/[^?]*(icon\.png|application\.json)/.test(x.url)).map((x) => x.url.split('?')[0]);
     let mark = seen.length;
     fs.writeFileSync(`${deployLog}.idrive7`, JSON.stringify([{ id: 'car_vitals', version: '2.13.0' }, { id: 'my_kitapp', version: '0.1.0' }]));
-    ghRepo('cauliflowermossgrape/idrive7-apps');
-    gh.repos['cauliflowermossgrape/idrive7-apps'].branches.main = ghCommit('cauliflowermossgrape/idrive7-apps', {
+    ghRepo('TheoneLT83/idrive7-apps');
+    gh.repos['TheoneLT83/idrive7-apps'].branches.main = ghCommit('TheoneLT83/idrive7-apps', {
         'mgu-repo.json': JSON.stringify({ schema: 1, components: [{ id: 'car_vitals', kind: 'app', path: 'apps/car_vitals', mguHmi: ['ID7'],
             uninstallable: true, build: { node: 'tools/build.js', args: ['car_vitals'] } },
         { id: 'gforce', kind: 'app', path: 'more/gforce', build: { node: 'tools/build.js', args: ['gforce'] } },
@@ -2898,7 +2898,7 @@ function testIdrive7(certs) {
         build_timeout_s: '3', build_max_bytes: String(8 << 20), repo_max_bytes: String(8 << 20),
         mounts: path.join(M, 'mounts'), usb_roots: path.join(M, 'media'), web_secret: path.join(M, 'web-secret'), web_uid: '12996', web_gid: '12202',
         socket: path.join(M, 'shm', 'updater.sock'), socket_group: 'staff', deploy_tool: 'mgu-deploy', uplink_tool: 'mgu-uplink',
-        bootstrap_check_s: '6', privacy_tool: '', reboot: '', default_sources: 'cauliflowermossgrape/idrive7-apps:branch'
+        bootstrap_check_s: '6', privacy_tool: '', reboot: '', default_sources: 'TheoneLT83/idrive7-apps:branch'
     };
     fs.writeFileSync(conf.mounts, 'proc /proc proc rw 0 0\n');
     let u = new Updater(conf);
@@ -3828,7 +3828,7 @@ function testFirstStart() {
     ok('queue: a removal of an id with an install queued is refused, not dropped', /an install is queued/.test(u.enqueue({ op: 'uninstall', id: 'foo' }) || '') &&
         u.enqueue({ op: 'install', id: 'foo' }) === null && u.queue.length === 1);
     // a sources.json that cannot be read gets no default source
-    u = new Updater(Object.assign(conf(), { default_sources: 'cauliflowermossgrape/idrive7-apps:branch' }));
+    u = new Updater(Object.assign(conf(), { default_sources: 'TheoneLT83/idrive7-apps:branch' }));
     ok('default sources: none added while sources.json cannot be read', u.stored.length === 1 &&
         fs.readFileSync(path.join(D, 'sources.json'), 'utf8') === newer && !fs.existsSync(path.join(D, 'state', 'default-sources.json')));
     testDefaultSources();
@@ -3844,7 +3844,7 @@ function testDefaultSources() {
     mkdirp(D);
     const file = path.join(D, 'sources.json');
     const conf = () => ({ state_dir: path.join(D, 'state'), sources: file, credentials_dir: path.join(D, 'cred'),
-        default_sources: 'cauliflowermossgrape/idrive7-apps:branch' });
+        default_sources: 'TheoneLT83/idrive7-apps:branch' });
     const stored = () => JSON.parse(fs.readFileSync(file, 'utf8')).sources;
     // a unit with the Store's source and one of the owner's, whose id is the repo's name
     fs.writeFileSync(file, JSON.stringify({ schema: 1, sources: [
@@ -3853,7 +3853,7 @@ function testDefaultSources() {
     let u = new Updater(conf());
     const added = stored()[2] || {};
     ok('default sources: added at the next start, after the sources there, under a free id', stored().length === 3 &&
-        added.repo === 'cauliflowermossgrape/idrive7-apps' && added.channel === 'branch' && /^s-[0-9a-f]{4}$/.test(added.id) &&
+        added.repo === 'TheoneLT83/idrive7-apps' && added.channel === 'branch' && /^s-[0-9a-f]{4}$/.test(added.id) &&
         u.src.has(added.id) && u.stored.length === 3, JSON.stringify(stored()));
     u = new Updater(conf());
     ok('default sources: added once', stored().length === 3 && u.stored.length === 3);
@@ -3861,12 +3861,12 @@ function testDefaultSources() {
         stored().length === 2, JSON.stringify(stored()));
     u = new Updater(conf());
     ok('default sources: one the owner removed is not added again', stored().length === 2 && u.stored.length === 2 &&
-        JSON.parse(fs.readFileSync(path.join(D, 'state', 'default-sources.json'), 'utf8')).added.join() === 'cauliflowermossgrape/idrive7-apps');
+        JSON.parse(fs.readFileSync(path.join(D, 'state', 'default-sources.json'), 'utf8')).added.join() === 'TheoneLT83/idrive7-apps');
     // a unit the installers seeded with it (as deploy/sources.json): recorded, not doubled
     fs.unlinkSync(path.join(D, 'state', 'default-sources.json'));
     fs.writeFileSync(file, JSON.stringify({ schema: 1, sources: [
         { id: 'mgu-store', type: 'github', repo: 'robertnisipeanu/mgu-store', builtin: true },
-        { id: 'idrive7-apps', type: 'github', repo: 'cauliflowermossgrape/idrive7-apps', channel: 'branch' }] }));
+        { id: 'idrive7-apps', type: 'github', repo: 'TheoneLT83/idrive7-apps', channel: 'branch' }] }));
     u = new Updater(conf());
     ok('default sources: one the installers seeded is kept as it is and recorded', stored().map((s) => s.id).join() === 'mgu-store,idrive7-apps' &&
         fs.existsSync(path.join(D, 'state', 'default-sources.json')), JSON.stringify(stored()));
@@ -3875,7 +3875,7 @@ function testDefaultSources() {
     fs.unlinkSync(path.join(D, 'state', 'default-sources.json'));
     u = new Updater(conf());
     ok('default sources: without sources.json, written with the built-in source first', stored().map((s) => `${s.id}:${s.repo}`).join() ===
-        'mgu-store:robertnisipeanu/mgu-store,idrive7-apps:cauliflowermossgrape/idrive7-apps', JSON.stringify(stored()));
+        'mgu-store:robertnisipeanu/mgu-store,idrive7-apps:TheoneLT83/idrive7-apps', JSON.stringify(stored()));
 }
 
 /* A unit whose sources each had a token file of their own (mgu-updater 0.2):
