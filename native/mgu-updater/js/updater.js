@@ -851,7 +851,8 @@ class Updater {
             try {
                 const c = readJson(this.cacheFile(def.id));
                 Object.assign(rt, { mode: c.mode, channel: c.channel || rt.channel, commit: c.commit, components: c.components, checkedAt: c.checkedAt,
-                    tokenId: c.token || null, public: c.public === true });
+                    tokenId: c.token || null, public: c.public === true,
+                    changes: c.changes && c.changesFor === c.commit ? c.changes : {} });
                 if (c.memo && typeof c.memo.key === 'string' && c.memo.version === this.version) {
                     rt.memo = { key: c.memo.key, cat: { mode: c.mode, commit: c.commit, components: c.components, skipped: c.memo.skipped || [], memoKey: c.memo.key } };
                 }
@@ -1309,18 +1310,41 @@ class Updater {
         want.forEach((base) => {
             rt.changes[base] = undefined;
             rt.reader.changedFiles(base, rt.commit).then((files) => {
+                if (files === undefined) {
+                    delete rt.changes[base];         // GitHub not reached: asked again at the next check
+                    return;
+                }
                 rt.changes[base] = files;
+                this.saveChanges(rt);
                 console.log(`source ${rt.def.id}: ${base.slice(0, 7)}...${rt.commit.slice(0, 7)}: ${files ? `${files.length} file(s) changed` : 'changes not known'}`);
                 this.changed();
             });
         });
     }
 
+    /* The files changed since each commit, kept in the source's cache (for its
+     * current commit), so a start without internet still knows them. */
+    saveChanges(rt) {
+        try {
+            const file = this.cacheFile(rt.def.id), c = readJson(file);
+            if (c.commit !== rt.commit) {
+                return;
+            }
+            const known = {};
+            Object.keys(rt.changes || {}).forEach((k) => { if (rt.changes[k] !== undefined) known[k] = rt.changes[k]; });
+            writeAtomic(file, JSON.stringify(Object.assign(c, { changes: known, changesFor: rt.commit })));
+        } catch (e) { /* kept in memory only */ }
+    }
+
     /* Whether a same-version component changed between its commit and the
      * source's: its own folder, or the build script's folder (the shared code it
-     * is built with) outside the other components' folders. Not known: true. */
+     * is built with) outside the other components' folders. Not asked yet (no
+     * internet): false, it is shown once GitHub says; GitHub couldn't tell: true. */
     touched(entry, source, commit) {
-        const rt = this.src.get(source), files = rt && rt.changes && rt.changes[commit];
+        const rt = this.src.get(source), files = rt && rt.changes ? rt.changes[commit] : undefined;
+        if (files === undefined) {
+            return false;
+        }
         if (!Array.isArray(files)) {
             return true;
         }

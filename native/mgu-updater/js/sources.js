@@ -1348,12 +1348,13 @@ function githubReader(s, ctx) {
 
     return {
         network: true,
-        /* The files changed between two commits ([path]), or null when GitHub
-         * can't tell (too many, too big, unknown commit). */
+        /* The files changed between two commits ([path]); null when GitHub
+         * can't tell (too many, too big, unknown commit); undefined when it
+         * wasn't reached (no internet: asked again at the next check). */
         changedFiles: (base, head) => json(`${repoUrl}/compare/${base}...${head}`, 'compare.json').then((c) => {
             const files = c && Array.isArray(c.files) ? c.files.map((f) => f && f.filename).filter((f) => typeof f === 'string') : null;
             return files && files.length < 300 ? files : null;
-        }, () => null),
+        }, (err) => (err && (err.status === 404 || err.status === 422) ? null : undefined)),
         /* What the repo can be added on: its name as GitHub spells it,
          * whether it has a release and an x.y.z tag, its default branch and
          * its branches (orderBranches). */

@@ -1,5 +1,9 @@
 # Updater changelog
 
+## 0.7.9
+
+- Without internet a branch source's apps of the same version aren't shown as updates: which files changed since their commit isn't known then (it is asked again once GitHub answers). What GitHub said is kept with the source's cache, so a start without internet still knows it. Before, every app of the source showed as an update while offline.
+
 ## 0.7.8
 
 - `deploy_timeout_s` is 5400 (90 min): longer than the deploy tool's 60-minute wait for another run's lock plus its longest run, so a queued run is never stopped mid-change.
