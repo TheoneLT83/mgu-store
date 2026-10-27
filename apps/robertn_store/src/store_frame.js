@@ -13,10 +13,13 @@
  *
  * layout: placement()'s; the iDrive 8 design when null.
  *
- * items: { x, y, w, h, r, label, act, reveal? }; an item scrolled out of view
- * carries reveal { key, top }: the scroll that shows it. regions: the
- * scrolling grids and lists, { key, x, y, w, h, step, max }. scroll ({ key:
- * first row }) is kept by the caller and follows the focus.
+ * items: { x, y, w, h, r, label, act, reveal?, box? }; an item of a grid or
+ * list carries box: its grid's or list's box, which bounds where it takes a
+ * touch, and while not wholly in view reveal { key, top }: the scroll that
+ * shows it.
+ * regions: the scrolling grids and lists, { key, x, y, w, h, step, max }.
+ * scroll ({ key: rows scrolled, fractional }) is kept by the caller and
+ * follows the focus.
  */
 const SCREENS = require('./am_screens.js');
 const { record } = require('./am_gpu.js');
@@ -33,6 +36,7 @@ const fonts = require('./kit_fonts.js');
 const VIEWPORT = { x: 106, y: 100, w: 2754, h: 756 };
 const COMPACT_H = 700;                    // a box lower than this gets src/store_compact.js's layout
 const FOCUS = '#ffffff';
+const EPS = 1e-6;                         // rows: a scrolled row this close to the edge counts as shown
 const SIZES = ['rowH', 'tileH', 'size'];  // a layout's own sizes: kept over the values' (made for the design)
 const measure = new Recorder(1, 1);       // text widths, as drawn
 
@@ -95,13 +99,13 @@ function itemsOf(st, page) {
         } else if (c.gpu === 'appGrid') {
             const g = gridView(b, o);
             const key = `${st.name}.${c.name}`;
-            regions.push({ key, x: b.x, y: b.y, w: b.w, h: b.h, step: g.th, max: Math.max(0, g.rows - g.shown) });
+            regions.push({ key, x: b.x, y: b.y, w: b.w, h: b.h, step: g.th, max: g.max });
             g.all.forEach((it, k) => {
                 const row = Math.floor(k / g.cols);
                 const item = { x: b.x + (k % g.cols) * g.tw + 8, y: b.y + (row - g.top) * g.th, w: g.tw - 16, h: g.th - 8, r: 24,
-                    label: it.title, act: it.act };
-                if (row < g.top || row >= g.top + g.shown) {
-                    item.reveal = { key, top: row < g.top ? row : row - g.shown + 1 };
+                    label: it.title, act: it.act, box: b };
+                if (row < g.top || row + 1 > g.top + g.shown + EPS) {
+                    item.reveal = { key, top: row < g.top ? row : row + 1 - g.shown };
                 }
                 items.push(item);
             });
@@ -109,17 +113,17 @@ function itemsOf(st, page) {
             const v = listView(b, o);
             const key = `${st.name}.${c.name}`;
             const gap = Math.round(v.rh * 0.13);
-            regions.push({ key, x: b.x, y: b.y, w: b.w, h: b.h, step: v.rh, max: Math.max(0, v.all.length - v.n) });
+            regions.push({ key, x: b.x, y: b.y, w: b.w, h: b.h, step: v.rh, max: v.max });
             v.all.forEach((it, k) => {
                 const y = b.y + (k - v.top) * v.rh;
-                const out = k < v.top || k >= v.top + v.n;
-                const reveal = out ? { key, top: k < v.top ? k : k - v.n + 1 } : undefined;
-                items.push({ x: b.x, y, w: b.w, h: v.rh - gap, r: 22, label: it.title, act: it.act, reveal });
+                const out = k < v.top || k + 1 > v.top + v.n + EPS;
+                const reveal = out ? { key, top: k < v.top ? k : k + 1 - v.n } : undefined;
+                items.push({ x: b.x, y, w: b.w, h: v.rh - gap, r: 22, label: it.title, act: it.act, reveal, box: b });
                 if (it.chipAct) {
                     const chip = rightBoxes({ x: b.x, y, w: b.w, h: v.rh - gap }, it, measure, o.ctlK).find((rb) => rb.kind === 'chip');
                     if (chip) {
                         const ch = 72 * (o.ctlK || 1);
-                        items.push({ x: chip.x, y: y + (v.rh - gap - ch) / 2, w: chip.w - 12, h: ch, r: ch / 2, label: chip.arg, act: it.chipAct, reveal });
+                        items.push({ x: chip.x, y: y + (v.rh - gap - ch) / 2, w: chip.w - 12, h: ch, r: ch / 2, label: chip.arg, act: it.chipAct, reveal, box: b });
                     }
                 }
             });
@@ -171,11 +175,14 @@ function frame(m, opts) {
     return { screen: v.screen, rec, items: laid.items, regions: laid.regions, icons: icons(v), values: v.values };
 }
 
-/* The visible item under (x, y) (design px), or -1. */
+const inside = (r, x, y) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+
+/* The item under (x, y) (design px), or -1: a scrolled one where its grid or
+ * list shows it. */
 function hit(items, x, y) {
     for (let i = items.length - 1; i >= 0; i--) {
         const it = items[i];
-        if (!it.reveal && x >= it.x && x < it.x + it.w && y >= it.y && y < it.y + it.h) {
+        if ((!it.box || inside(it.box, x, y)) && inside(it, x, y)) {
             return i;
         }
     }

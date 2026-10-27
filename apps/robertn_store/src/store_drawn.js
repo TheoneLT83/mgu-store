@@ -352,7 +352,7 @@ class Drawn extends EventEmitter {
                 t.drag = true;
             }
             if (t.drag) {
-                this.scroll[t.region.key] = Math.max(0, Math.min(t.region.max, t.from + Math.round((t.y - y) / t.region.step)));
+                this.scroll[t.region.key] = Math.max(0, Math.min(t.region.max, t.from + (t.y - y) / t.region.step));
                 this.focus = -1;
                 this.render();
             }

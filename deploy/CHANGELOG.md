@@ -1,8 +1,14 @@
 # Deploy tool changelog
 
+## 0.5.9
+
+- Source packages (`mgu-app.json`) are built with the certification service in their SOME/IP manifest, so one whose manifest lacks it installs on iDrive 7 and iDrive 8.
+- iDrive 8 packages get the certification service in their SOME/IP manifest when they lack it, as on iDrive 7: MainApp-21 has cadaemon create the app's keychain as the app's uid in the same way.
+- What an interrupted app install left is removed only when this tool provably put it there: the newest snapshot holding the app is this tool's install of it, which found the app absent; the package on disk is the one that install placed, with the checksum recorded for it (`placed` in `state.json`) when there is one. Another installer's app of the same id, placed after our uninstall, stays. A registry entry that cannot be read counts as installed. The listing and the package are snapshotted (`cleanup`) before they are removed.
+
 ## 0.5.8
 
-- Apps whose SOME/IP manifest does not name the certification service (`de.bmw.infotainment.certification.Certification`), which includes every idrive7-apps app, install: the deploy tool adds that entry when it prepares the package. Without it, the car does not let the new app's uid reach the service that creates its keychain: MainApp's install waited for a keychain that never came and failed. The emulator does not check those permissions, which is why it never showed this.
+- Apps whose SOME/IP manifest does not name the certification service (`de.bmw.infotainment.certification.Certification`), which includes every idrive7-apps app, install: the deploy tool adds that entry when it prepares the package. Without it, the car does not let the new app's uid reach the service that creates its keychain: MainApp's install waited for a keychain that never came and failed. The emulator does not check those permissions.
 - What an interrupted app install left (the app listed for MainApp and its package in `preinstalled_apps`, which MainApp tries to install at every start) is removed before the next app install, when this tool put it there: its record of the install names a run that is gone, or its install snapshot shows the app was not listed and the package absent before. Anything else stays, said in the output.
 
 ## 0.5.7

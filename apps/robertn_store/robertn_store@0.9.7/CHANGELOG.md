@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.7
+
+From robertnisipeanu/mgu-store's 0.9.4: touch scrolling of the Store's grids and lists follows the finger and stops wherever it is let go, a row part way out of view included; a part-shown tile or row takes a tap on its shown part. The controller scrolls the focused item fully into view.
+
 ## 0.9.6
 
 Plain > instead of the arrow the iDrive 7 font lacks (it showed as a box): "No internet: Settings > Internet ...", the phone tethering steps, and the version change on Installed.

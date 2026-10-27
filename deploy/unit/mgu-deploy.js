@@ -44,7 +44,7 @@ var cp = require('child_process');
 
 /* deploy/component.json's version; bumped when a file under deploy/unit/
  * changes. */
-var VERSION = '0.5.8';
+var VERSION = '0.5.9';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -1237,7 +1237,8 @@ function prepareApp(a, stage) {
         if (a.prepare === 'build') {
             r = link.build(a.dir, out, { donors: unitDonors(), workDir: stage });
             say('built ' + a.id + ' ' + a.version + ' from its source package (' + r.moduleCount +
-                ' modules, oap-sdk from ' + r.donor + (r.entry ? ', main from ' + r.entry : '') + ')');
+                ' modules, oap-sdk from ' + r.donor + (r.entry ? ', main from ' + r.entry : '') +
+                (r.certification ? ', the certification service added to ' + r.certification : '') + ')');
         } else {
             r = link.preparePackage(a.pkgDir, out, { donors: unitDonors() });
             say('prepared ' + a.id + ' ' + a.version + ': marked local-only' +
@@ -1763,13 +1764,13 @@ function filesOwnedBy(uid) {
     return first || null;
 }
 /* <id>@<version>.tgz and <id>-<version>.tgz: every package of this app. */
+function isPackageOf(id, name) {
+    return name.indexOf(id) === 0 && /^[@-]\d+\.\d+\.\d+.*\.tgz$/.test(name.slice(id.length));
+}
 function preinstalledFor(id) {
     var d = preinstalledDir(), out = [];
     if (!fs.existsSync(d)) return out;
-    fs.readdirSync(d).forEach(function (n) {
-        var rest = n.slice(id.length);
-        if (n.indexOf(id) === 0 && /^[@-]\d+\.\d+\.\d+.*\.tgz$/.test(rest)) out.push(path.join(d, n));
-    });
+    fs.readdirSync(d).forEach(function (n) { if (isPackageOf(id, n)) out.push(path.join(d, n)); });
     return out;
 }
 function appTouched(a, existing) {
@@ -2235,49 +2236,85 @@ function unbindCertCopy() {
  * restarted, the run was stopped) leaves the app listed in custom_apps.json
  * with its package in preinstalled_apps, and the manager tries to install
  * it again at every start. Each app install is recorded in state.json
- * (inflight) until it finishes or is rolled back. Before the next install,
- * an app that is listed and has no registry entry is unlisted and its
- * package removed when this tool put both there: its inflight record names
- * a run that is gone, or else the newest install snapshot of that package
- * recorded the package absent and the app not listed before. Anything
- * else stays, said in the output. */
-function snapshotPlaced(id) {
+ * until it finishes or is rolled back: inflight names the app and the run,
+ * placed[<id>] the version and checksum of the package placed, kept while
+ * an interrupted install's leftover is listed. Before the next install, an
+ * app that is listed without a registry entry (one that cannot be read
+ * counts as there) is unlisted and its package removed only when this tool
+ * put both there: the newest snapshot holding the app's registry entry is
+ * this tool's install of it, which found the app unlisted, without a
+ * registry entry or package; the one package on disk is the one that
+ * install placed, with the recorded checksum when there is one; a run
+ * inflight names is gone. A snapshot of the listing and
+ * the packages is taken first. Anything else stays, said in the output. */
+/* The install snapshot that placed id's leftover, as { dir, names: the
+ * package names it placed }, or null. */
+function placedBy(id) {
     var dirs;
-    try { dirs = fs.readdirSync(BACKUPS_DIR).filter(function (n) { return /-install$/.test(n); }).sort().reverse(); } catch (e) { return null; }
-    var pre = path.join(preinstalledDir(), id + '@');
+    try { dirs = fs.readdirSync(BACKUPS_DIR).filter(function (n) { return n !== 'stock'; }).sort().reverse(); } catch (e) { return null; }
     for (var i = 0; i < dirs.length; i++) {
         var dir = path.join(BACKUPS_DIR, dirs[i]), man = readJsonOrNull(path.join(dir, 'manifest.json'));
-        if (!man || !Array.isArray(man.entries)) continue;
-        var pkg = man.entries.filter(function (e) { return e.path.indexOf(pre) === 0 && /\.tgz$/.test(e.path); })[0];
-        if (!pkg) continue;
-        var list = man.entries.filter(function (e) { return e.path === customAppsFile(); })[0], listed = false;
-        if (list && list.kind === 'file' && list.stored) {
-            var before = readJsonOrNull(path.join(dir, list.stored));
-            listed = !!(before && typeof before === 'object' && id in before);
+        if (!man || !Array.isArray(man.entries)) return null;
+        var own = man.entries.filter(function (e) { return e && e.path === appEntryFile(id); })[0];
+        if (!own) continue;
+        if (man.command !== 'install' || own.kind !== 'absent') return null;
+        var pkgs = man.entries.filter(function (e) {
+            return path.dirname(e.path) === preinstalledDir() && isPackageOf(id, path.basename(e.path));
+        });
+        if (!pkgs.length || pkgs.some(function (e) { return e.kind !== 'absent'; })) return null;
+        var list = man.entries.filter(function (e) { return e.path === customAppsFile(); })[0];
+        if (!list) return null;
+        if (list.kind !== 'absent') {
+            var before = list.kind === 'file' && list.stored ? readJsonOrNull(path.join(dir, list.stored)) : null;
+            if (!before || typeof before !== 'object' || id in before) return null;
         }
-        return pkg.kind === 'absent' && !listed ? { from: 'snapshot ' + dirs[i] } : null;
+        return { dir: dirs[i], names: pkgs.map(function (e) { return path.basename(e.path); }) };
     }
     return null;
 }
+function entryPresent(id) {
+    try { fs.lstatSync(appEntryFile(id)); return true; } catch (e) { return e.code !== 'ENOENT'; }
+}
+function endAppRecord(state, id) {
+    delete state.inflight;
+    if (state.placed) delete state.placed[id];
+    if (state.placed && !Object.keys(state.placed).length) delete state.placed;
+}
 function cleanInterrupted(state) {
-    var fl = state.inflight, listed = readCustomApps();
+    var fl = state.inflight, gone = !!fl && (fl.boot !== bootId() || !pidAlive(fl.pid)), clean = [];
+    var placed = state.placed || {}, listed = readCustomApps(), left = {};
     Object.keys(listed).forEach(function (id) {
-        if (readJsonOrNull(appEntryFile(id))) return;
-        var placed = null;
-        if (fl && fl.id === id && (fl.boot !== bootId() || !pidAlive(fl.pid))) placed = { from: 'its interrupted run' };
-        else if (!fl || fl.id !== id) placed = snapshotPlaced(id);
-        if (!placed) {
-            warn(id + ' is listed for the app manager without being installed, and this tool has no record of putting it there; left as it is');
+        if (entryPresent(id)) return;
+        left[id] = true;
+        if (fl && fl.id === id && !gone) {
+            warn(id + ' is being installed by a run of this tool that is still going; left as it is');
             return;
         }
-        var pkgs = preinstalledFor(id);
-        customAppsRemove(id);
-        if (pkgs.length) rootfsWindow(pkgs.map(function (p) { return { type: 'delete', path: p }; }));
-        say('removed what an interrupted install of ' + id + ' left (' + placed.from + '): its listing' +
-            (pkgs.length ? ' and ' + pkgs.map(function (p) { return path.basename(p); }).join(', ') : '') +
-            ', which the app manager tried to install at every start');
+        var rec = placed[id] || (fl && fl.id === id ? fl : null), by = placedBy(id), pkgs = preinstalledFor(id);
+        var name = pkgs.length === 1 ? path.basename(pkgs[0]) : null;
+        var ours = !!by && !!name && by.names.indexOf(name) >= 0 && (!rec ||
+            (name === id + '@' + rec.version + '.tgz' && (!rec.sha256 || sha256File(pkgs[0]) === rec.sha256)));
+        if (!ours) {
+            warn(id + ' is listed for the app manager without being installed, and this tool cannot show it put it there; left as it is');
+            return;
+        }
+        clean.push({ id: id, pkgs: pkgs, from: by.dir });
     });
-    if (fl && (fl.boot !== bootId() || !pidAlive(fl.pid))) delete state.inflight;
+    if (clean.length) {
+        takeSnapshot('cleanup', clean.reduce(function (all, c) {
+            return all.concat([appEntryFile(c.id)], c.pkgs);
+        }, [customAppsFile()]));
+    }
+    clean.forEach(function (c) {
+        customAppsRemove(c.id);
+        delete left[c.id];
+        rootfsWindow(c.pkgs.map(function (p) { return { type: 'delete', path: p }; }));
+        say('removed what an interrupted install of ' + c.id + ' left (snapshot ' + c.from + '): its listing and ' +
+            c.pkgs.map(function (p) { return path.basename(p); }).join(', ') + ', which the app manager tried to install at every start');
+    });
+    Object.keys(placed).forEach(function (id) { if (!left[id]) delete placed[id]; });
+    if (Object.keys(placed).length) state.placed = placed; else delete state.placed;
+    if (gone) delete state.inflight;
 }
 
 /* Privacy, the fallback, the package, the app listed by the fallback; then
@@ -2712,9 +2749,13 @@ function freeAppletId(id, declared) {
 }
 /* What MainApp-21 needs of a package and it may lack, added in pkgDir: the
  * ACL tables permissions.json lacks (aclManager.js fails the install
- * without either), empty, and an appletId. Returns what was added. */
+ * without either), empty, the certification service its SOME/IP manifest
+ * lacks (as on iDrive 7, its install has cadaemon create the keychain as
+ * the app's uid), and an appletId. Returns what was added. */
 function id8Complete(a) {
-    var added = linker().completePermissions(a.pkgDir).map(function (t) { return t + ' added to permissions.json'; });
+    var link = linker(), cert = link.completeCertification(a.pkgDir);
+    var added = link.completePermissions(a.pkgDir).map(function (t) { return t + ' added to permissions.json'; });
+    if (cert) added.push('the certification service added to ' + cert);
     var f = path.join(a.pkgDir, 'rhmiData', 'application.json'), j = null;
     try { j = parseJsonText(fs.readFileSync(f, 'utf8')); } catch (e) { /* no RHMI app, or none that parses */ }
     if (j && j.application && typeof j.application === 'object') {
@@ -4128,6 +4169,8 @@ function cmdInstall(args) {
             if (a.kind === 'app' && !id8) {
                 beginAppTx(tx);
                 state.inflight = { id: a.id, version: a.version, pid: process.pid, boot: bootId() };
+                state.placed = Object.assign({}, state.placed);
+                state.placed[a.id] = { version: a.version, sha256: sha256File(a.file) };
                 saveState(state);
             }
             try {
@@ -4135,7 +4178,7 @@ function cmdInstall(args) {
                 else if (id8) installAppId8(a, state, decisions[a.id]);
                 else installApp(a, state, decisions[a.id]);
                 syncDropIns();
-                delete state.inflight;
+                endAppRecord(state, a.id);
                 done.push(a.id + ' ' + a.version);
             } catch (e) {
                 process.stderr.write(a.id + ' ' + a.version + ' failed: ' + e.message + '\n');
@@ -4143,7 +4186,7 @@ function cmdInstall(args) {
                     if (a.kind === 'tool') rollbackTool(a, tx, backup, e, state);
                     else if (id8) { restoreSnapshot(backup); pruneCreatedDirs(state); }
                     else rollbackApp(a, tx, backup, state);
-                    delete state.inflight;
+                    endAppRecord(state, a.id);
                 } catch (e2) { process.stderr.write('rollback failed: ' + e2.message + '\n'); }
                 if (done.length) {
                     say('installed before this failure, and kept: ' + done.join(', '));

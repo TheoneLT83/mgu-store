@@ -442,8 +442,8 @@ whose das edits and removal steps it follows:
   excluded), any other one repacked with its files under `package/`), and
   reports the app `pending_reboot` with `installs at the next start`.
   The package gets what iDrive 8 needs to install it and show its tile,
-  when it lacks it: the permission tables MainApp-21 requires, and an
-  appletId. The appletId is chosen on the car at install time, from the
+  when it lacks it: the permission tables MainApp-21 requires, the
+  certification service in its SOME/IP manifest (below), and an appletId. The appletId is chosen on the car at install time, from the
   ids its apps and the HMI already use: an update keeps the one the app
   has, a package's own is kept when it is free, otherwise the tool picks a
   free one and says so. When the tool cannot read the ids in use, it
@@ -900,17 +900,25 @@ car's SOME/IP security lets that call through only when the app's
 permissions, which MainApp makes from the proxies of its SOME/IP manifest
 (`package.json` `oapAppSettings.someipManifest`, `manifest.json` by
 default), name `de.bmw.infotainment.certification.Certification`. A
-package whose manifest lacks it is prepared with it added (`"*"`); without
-it no answer comes and the install fails at the keychain. A package with no
-manifest is left as it is.
+package whose manifest lacks it is prepared with it added (`"*"`, as the
+stock apps name it), and a source package is built with it; without it no
+answer comes and the install fails at the keychain. iDrive 8's MainApp-21
+installs the same way, and its packages get the entry too. A package with
+no manifest is left as it is.
 
 **Interrupted installs.** Each app install is recorded in `state.json`
-(`inflight`) until it finishes or is rolled back. Before an app install,
-an app listed in `custom_apps.json` without a registry entry is unlisted
-and its `preinstalled_apps` package removed when this tool put them there:
-its record names a run that is gone (or another boot), or else the newest
-install snapshot of that package shows the package absent and the app not
-listed before. Otherwise it stays, and the output says so.
+until it finishes or is rolled back: `inflight` names the app and the run,
+`placed` the version and checksum of the package placed, kept while what
+an interrupted install left is listed. Before an app install, an app listed
+in `custom_apps.json` without a registry entry (one that cannot be read
+counts as there) is unlisted and its `preinstalled_apps` package removed
+only when this tool provably put them there: the newest snapshot holding
+the app's registry entry is this tool's install of it, which found the app
+not listed, not registered and without a package; the one package on disk
+is the one that install placed, with the recorded checksum when there is
+one; and a run `inflight` names is gone (or from another boot). A
+`cleanup` snapshot of the listing and the package is taken first.
+Anything else stays, and the output says so.
 
 `uninstall <id>` removes the app from `custom_apps.json` first, so the
 manager does not install it again meanwhile, then asks the running manager
@@ -981,6 +989,9 @@ An OAP package from another repository installs as it is published:
 - `permissions.json` gets the ACL tables it lacks of the two the manager's
   `aclManager.js` reads (`masterAccessTable`, `masterRegistrationTable`),
   empty: without either the manager fails the install;
+- its SOME/IP manifest gets `de.bmw.infotainment.certification.Certification`
+  (`"*"`) when it lacks it: without it the install fails at the app's
+  keychain (the certification service, above);
 - when its own javascript calls `require('oap-sdk')` (a browserify bundle
   resolves its requires itself) and it has no `node_modules/oap-sdk`, that
   module is generated from the first donor holding the oap-sdk core
@@ -997,7 +1008,9 @@ An OAP package from another repository installs as it is published:
   package ships stays as it is.
 
 The prepared package is checked again as an app, then installed. Our own
-flat, marked packages are installed byte for byte. A package that needs
+flat, marked packages are installed byte for byte when their SOME/IP
+manifest names the certification service or they have none; otherwise
+they are prepared with the entry added. A package that needs
 the oap-sdk on a unit with no donor is refused (exit 2, nothing changed).
 
 `sdk-donor [--json]` copies the bundle module mode takes the oap-sdk from to

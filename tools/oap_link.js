@@ -45,11 +45,14 @@
  * is a separate implementation.
  *
  *   const link = require('<repo>/tools/oap_link.js');
- *   link.build(srcDir, outFile, { donors: [path...], epoch })  -> { file, donor, moduleCount, bytes }
+ *   link.build(srcDir, outFile, { donors: [path...], epoch })  -> { file, donor, moduleCount, bytes, certification }
  *   link.packSource(appDir, outFile)                           -> the packed paths
- *   link.preparePackage(pkgDir, outFile, { donors })           -> { file, sdk: null | { donor, api } }
+ *   link.preparePackage(pkgDir, outFile, { donors })           -> { file, sdk: null | { donor, api }, shrinkwrap,
+ *                                                                 permissions, certification }
  *   link.needsSdk(pkgDir)                                      -> whether preparePackage generates oap-sdk
+ *   link.needsCertification(pkgDir)                            -> whether its SOME/IP manifest lacks the certification service
  *   link.completePermissions(pkgDir)                           -> the ACL tables added to permissions.json
+ *   link.completeCertification(pkgDir)                         -> the SOME/IP manifest the certification service was added to, or null
  *   link.sdkModule(donors)                                     -> module mode's donor and the oap-sdk module made from it
  *   link.unitDonors(mainappDir, oapDir, opts)                   -> the head unit's donors, in search order
  */
@@ -616,7 +619,9 @@ function nodeCheck(file) {
 /* Builds the source package in srcDir into the OAP tgz outFile, in a
  * scratch copy of its tree (opts.workDir, default the system's). opts.donors
  * lists donor files in search order; opts.epoch (seconds) is build.json's
- * buildTimestamp, the time of the build without it. */
+ * buildTimestamp, the time of the build without it. The certification
+ * proxy the tree's SOME/IP manifest lacks is added; `certification` names
+ * that manifest when the package carries it. */
 function build(srcDir, outFile, opts) {
     opts = opts || {};
     const m = readManifest(srcDir);
@@ -647,6 +652,7 @@ function build(srcDir, outFile, opts) {
             pkg.mguInternet = true;
             fs.writeFileSync(pkgFile, JSON.stringify(pkg, null, 2) + (/\n$/.test(raw) ? '\n' : ''));
         }
+        const completed = completeCertification(work);
         const moduleCount = donor.closure.length + modules.length;
         fs.writeFileSync(path.join(work, 'javascript', 'build.json'), JSON.stringify({
             name: m.id,
@@ -655,9 +661,10 @@ function build(srcDir, outFile, opts) {
             bundle: { entryModule: ENTRY_ID, moduleCount, appModules: modules.length, sdkModulesFrom: donor.label },
             main: entry ? { path: main, from: entry } : undefined
         }, null, 2) + '\n');
-        pack(work, outFile);
+        const packed = pack(work, outFile);
+        const certification = completed && packed.indexOf(completed.split(path.sep).join('/')) >= 0 ? completed : null;
         return { file: outFile, id: m.id, version: m.version, donor: donor.label, entry, moduleCount,
-            bytes: Buffer.byteLength(bundle) };
+            bytes: Buffer.byteLength(bundle), certification };
     } finally {
         rmrf(work);
     }
@@ -800,8 +807,9 @@ function completeCertification(pkgDir) {
  * generated when needsSdk(), an npm-shrinkwrap.json without dependencies
  * when needsShrinkwrap() (the package carries what it runs on; nothing is
  * fetched from npm), the ACL tables permissions.json lacks added empty, the
- * certification proxy its SOME/IP manifest lacks added, and every file packed (tools/oap_pack.js format). An oap-sdk the package
- * ships stays as it is. */
+ * certification proxy its SOME/IP manifest lacks added, and every file
+ * packed (tools/oap_pack.js format). An oap-sdk the package ships stays as
+ * it is. */
 function preparePackage(pkgDir, outFile, opts) {
     opts = opts || {};
     let sdk = null;

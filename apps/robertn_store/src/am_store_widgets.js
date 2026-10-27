@@ -104,18 +104,18 @@ function appIconEl(cv, t, b, o) {
     appIcon(cv, t, o, b.x + (b.w - s) / 2, b.y + (b.h - s) / 2, s);
 }
 
-// ---- app grid: tiles in rows, scrolled by whole rows ---------------------------------------------------------
+// ---- app grid: tiles in rows, scrolled by the pixel (o.top: rows scrolled, fractional) -------------------------
 const gridItems = (o) => (Array.isArray(o.items) ? o.items
     : lines(o.items).map((l, i) => ({ id: `item${i}`, title: l[0], sub: l[1] || '', vicon: l[2] || '', colors: l[3] ? `${l[3]},${l[4] || l[3]}` : '' })));
 function gridView(b, o) {
     const cols = Math.max(1, o.cols | 0 || 5), th = o.tileH || 274, all = gridItems(o), rows = Math.ceil(all.length / cols);
-    const shown = Math.max(1, Math.floor(b.h / th)), top = Math.max(0, Math.min(Math.max(0, rows - shown), o.top | 0));
-    return { cols, th, tw: b.w / cols, all, rows, shown, top };
+    const shown = b.h / th, max = Math.max(0, rows - shown), top = Math.max(0, Math.min(max, +o.top || 0));
+    return { cols, th, tw: b.w / cols, all, rows, shown, max, top, first: Math.floor(top), end: Math.min(rows, Math.ceil(top + shown)) };
 }
 /** The ids of the tiles on screen (the app decodes only their icons). */
 function visibleIds(b, o) {
     const g = gridView(b, o);
-    return g.all.slice(g.top * g.cols, (g.top + g.shown) * g.cols).map((a) => a.id);
+    return g.all.slice(g.first * g.cols, g.end * g.cols).map((a) => a.id);
 }
 // a source line too long for its tile keeps its repo name whole and shortens the owner
 function fitSource(cv, s, w, size) {
@@ -134,17 +134,19 @@ function appGrid(cv, t, b, o) {
     const gap = src ? [ts * 1.2, rs * 1.25, ss * 1.25] : [ts * 1.45, 0, ss * 1.4];
     const s = src ? Math.floor(Math.min(g.th * (o.iconK || 0.5), g.th - 8 - top - gap[0] - gap[1] - gap[2] - ss * 0.25))
         : Math.round(g.th * (o.iconK || 0.5));
-    g.all.slice(g.top * g.cols, (g.top + g.shown) * g.cols).forEach((a, i) => {
-        const x = b.x + (i % g.cols) * g.tw, y = b.y + Math.floor(i / g.cols) * g.th;
+    cv.clip(b.x, b.y, b.w, b.h);
+    g.all.slice(g.first * g.cols, g.end * g.cols).forEach((a, i) => {
+        const x = b.x + (i % g.cols) * g.tw, y = b.y + (g.first + Math.floor(i / g.cols) - g.top) * g.th;
         appIcon(cv, t, a, x + (g.tw - s) / 2, y + top, s);
         const ny = y + top + s + gap[0], sy = ny + gap[1];
         cv.text(W.fit(cv, String(a.title || ''), g.tw - 16, ts, 'bold'), x + g.tw / 2, ny, ts, t.text, { align: 'center', font: 'bold' });
         if (a.src) cv.text(fitSource(cv, String(a.src), g.tw - 16, rs), x + g.tw / 2, sy, rs, t.dim, { align: 'center' });
         if (a.sub) cv.text(W.fit(cv, String(a.sub), g.tw - 16, ss), x + g.tw / 2, sy + gap[2], ss, C(t, a.subColor, t.dim), { align: 'center' });
     });
+    cv.noclip();
     if (!g.all.length && o.empty) mid(cv, o.empty, b.x + b.w / 2, b.y + b.h / 2, 36, t.dim, { align: 'center' });
-    if (g.rows > g.shown) {             // scroll bar
-        const h = b.h * g.shown / g.rows, y = b.y + (b.h - h) * g.top / Math.max(1, g.rows - g.shown);
+    if (g.max > 0) {                    // scroll bar
+        const h = b.h * g.shown / g.rows, y = b.y + (b.h - h) * g.top / g.max;
         cv.roundRect(b.x + b.w - 6, y, 6, h, 3, withAlpha(t.text, 0.25));
     }
 }
@@ -153,8 +155,8 @@ function appGrid(cv, t, b, o) {
 const rowItems = (o) => (Array.isArray(o.items) ? o.items
     : lines(o.items).map((l, i) => ({ id: `row${i}`, title: l[0], sub: l[1] || '', right: l[2] || 'chevron', vicon: l[3] || '' })));
 function listView(b, o) {
-    const rh = o.rowH || 120, all = rowItems(o), n = Math.max(1, Math.floor(b.h / rh));
-    return { rh, all, n, top: Math.max(0, Math.min(Math.max(0, all.length - n), o.top | 0)) };
+    const rh = o.rowH || 120, all = rowItems(o), n = b.h / rh, max = Math.max(0, all.length - n), top = Math.max(0, Math.min(max, +o.top || 0));
+    return { rh, all, n, max, top, first: Math.floor(top), end: Math.min(all.length, Math.ceil(top + n)) };
 }
 // the right-hand controls of a row ("toggle:on+trash": laid out from the right) -> [{ kind, arg, x, w }]
 const RIGHT_W = { chevron: 60, trash: 80, toggle: 150 };
@@ -172,8 +174,9 @@ function rightBoxes(b, it, cv, c) {
 // (the Store: o.titleSize, o.subSize and o.ctlK size a smaller row's texts and controls; the defaults are the design's)
 function appList(cv, t, b, o) {
     const v = listView(b, o), gap = Math.round(v.rh * 0.13), q = o.ctlK || 1, ts = o.titleSize || 40, ss = o.subSize || 30;
-    v.all.slice(v.top, v.top + v.n).forEach((it, k) => {
-        const y = b.y + k * v.rh, h = v.rh - gap, s = Math.round(h * 0.73);
+    cv.clip(b.x, b.y, b.w, b.h);
+    v.all.slice(v.first, v.end).forEach((it, k) => {
+        const y = b.y + (v.first + k - v.top) * v.rh, h = v.rh - gap, s = Math.round(h * 0.73);
         if (W.id7(t)) W.panel7(cv, t, b.x, y, b.w, h, false);   // the kit's flat overlay
         else cv.card(b.x, y, b.w, h, 22 * q, [[0, t.panelTop], [1, t.panelBottom]]);
         let tx = b.x + 28 * q;
@@ -197,6 +200,7 @@ function appList(cv, t, b, o) {
             } else if (rb.kind === 'chip') (W.id7(t) ? chip7 : chip)(cv, rb.arg, re, cy - 30 * q, 60 * q, C(t, it.chipColor, BLUE), it.chipDot, true);
         }
     });
+    cv.noclip();
     if (!v.all.length && o.empty) mid(cv, o.empty, b.x + b.w / 2, b.y + b.h / 2, 36, t.dim, { align: 'center' });
 }
 
@@ -336,35 +340,35 @@ function sheet(cv, t, b, o) {
 const DRAW = { appIcon: appIconEl, chips, appGrid, appList, sideNav, vbutton, keyboard, sheet };
 
 // ---- touch (gpu.js touchElement: Try mode and the app) -------------------------------------------------------
-// a drag scrolls by whole rows / tiles; a release without a drag is a tap. ponytail: one gesture at a time.
+// a drag scrolls with the finger; a release without a drag is a tap. ponytail: one gesture at a time.
 let drag = null;
-function scroller(view, rowSize, count) {
+function scroller(view, rowSize) {
     return Object.assign((cv, b, o, p) => {
         const v = view(b, o);
         if (!p.move) { drag = { y0: p.y, top: v.top, moved: false }; return false; }
         const d = drag, dy = d ? p.y - d.y0 : 0, size = rowSize(v);
         if (!d || (!d.moved && Math.abs(dy) < size * 0.25)) return false;
         d.moved = true;
-        const nt = Math.max(0, Math.min(Math.max(0, count(v) - v.n0), d.top - Math.round(dy / size)));
+        const nt = Math.max(0, Math.min(v.max, d.top - dy / size));
         if (nt === v.top) return false;
         o.top = nt;
     }, { drag: true });
 }
-const gridTry = scroller((b, o) => Object.assign(gridView(b, o), { n0: gridView(b, o).shown }), (v) => v.th, (v) => v.rows);
+const gridTry = scroller(gridView, (v) => v.th);
 gridTry.up = (cv, b, o, p) => {
     const d = drag, g = gridView(b, o);
     drag = null;
     if (!d || d.moved) return false;
-    const col = Math.floor((p.x - b.x) / g.tw), row = Math.floor((p.y - b.y) / g.th), it = g.all[(g.top + row) * g.cols + col];
+    const col = Math.floor((p.x - b.x) / g.tw), row = Math.floor((p.y - b.y) / g.th + g.top), it = g.all[row * g.cols + col];
     if (!it || col < 0 || col >= g.cols) return false;
     tapped(o, it.id, 'tile');
 };
-const listTry = scroller((b, o) => Object.assign(listView(b, o), { n0: listView(b, o).n }), (v) => v.rh, (v) => v.all.length);
+const listTry = scroller(listView, (v) => v.rh);
 listTry.up = (cv, b, o, p) => {
     const d = drag, v = listView(b, o);
     drag = null;
     if (!d || d.moved) return false;
-    const it = v.all[v.top + Math.floor((p.y - b.y) / v.rh)];
+    const it = v.all[Math.floor((p.y - b.y) / v.rh + v.top)];
     if (!it) return false;
     const rb = rightBoxes(b, it, cv, o.ctlK).find((x) => p.x >= x.x && p.x < x.x + x.w && ['toggle', 'trash', 'chip'].indexOf(x.kind) >= 0);
     tapped(o, it.id, rb ? rb.kind : 'row');

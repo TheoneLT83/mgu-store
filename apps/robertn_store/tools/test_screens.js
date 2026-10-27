@@ -99,6 +99,17 @@ eq(hit(f.items, f.items[47].x + 5, f.items[47].y + 5), 47);
 ok(f.items[7].reveal, 'the first tiles out of view now');
 eq(hit(f.items, f.items[7].x + 5, f.items[7].y + 5), -1, 'and not hit');
 
+// a drag scrolls by the pixel: a grid stops part way through a row, both part-shown rows draw and take a tap
+const half = { 'store.grid': 0.5 };
+f = frame(fixture.model({}, many), { textScale: 1, focus: -1, scroll: half, layout: ID7.layout });
+const g = f.regions.find((r) => r.key === 'store.grid');
+eq(f.items[7].y, g.y - g.step / 2, 'the first row half scrolled out');
+eq(hit(f.items, f.items[7].x + 5, g.y + 5), 7, 'its shown half takes a tap');
+eq(hit(f.items, f.items[7].x + 5, f.items[7].y + 5), -1, 'its hidden half does not');
+const low = f.items.findIndex((it) => it.y < g.y + g.h && it.y + it.h > g.y + g.h);
+ok(low > 7 && f.items[low].reveal && hit(f.items, f.items[low].x + 5, g.y + g.h - 2) === low, 'the part-shown last row takes a tap');
+ok(g.max % 1 !== 0, 'the grid scrolls to its last row flush with the bottom');
+
 // a component's page: its install, update, or nothing; Remove
 f = screen('app-update');
 eq(own(f), ['Update to a1b2c3d', 'Remove', 'Back'], 'a page: its buttons, Back, the side menu');

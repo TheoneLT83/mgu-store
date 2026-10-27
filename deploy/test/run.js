@@ -1205,17 +1205,51 @@ function testCertificationProxy() {
     check('certification: a manifest that names it, and a package with no manifest, are not prepared for it',
         hr.status === 0 && !hr.out.includes('prepared has_app') && !hr.out.includes('certification service added') &&
         !root.run(['install', '--artifact', withManifest('plain_app', null), '--yes']).out.includes('prepared plain_app'), hr.out);
+    const lacking = JSON.stringify({ proxies: { 'de.bmw.infotainment.hmi.entrypoint.EntryPoint': '*' } });
+    const src7 = donorRoot();
+    const s7 = src7.run(['install', '--artifact', sourceArtifact('1.0.0', {}, { 'manifest.json': lacking }), '--yes']);
+    const s7m = s7.status === 0 ? JSON.parse(untarBuf(fs.readFileSync(src7.preinstalled('robertn_demo', '1.0.0')))['manifest.json']) : { proxies: {} };
+    check('certification: a source package whose manifest lacks it is built with it and installs (iDrive 7)', s7.status === 0 &&
+        s7.out.includes('the certification service added to manifest.json') &&
+        s7m.proxies['de.bmw.infotainment.certification.Certification'] === '*' &&
+        s7m.proxies['de.bmw.infotainment.hmi.entrypoint.EntryPoint'] === '*', s7.out);
+    const queued8 = (root, id, v) => untarBuf(fs.readFileSync(root.p(`var/opt/mgu-deploy/id8/queue/${id}@${v}.tgz`)));
+    const src8 = id8Root();
+    donor.tgz(src8.pre21('donor_app', '1.0.0'));
+    const s8 = src8.run(['install', '--artifact', sourceArtifact('1.0.0', {}, { 'manifest.json': lacking }), '--yes']);
+    const s8m = s8.status === 0 ? JSON.parse(queued8(src8, 'robertn_demo', '1.0.0')['package/manifest.json']) : { proxies: {} };
+    check('certification: a source package whose manifest lacks it is built with it and queued (iDrive 8)', s8.status === 0 &&
+        s8.out.includes('the certification service added to manifest.json') &&
+        s8m.proxies['de.bmw.infotainment.certification.Certification'] === '*', s8.out);
+    const flat8 = id8Root();
+    const f8 = flat8.run(['install', '--artifact', rhmiApp('flat8', '1.0.0', ['ID8'], { npm: true, acl: ACL, manifest: JSON.parse(lacking) }), '--yes']);
+    const f8m = f8.status === 0 ? JSON.parse(queued8(flat8, 'flat8', '1.0.0')['package/manifest.json']) : { proxies: {} };
+    check('certification: a published package whose manifest lacks it is queued with it (iDrive 8)', f8.status === 0 &&
+        f8.out.includes('the certification service added to manifest.json') &&
+        f8m.proxies['de.bmw.infotainment.certification.Certification'] === '*' &&
+        f8m.proxies['de.bmw.infotainment.hmi.entrypoint.EntryPoint'] === '*', f8.out);
+    const has8 = rhmiApp('has8', '1.0.0', ['ID8'], { npm: true, acl: ACL, appletId: 20097,
+        manifest: { proxies: { 'de.bmw.infotainment.certification.Certification': '*' } } });
+    const h8 = flat8.run(['install', '--artifact', has8, '--yes']);
+    check('certification: a published package whose manifest names it is queued as published (iDrive 8)', h8.status === 0 &&
+        fs.readFileSync(flat8.p('var/opt/mgu-deploy/id8/queue/has8@1.0.0.tgz')).equals(fs.readFileSync(has8)), h8.out);
 }
 
-/* What an interrupted install left: removed only when this tool put it there. */
+/* What an interrupted install left: removed only when this tool provably put it there. */
 function testInterrupted() {
-    const leftover = (root, id) => {
-        const list = root.p(`var/opt/public/oap/oap_${MGR}/data/custom_apps.json`);
-        const c = readJsonOrNull(list) || {};
+    const listFile = (root) => root.p(`var/opt/public/oap/oap_${MGR}/data/custom_apps.json`);
+    const pre = (root, id, v) => root.preinstalled(id, v || '1.0.0');
+    // listed with its package, as another installer leaves it
+    const leftover = (root, id, v) => {
+        const c = readJsonOrNull(listFile(root)) || {};
         c[id] = { '-enabled': 'true', '-allowed': 'true', '-appStartType': 'manually' };
-        fs.writeFileSync(list, JSON.stringify(c));
-        fs.copyFileSync(appArtifact(id, '1.0.0', true), root.p(`usr/lib/oap-mainapp/preinstalled_apps/${id}@1.0.0.tgz`));
-        return list;
+        fs.writeFileSync(listFile(root), JSON.stringify(c));
+        fs.copyFileSync(appArtifact(id, v || '1.0.0', true), pre(root, id, v));
+    };
+    // our install of id, its registry entry gone: what an interrupted install leaves
+    const interrupted = (root, id) => {
+        root.run(['install', '--artifact', appArtifact(id, '1.0.0', true), '--yes']);
+        fs.unlinkSync(root.entry(id));
     };
     const setState = (root, f) => {
         const file = root.p('var/opt/mgu-deploy/state.json');
@@ -1223,48 +1257,83 @@ function testInterrupted() {
         f(st);
         fs.writeFileSync(file, JSON.stringify(st));
     };
-    // its record names a run that is gone
+    const record = (root, id, extra) => setState(root, (st) => {
+        st.inflight = Object.assign({ id, version: '1.0.0', pid: 999999,
+            boot: fs.readFileSync(root.p('proc/boot_id'), 'utf8').trim() }, extra);
+        st.placed = { [id]: { version: '1.0.0', sha256: sha256(fs.readFileSync(pre(root, id))) } };
+    });
+    const next = (root) => root.run(['install', '--artifact', appArtifact('second_app', '1.0.0', true), '--yes']);
+    const kept = (root, id, r, v) => r.status === 0 && id in readJson(listFile(root)) && fs.existsSync(pre(root, id, v)) &&
+        r.out.includes(`${id} is listed for the app manager without being installed`) && !r.out.includes('removed what');
+
+    // its record names a run that is gone, its install snapshot shows it placed the package, the checksum matches
     const a = fakeRoot();
-    a.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
-    const list = leftover(a, 'ghost_app');
-    setState(a, (st) => { st.inflight = { id: 'ghost_app', version: '1.0.0', pid: 999999, boot: fs.readFileSync(a.p('proc/boot_id'), 'utf8').trim() }; });
-    const ar = a.run(['install', '--artifact', appArtifact('second_app', '1.0.0', true), '--yes']);
+    interrupted(a, 'ghost_app');
+    record(a, 'ghost_app');
+    const ar = next(a);
+    const cleanup = fs.readdirSync(a.p('var/opt/mgu-deploy/backups')).filter((n) => /-cleanup$/.test(n))[0];
+    const cman = cleanup ? readJson(a.p(`var/opt/mgu-deploy/backups/${cleanup}/manifest.json`)) : { entries: [] };
+    const cpkg = cman.entries.filter((e) => e.path === pre(a, 'ghost_app'))[0];
+    const clist = cman.entries.filter((e) => e.path === listFile(a))[0];
     check('interrupted: an install whose run is gone is unlisted and its package removed, before the next install',
-        ar.status === 0 && ar.out.includes('removed what an interrupted install of ghost_app left (its interrupted run)') &&
-        !('ghost_app' in readJson(list)) && !fs.existsSync(a.p('usr/lib/oap-mainapp/preinstalled_apps/ghost_app@1.0.0.tgz')) &&
-        'second_app' in readJson(list) && !('inflight' in a.state()), ar.out);
-    // a finished install leaves no record
+        ar.status === 0 && /removed what an interrupted install of ghost_app left \(snapshot \S+-install\)/.test(ar.out) &&
+        !('ghost_app' in readJson(listFile(a))) && !fs.existsSync(pre(a, 'ghost_app')) &&
+        'second_app' in readJson(listFile(a)) && !('inflight' in a.state()) && !('placed' in a.state()), ar.out);
+    check('interrupted: the listing and the package are snapshotted before they are removed', !!cleanup &&
+        cpkg && cpkg.kind === 'file' && clist && clist.kind === 'file' &&
+        'ghost_app' in readJson(a.p(`var/opt/mgu-deploy/backups/${cleanup}/${clist.stored}`)), JSON.stringify(cman));
     check('interrupted: a finished install leaves no inflight record', !('inflight' in a.state()), JSON.stringify(a.state()));
-    // no record: the snapshot of its install shows this tool put it there
+    // no record: the snapshot of its install shows this tool placed it
     const b = fakeRoot();
-    b.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
-    const snap = b.p('var/opt/mgu-deploy/backups/20260101T000000000Z-install');
-    fs.mkdirSync(path.join(snap, 'files'), { recursive: true });
-    fs.writeFileSync(path.join(snap, 'files/0'), JSON.stringify({ fixture_app: {} }));
-    fs.writeFileSync(path.join(snap, 'manifest.json'), JSON.stringify({ command: 'install', entries: [
-        { path: b.p('usr/lib/oap-mainapp/preinstalled_apps/ghost_app@1.0.0.tgz'), kind: 'absent' },
-        { path: b.p(`var/opt/public/oap/oap_${MGR}/data/custom_apps.json`), kind: 'file', stored: 'files/0' }] }));
-    const blist = leftover(b, 'ghost_app');
-    const br = b.run(['install', '--artifact', appArtifact('second_app', '1.0.0', true), '--yes']);
-    check('interrupted: without a record, the snapshot of its install shows this tool listed it: removed',
-        br.status === 0 && br.out.includes('removed what an interrupted install of ghost_app left (snapshot 20260101T000000000Z-install)') &&
-        !('ghost_app' in readJson(blist)), br.out);
-    // nothing says this tool put it there: left, said
+    interrupted(b, 'ghost_app');
+    const br = next(b);
+    check('interrupted: without a record, the snapshot of its install shows this tool placed it: removed',
+        br.status === 0 && br.out.includes('removed what an interrupted install of ghost_app left') &&
+        !('ghost_app' in readJson(listFile(b))) && !fs.existsSync(pre(b, 'ghost_app')), br.out);
+    // the recorded checksum does not match the package on disk
     const c = fakeRoot();
-    c.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
-    const clist = leftover(c, 'other_app');
-    const cr = c.run(['install', '--artifact', appArtifact('second_app', '1.0.0', true), '--yes']);
-    check('interrupted: a listing this tool has no record of is left, with a warning',
-        cr.status === 0 && cr.out.includes('other_app is listed for the app manager without being installed') &&
-        'other_app' in readJson(clist) && fs.existsSync(c.p('usr/lib/oap-mainapp/preinstalled_apps/other_app@1.0.0.tgz')), cr.out);
+    interrupted(c, 'ghost_app');
+    record(c, 'ghost_app');
+    fs.copyFileSync(appArtifact('ghost_app', '1.0.0', false), pre(c, 'ghost_app'));
+    const cr = next(c);
+    check('interrupted: a package that is not the one recorded is left, with a warning', kept(c, 'ghost_app', cr), cr.out);
+    // the manager has not installed it (its registry entry is not there) by the install after that
+    if (fs.existsSync(c.entry('ghost_app'))) fs.unlinkSync(c.entry('ghost_app'));
+    const cr2 = c.run(['install', '--artifact', appArtifact('third_app', '1.0.0', true), '--yes']);
+    check('interrupted: and it is still left at the install after that', kept(c, 'ghost_app', cr2), cr2.out);
+    // another version than the one our install placed
+    const v = fakeRoot();
+    interrupted(v, 'ghost_app');
+    fs.unlinkSync(pre(v, 'ghost_app'));
+    leftover(v, 'ghost_app', '1.1.0');
+    check('interrupted: a package of another version than the one placed is left', kept(v, 'ghost_app', next(v), '1.1.0'));
+    // our uninstall after our install: what another installer put there since stays
+    const u = fakeRoot();
+    u.run(['install', '--artifact', appArtifact('ghost_app', '1.0.0', true), '--yes']);
+    const ur = u.run(['uninstall', 'ghost_app', '--yes']);
+    leftover(u, 'ghost_app');
+    check('interrupted: the same id placed by another installer after our uninstall is left', ur.status === 0 && kept(u, 'ghost_app', next(u)), ur.out);
+    // nothing says this tool placed it
+    const n = fakeRoot();
+    n.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
+    leftover(n, 'other_app');
+    check('interrupted: a listing this tool has no snapshot of is left, with a warning', kept(n, 'other_app', next(n)));
     // a run still alive is not interrupted; an installed app is never touched
     const d = fakeRoot();
     d.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
-    const dlist = leftover(d, 'ghost_app');
-    setState(d, (st) => { st.inflight = { id: 'ghost_app', version: '1.0.0', pid: process.pid, boot: fs.readFileSync(d.p('proc/boot_id'), 'utf8').trim() }; });
-    const dr = d.run(['install', '--artifact', appArtifact('second_app', '1.0.0', true), '--yes']);
+    interrupted(d, 'ghost_app');
+    record(d, 'ghost_app', { pid: process.pid });
+    const dr = next(d);
     check('interrupted: a recorded run that is still alive is left alone; the installed app stays listed',
-        dr.status === 0 && 'ghost_app' in readJson(dlist) && 'fixture_app' in readJson(dlist) && !dr.out.includes('removed what'), dr.out);
+        dr.status === 0 && 'ghost_app' in readJson(listFile(d)) && 'fixture_app' in readJson(listFile(d)) && !dr.out.includes('removed what'), dr.out);
+    // a registry entry that cannot be read counts as installed
+    const e = fakeRoot();
+    interrupted(e, 'ghost_app');
+    fs.writeFileSync(e.entry('ghost_app'), '{ not json');
+    const er = next(e);
+    check('interrupted: an app whose registry entry cannot be read is installed, and left', er.status === 0 &&
+        'ghost_app' in readJson(listFile(e)) && fs.existsSync(pre(e, 'ghost_app')) && !er.out.includes('ghost_app is listed') &&
+        !er.out.includes('removed what'), er.out);
 }
 
 /* The manager a bounce respawned on the hook ($FAKE_MGR_HOOK), stopped. */
@@ -2650,14 +2719,16 @@ function donorRoot(opts) {
 }
 
 /* A source package (mgu-app.json) of robertn_demo, packed by oap_link.js. */
-function sourceArtifact(version, extra) {
+function sourceArtifact(version, extra, treeFiles) {
     const dir = fs.mkdtempSync(path.join(T, 'srcpkg-'));
     const m = Object.assign({ schema: 1, id: 'robertn_demo', version, tree: `robertn_demo@${version}`,
         modules: ['src/demo.js'], sdk: ['oap-sdk/src/core/OnlineApp.js'] }, extra);
     write(path.join(dir, 'mgu-app.json'), JSON.stringify(m));
     write(path.join(dir, 'src', 'demo.js'), "'use strict';\nconst { OnlineApp } = require('oap-sdk/src/core/OnlineApp.js');\nnew OnlineApp('demo');\n");
-    write(path.join(dir, m.tree, 'package.json'), JSON.stringify({ name: m.id, version, files: ['javascript', 'package.json'] }));
+    write(path.join(dir, m.tree, 'package.json'), JSON.stringify({ name: m.id, version,
+        files: ['javascript', 'package.json'].concat(Object.keys(treeFiles || {})) }));
     write(path.join(dir, m.tree, 'javascript', 'runner.js'), '// runner\n');
+    Object.keys(treeFiles || {}).forEach((n) => write(path.join(dir, m.tree, n), treeFiles[n]));
     const file = path.join(fs.mkdtempSync(path.join(T, 'srcart-')), `robertn_demo@${version}.tgz`);
     link.packSource(dir, file);
     return file;
@@ -3366,6 +3437,9 @@ function rhmiApp(name, version, hmis, opts) {
         { name: `${pre}javascript/app.js`, data: Buffer.from(`console.log(${JSON.stringify(name)});\n`), mode: 0o644 },
         { name: `${pre}package.json`, data: Buffer.from(JSON.stringify(pkg, null, 2) + '\n'), mode: 0o644 }
     ];
+    if (opts.manifest) {
+        entries.push({ name: `${pre}manifest.json`, data: Buffer.from(JSON.stringify(opts.manifest)), mode: 0o644 });
+    }
     if (opts.acl) {
         entries.push({ name: `${pre}permissions.json`, data: Buffer.from(JSON.stringify(opts.acl)), mode: 0o644 });
     }
