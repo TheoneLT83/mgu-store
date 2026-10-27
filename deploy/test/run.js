@@ -2636,7 +2636,7 @@ function testUpdaterStateRestore() {
 /* ---- mgu-install ------------------------------------------------------------------------------ */
 
 const MGU_INSTALL = path.join(DEPLOY, 'mgu-install.js');
-const STORE_REPO = 'robertnisipeanu/mgu-store';
+const STORE_REPO = 'TheoneLT83/mgu-store';
 
 function sleepSync(ms) {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -2741,6 +2741,37 @@ function mguInstall(args, opts) {
     r.out = `${r.stdout}${r.stderr}`;
     r.calls = fs.readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((a) => a[0] !== '-V');
     return r;
+}
+
+/* download, then first-install --from that folder with GitHub out of reach. */
+function testMguInstallFrom() {
+    const gh = fakeGithub({ files: [], repos: {} });
+    try {
+        const rel = fakeRelease(gh.api);
+        gh.set({ files: rel.files, repos: { [STORE_REPO]: { catalog: rel.catalogIndex } } });
+        const dir = fs.mkdtempSync(path.join(T, 'release-'));
+        const root = donorRoot();
+        const bin = installBin(root);
+        let r = mguInstall(['download', dir], { bin, api: gh.api });
+        const listed = r.status === 0 ? JSON.parse(fs.readFileSync(path.join(dir, 'release.json'), 'utf8')) : { components: [] };
+        check('mgu-install download: every component of the release and release.json with each one\'s size and sha256',
+            r.status === 0 && ['mgu-deploy', 'robertn_store'].every((id) => listed.components.some((c) => c.entry.id === id)) &&
+            listed.components.every((c) =>
+                fs.readFileSync(path.join(dir, c.entry.artifact.name)).length === c.size), r.out.slice(-2000));
+        const offline = { bin, api: 'http://127.0.0.1:9' };
+        r = mguInstall(['first-install', '--host', '10.0.0.9', '--no-uplink', '--no-renderer', '--from', dir], offline);
+        const st = r.status === 0 ? root.status() : { components: [] };
+        check('mgu-install first-install --from: installs from the folder without GitHub',
+            r.status === 0 && ['app-privacy', 'mgu-updater', 'mgu-deploy', 'robertn_store'].every((id) => st.components.some((x) => x.id === id)),
+            r.out.slice(-3000));
+        const store = listed.components.find((c) => c.entry.id === 'robertn_store');
+        fs.appendFileSync(path.join(dir, store.entry.artifact.name), 'x');
+        r = mguInstall(['first-install', '--host', '10.0.0.9', '--from', dir], offline);
+        check('mgu-install first-install --from: a file that no longer matches its size / sha256 stops it before the unit is touched',
+            r.status === 1 && /does not match|bytes, the source lists/.test(r.out) && !r.calls.length, r.out.slice(-1000));
+    } finally {
+        gh.stop();
+    }
 }
 
 /* first-install and token against a fake root, the release from the stand-in GitHub. */
@@ -3999,6 +4030,7 @@ const SUITES = [
     testInternet,
     testSourcesAndDonor,
     testMguInstall,
+    testMguInstallFrom,
     testMguInstallUsb,
     testConnect,
     testMguInstallPaths,

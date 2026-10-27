@@ -6,7 +6,8 @@
  * no dependencies: Node 18 or newer and the system's OpenSSH client, on
  * Windows, macOS or Linux (deploy/README.md, "mgu-install").
  *
- *   node mgu-install.js first-install [--no-renderer] [--no-uplink] [--token] [<ssh options>]
+ *   node mgu-install.js first-install [--no-renderer] [--no-uplink] [--token] [--from <folder>] [<ssh options>]
+ *   node mgu-install.js download <folder>
  *   node mgu-install.js token [--list [--json] | --remove <id>] [<ssh options>]
  *   node mgu-install.js usb-repo <stick folder> [<input>...]
  *
@@ -18,7 +19,11 @@
  * catalog's size and sha256, sends them to the unit and installs them with
  * the release's own deploy tool, which builds the Store on the unit. Newer
  * installed components are kept; running it again is safe. --token adds a
- * GitHub token for the updater afterwards.
+ * GitHub token for the updater afterwards. --from installs from a folder
+ * `download` wrote instead of from GitHub (no internet needed then).
+ * download writes the newest published release into a folder: every
+ * component's artifact and release.json (each one's catalog entry and the
+ * size and sha256 it had), which first-install --from checks again.
  *
  * token adds a GitHub token for the updater (no option), lists the tokens
  * (--list: id, label, account; --json as JSON) or removes one (--remove
@@ -775,11 +780,51 @@ function deployToolFiles(artifact) {
     }).concat([{ name: 'component.json', data: members.get('component.json').data, mode: 0o644 }]);
 }
 
+/* A release `download` wrote: { repo, components: [{ entry, size, sha256 }] }
+ * and the artifacts beside it, each read back and checked. */
+const RELEASE_FILE = 'release.json';
+function folderComponents(dir) {
+    let rel;
+    try {
+        rel = JSON.parse(fs.readFileSync(path.join(dir, RELEASE_FILE), 'utf8'));
+    } catch (e) {
+        throw new Error(`${dir}: no downloaded release (${RELEASE_FILE}: ${e.message})`);
+    }
+    if (!rel || !Array.isArray(rel.components) || !rel.components.length) {
+        throw new Error(`${dir}: ${RELEASE_FILE} lists no components`);
+    }
+    return { components: rel.components.map((c) => {
+        const name = c && c.entry && c.entry.artifact && c.entry.artifact.name;
+        if (!name || !ASSET.test(name) || !(c.size > 0) || !/^[0-9a-f]{64}$/.test(c.sha256 || '')) {
+            throw new Error(`${dir}: ${RELEASE_FILE} has a bad entry`);
+        }
+        return { entry: c.entry, fetch: async () => checked(name, fs.readFileSync(path.join(dir, name)), c.size, c.sha256) };
+    }) };
+}
+
+async function download(o) {
+    const dir = o.rest[0];
+    const gh = await githubRepo(STORE_REPO, null);
+    const { components } = await githubComponents(gh);
+    fs.mkdirSync(dir, { recursive: true });
+    const listed = [];
+    for (const c of components) {
+        const data = await c.fetch();
+        const name = c.entry.artifact.name;
+        fs.writeFileSync(path.join(dir, `${name}.part`), data);
+        fs.renameSync(path.join(dir, `${name}.part`), path.join(dir, name));
+        listed.push({ entry: c.entry, size: data.length, sha256: sha256(data) });
+        say(`  ${sha256(data)}  ${name}`);
+    }
+    fs.writeFileSync(path.join(dir, RELEASE_FILE), `${JSON.stringify({ repo: STORE_REPO, components: listed }, null, 1)}\n`);
+    say(`${STORE_REPO}: ${listed.length} components in ${dir}`);
+    return 0;
+}
+
 async function firstInstall(o) {
     const token = o.token ? await readToken('GitHub token for the updater (input hidden): ') : null;
     await reach(o);
-    const gh = await githubRepo(STORE_REPO, token);
-    const { components } = await githubComponents(gh);
+    const { components } = o.from ? folderComponents(o.from) : await githubComponents(await githubRepo(STORE_REPO, token));
     const wanted = WITH.filter((w) => !o[w.skip]);
     const chosen = components.filter((c) => !c.entry.optional || wanted.some((w) => w.id === c.entry.id));
     const withs = wanted.filter((w) => chosen.some((c) => c.entry.id === w.id));
@@ -1198,7 +1243,7 @@ const USAGE = FROM_STDIN ? 'usage: deploy/README.md, "mgu-install"' : fs.readFil
 
 function parse(argv) {
     const o = { command: argv[0], host: null, port: '22', bind: null, given: false, user: 'root', identity: null, sshOpts: [],
-        noRenderer: false, noUplink: false, token: false, list: false, json: false, remove: null, rest: [] };
+        noRenderer: false, noUplink: false, token: false, from: null, list: false, json: false, remove: null, rest: [] };
     const value = (i, flag) => {
         if (i >= argv.length) {
             throw new Usage(`${flag} needs a value`);
@@ -1215,6 +1260,7 @@ function parse(argv) {
         else if (a === '--no-renderer' && o.command === 'first-install') o.noRenderer = true;
         else if (a === '--no-uplink' && o.command === 'first-install') o.noUplink = true;
         else if (a === '--token' && o.command === 'first-install') o.token = true;
+        else if (a === '--from' && o.command === 'first-install') o.from = value(++i, a);
         else if (a === '--list' && o.command === 'token') o.list = true;
         else if (a === '--json' && o.command === 'token') o.json = true;
         else if (a === '--remove' && o.command === 'token') o.remove = value(++i, a);
@@ -1252,6 +1298,12 @@ async function main(argv) {
             throw new Usage(`${o.command} takes no ${o.rest[0]}`);
         }
         return o.command === 'first-install' ? firstInstall(o) : tokenCommand(o);
+    }
+    if (o.command === 'download') {
+        if (o.rest.length !== 1) {
+            throw new Usage('usage: node mgu-install.js download <folder>');
+        }
+        return download(o);
     }
     if (o.command === 'usb-repo') {
         if (!o.rest.length) {
