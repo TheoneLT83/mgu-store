@@ -2308,7 +2308,7 @@ class Updater {
      * SIGKILL 10 s later) and counts as failed. */
     deployTool(args) {
         this.deployError = null;
-        const limitS = Number(this.conf.deploy_timeout_s) || 3600;
+        const limitS = Number(this.conf.deploy_timeout_s) || 5400;
         const limit = limitS >= 120 ? `${Math.round(limitS / 60)} min` : `${limitS} s`;
         return new Promise((resolve) => {
             const child = cp.spawn(this.conf.deploy, args, { stdio: ['ignore', 'pipe', 'pipe'], detached: true });

@@ -858,8 +858,9 @@ the other apps and their tiles keep running; there is no bounce.
   the app manager is on it (15s): in the installer's queue since +0s; update other_app running for 15s; AppManagement child started +0s to +3s
   the app manager done after 21s: installing since +16s, ended +21s; update other_app ran until +16s; AppManagement child started +0s to +3s
   ```
-- When the manager ran the app's install or update in its installer and
-  it failed there, leaving the app as it was, the install fails at once
+- When the manager's own install or update rejected the app in its
+  installer (not its AppManagement child or channel failing), leaving the
+  app as it was, the install fails at once
   (exit 1, rolled back) with the manager's reason in one line, and no
   bounce: a restarted manager runs the same install, and the bounce stops
   every app.
@@ -883,14 +884,33 @@ the other apps and their tiles keep running; there is no bounce.
 uid: the head unit's certificate service creates it, the script gives up
 after 30 s with nothing on stderr, and the install fails. Each app install
 binds `/var/opt/mgu-deploy/CertificateManager.js` over it: the same script
-waiting 120 s, which, when it gives up or cannot write the keychain, says
+waiting 115 s, which, when it gives up or cannot write the keychain, says
 on stderr the states the service reported and when, the security folder's
 files before the request (`name:uid:size`) and its uid. The manager puts
 that in the install's error, and the installer's reason carries it. The
-manager stops the script after 35 s; app-privacy 1.5.0 gives our apps' 125
+manager stops the script after 35 s; app-privacy 1.5.0 gives our apps 125
 s. When the stock script is not the one these edits anchor on, it runs as
-it is (said in the output). The copy is bound until the next start of the
+it is (said in the output); so does any error putting the copy in place,
+which never fails the install. The copy is bound until the next start of the
 head unit, and again at the next app install; `fallback off` removes it.
+
+**The certification service.** MainApp's install has the certification
+service (cadaemon) create the app's keychain, called as the app's uid; the
+car's SOME/IP security lets that call through only when the app's
+permissions, which MainApp makes from the proxies of its SOME/IP manifest
+(`package.json` `oapAppSettings.someipManifest`, `manifest.json` by
+default), name `de.bmw.infotainment.certification.Certification`. A
+package whose manifest lacks it is prepared with it added (`"*"`); without
+it no answer comes and the install fails at the keychain. A package with no
+manifest is left as it is.
+
+**Interrupted installs.** Each app install is recorded in `state.json`
+(`inflight`) until it finishes or is rolled back. Before an app install,
+an app listed in `custom_apps.json` without a registry entry is unlisted
+and its `preinstalled_apps` package removed when this tool put them there:
+its record names a run that is gone (or another boot), or else the newest
+install snapshot of that package shows the package absent and the app not
+listed before. Otherwise it stays, and the output says so.
 
 `uninstall <id>` removes the app from `custom_apps.json` first, so the
 manager does not install it again meanwhile, then asks the running manager

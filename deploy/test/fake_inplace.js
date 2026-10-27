@@ -9,7 +9,8 @@
  * $FAKE_MGR_LOG. It runs until killed (a bounce kills it).
  *
  * $FAKE_INPLACE: "fail" rejects every install, update and uninstall (with
- * $FAKE_INPLACE_ERROR as the error's text when set), "hang"
+ * $FAKE_INPLACE_ERROR as the error's text when set, else a reason,
+ * $FAKE_INPLACE_REASON or FAKE_FAILURE), "hang"
  * never settles them, "refuse" has the registry name every app (an install is
  * refused), "self" starts installing an app custom_apps.json lists by
  * itself when the hook first looks it up, registered but without its
@@ -59,7 +60,7 @@ const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const settle = (fn) => {
     if (mode === 'fail') {
         return Promise.reject(env.FAKE_INPLACE_ERROR ? new Error(env.FAKE_INPLACE_ERROR) :
-            Object.assign(new Error('fake failure'), { reason: 'FAKE_FAILURE' }));
+            Object.assign(new Error('fake failure'), { reason: env.FAKE_INPLACE_REASON || 'FAKE_FAILURE' }));
     }
     if (mode === 'hang') return new Promise(() => {});
     if (mode === 'respawn') {

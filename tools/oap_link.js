@@ -746,12 +746,61 @@ function completePermissions(pkgDir) {
     return missing;
 }
 
+/* MainApp makes an app's SOME/IP permissions (someipInterfaces/acl.json)
+ * from the proxies its SOME/IP manifest names (package.json
+ * oapAppSettings.someipManifest, manifest.json by default). Its install has
+ * the certification service (cadaemon) create the app's keychain, called as
+ * the app's uid, which the car's SOME/IP security lets through only when the
+ * app's permissions name that service; without it no answer comes and the
+ * install fails. */
+const CERTIFICATION = 'de.bmw.infotainment.certification.Certification';
+function someipManifestFile(pkgDir) {
+    let pkg = null;
+    try {
+        pkg = JSON.parse(fs.readFileSync(path.join(pkgDir, 'package.json'), 'utf8'));
+    } catch (e) { /* the caller checks package.json */ }
+    const name = pkg && pkg.oapAppSettings && typeof pkg.oapAppSettings.someipManifest === 'string' ?
+        pkg.oapAppSettings.someipManifest : 'manifest.json';
+    const file = path.resolve(pkgDir, name);
+    return file.indexOf(path.resolve(pkgDir) + path.sep) === 0 ? file : null;
+}
+/* The manifest object when it lacks the certification proxy, else null (no
+ * manifest, one that does not parse, or one that names it). */
+function certificationMissing(pkgDir) {
+    const file = someipManifestFile(pkgDir);
+    let m;
+    try {
+        m = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch (e) {
+        return null;
+    }
+    if (!m || typeof m !== 'object' || Array.isArray(m) || (m.proxies !== undefined &&
+            (!m.proxies || typeof m.proxies !== 'object' || Array.isArray(m.proxies)))) {
+        return null;
+    }
+    return m.proxies && CERTIFICATION in m.proxies ? null : { file, manifest: m };
+}
+function needsCertification(pkgDir) {
+    return certificationMissing(pkgDir) !== null;
+}
+/* Adds the certification proxy ("*", as MainApp's own apps name it) to the
+ * manifest that lacks it; returns the manifest's name, or null. */
+function completeCertification(pkgDir) {
+    const miss = certificationMissing(pkgDir);
+    if (!miss) {
+        return null;
+    }
+    miss.manifest.proxies = Object.assign({}, miss.manifest.proxies, { [CERTIFICATION]: '*' });
+    fs.writeFileSync(miss.file, JSON.stringify(miss.manifest, null, 2) + '\n');
+    return path.relative(pkgDir, miss.file);
+}
+
 /* An OAP package folder (pkgDir is changed) as the flat tgz the head unit
  * installs: "mguLocalOnly": true in its package.json, node_modules/oap-sdk
  * generated when needsSdk(), an npm-shrinkwrap.json without dependencies
  * when needsShrinkwrap() (the package carries what it runs on; nothing is
- * fetched from npm), the ACL tables permissions.json lacks added empty, and
- * every file packed (tools/oap_pack.js format). An oap-sdk the package
+ * fetched from npm), the ACL tables permissions.json lacks added empty, the
+ * certification proxy its SOME/IP manifest lacks added, and every file packed (tools/oap_pack.js format). An oap-sdk the package
  * ships stays as it is. */
 function preparePackage(pkgDir, outFile, opts) {
     opts = opts || {};
@@ -776,10 +825,11 @@ function preparePackage(pkgDir, outFile, opts) {
             lockfileVersion: 1, requires: true, dependencies: {} }, null, 2) + '\n');
     }
     const permissions = completePermissions(pkgDir);
+    const certification = completeCertification(pkgDir);
     stampPackage(pkgDir);
     fs.writeFileSync(outFile, tgz(filesBelow(pkgDir).map((name) =>
         ({ name, data: fs.readFileSync(path.join(pkgDir, name)), mode: 0o644 })), MTIME));
-    return { file: outFile, sdk, shrinkwrap, permissions };
+    return { file: outFile, sdk, shrinkwrap, permissions, certification };
 }
 
 function rmrf(p) {
@@ -797,7 +847,8 @@ function rmrf(p) {
     }
 }
 
-module.exports = { build, packSource, readManifest, preparePackage, completePermissions, needsSdk, needsShrinkwrap, sdkModule, unitDonors, untar, SDK_API, ENTRY_ID,
+module.exports = { build, packSource, readManifest, preparePackage, completePermissions, completeCertification,
+    needsCertification, needsSdk, needsShrinkwrap, sdkModule, unitDonors, untar, SDK_API, ENTRY_ID,
     LOADER };
 
 /* Private worker protocol: no donor code runs here with root privileges. */

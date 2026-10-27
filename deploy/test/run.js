@@ -985,17 +985,23 @@ function testInplace() {
     check('in place: the respawned manager announced nothing: the next install bounces too', next.status === 0 &&
         root.kills().length === 3 && next.out.includes('has no in-place hook'), next.out);
 
-    // the manager's own install or update failed in its installer: the same install after a bounce fails too
-    [['an update', () => appArtifact('fixture_app', '1.1.0', true), 'could not update fixture_app 1.1.0: FAKE_FAILURE'],
-        ['a fresh install', () => appArtifact('second_app', '1.0.0', true), 'could not install second_app 1.0.0: FAKE_FAILURE']]
-        .forEach(([what, artifact, why]) => {
-            const c = inplaceRoot('fail', { minUp: 1 });
+    // MainApp's installer rejected it, its errors as the iD7 firmware gives them (AppManager.update's reason
+    // UPDATE_FAILED; an install's reason or code; else its message): the same install after a bounce fails too
+    [['an update (UPDATE_FAILED)', () => appArtifact('fixture_app', '1.1.0', true), { FAKE_INPLACE_REASON: 'UPDATE_FAILED' },
+        'could not update fixture_app 1.1.0: UPDATE_FAILED', true],
+    ['a fresh install with a reason code', () => appArtifact('second_app', '1.0.0', true), { FAKE_INPLACE_REASON: 'APP_INSTALLATION_FAILED' },
+        'could not install second_app 1.0.0: APP_INSTALLATION_FAILED', false],
+    ['a fresh install with AppManager\'s message', () => appArtifact('second_app', '1.0.0', true), { FAKE_INPLACE_ERROR:
+        'AppManagerStub::_callMethod appManager.install(second_app, ) failed due to Error: AppManager::install Failed due to validation failed' },
+        'could not install second_app 1.0.0: validation failed', false]]
+        .forEach(([what, artifact, env, why, update]) => {
+            const c = inplaceRoot('fail', { minUp: 1 }, env);
             const r = c.root.run(['install', '--artifact', artifact(), '--yes']);
             check(`in place: ${what} the manager failed in its installer fails with its reason, exit 1, no bounce, rolled back`,
                 r.status === 1 && r.out.includes(`mgu-deploy: the app manager ${why}`) && r.out.includes('rolling back') &&
                 !r.out.includes('through a bounce') && c.root.kills().length === 1 && c.root.managerPid() === c.mgr.pid &&
                 c.mgr.exitCode === null && readJson(c.root.entry('fixture_app')).userId === 13001 &&
-                !fs.existsSync(c.root.entry('second_app')), r.out);
+                (update || !fs.existsSync(c.root.entry('second_app'))), r.out);
         });
 
     // MainApp's own error, with its stack: the reason in one line
@@ -1018,6 +1024,10 @@ function testInplace() {
             'create the app\'s keychain (uidrun exited 1)') && !/\n\s+at ChildProcess/.test(cr.out), cr.out);
 
     const cases = [
+        ['an update whose channel to the AppManagement child failed', 'fail', () => appArtifact('fixture_app', '1.1.0', true),
+            { FAKE_INPLACE_ERROR: 'AppManagerStub::_callMethod appManager.update(fixture_app, PLATFORM) failed due to Error: channel closed.' },
+            'the app manager failed the in-place update (AppManagerStub::_callMethod appManager.update(fixture_app, PLATFORM) failed due to ' +
+            'Error: channel closed.)', 'update fixture_app 1.1.0 uid 13001'],
         ['a refused install', 'refuse', () => appArtifact('second_app', '1.0.0', true), {},
             'the app manager refused the in-place install (already registered)', 'install second_app 1.0.0 uid 13002'],
         ['a request not taken', 'deaf', () => appArtifact('second_app', '1.0.0', true), { MGU_DEPLOY_INPLACE_ACK_MS: '500' },
@@ -1026,7 +1036,7 @@ function testInplace() {
             'the app manager restarted during the in-place install', 'install second_app 1.0.0 uid 13002']
     ];
     cases.forEach(([what, mode, artifact, extra, why, done]) => {
-        const c = inplaceRoot(mode, { minUp: 1 });
+        const c = inplaceRoot(mode, { minUp: 1 }, extra);
         const r = c.root.run(['install', '--artifact', artifact(), '--yes'], extra);
         const k = c.root.kills();
         check(`in place: ${what} falls back to a bounce, which installs it`, r.status === 0 &&
@@ -1117,8 +1127,8 @@ function testCertCopy() {
     write(stock, stockCertManager(['PENDING', 'PENDING']));
     const r = root.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
     const text = fs.existsSync(copy) ? fs.readFileSync(copy, 'utf8') : '';
-    check('certificate wait: an app install builds the copy of CertificateManager.js, waiting 120 s',
-        r.status === 0 && r.out.includes('keychain wait of MainApp\'s installs: 120 s') && text.includes('TIMEOUT=120e3') &&
+    check('certificate wait: an app install builds the copy of CertificateManager.js, waiting 115 s',
+        r.status === 0 && r.out.includes('keychain wait of MainApp\'s installs: 115 s') && text.includes('TIMEOUT=115e3') &&
         (fs.statSync(copy).mode & 0o777) === 0o755 && fs.readFileSync(stock, 'utf8') === stockCertManager(['PENDING', 'PENDING']), r.out);
     // the copy run as MainApp runs it (its service's states swapped in), with a short wait
     const run = (states, timeout) => {
@@ -1126,7 +1136,7 @@ function testCertCopy() {
         fs.writeFileSync(path.join(dir, 'old.json'), 'abc');
         const script = path.join(dir, '..', path.basename(dir) + '.js');
         fs.writeFileSync(script, text.replace(JSON.stringify(['PENDING', 'PENDING']), JSON.stringify(states))
-            .replace('TIMEOUT=120e3', `TIMEOUT=${timeout}`));
+            .replace('TIMEOUT=115e3', `TIMEOUT=${timeout}`));
         const out = cp.spawnSync(process.execPath, [script, 'demo_app', dir], { encoding: 'utf8' });
         return { out, dir };
     };
@@ -1152,8 +1162,109 @@ function testCertCopy() {
     const br = bad.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
     check('certificate wait: a copy that does not parse is not used, with a warning, and the install goes on',
         br.status === 0 && br.out.includes('does not parse') && !fs.existsSync(bad.p('var/opt/mgu-deploy/CertificateManager.js')), br.out);
+    // the copy cannot be put in place: the install goes on with the stock script
+    const stuck = fakeRoot();
+    write(stuck.p('usr/lib/oap-mainapp/src/scripts/CertificateManager.js'), stockCertManager([]));
+    write(stuck.p('var/opt/mgu-deploy/CertificateManager.js/x'), 'a folder where the copy goes');
+    const sr = stuck.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
+    check('certificate wait: a copy that cannot be put in place never fails the install',
+        sr.status === 0 && sr.out.includes('is not in place (') && sr.out.includes('MainApp keeps its 30 s keychain wait') &&
+        readJson(stuck.entry('fixture_app')).userId > 0, sr.out);
     const off = root.run(['fallback', 'off', '--yes']);
     check('certificate wait: fallback off removes the copy', off.status === 0 && !fs.existsSync(copy), off.out);
+}
+
+/* The certification service in the app's SOME/IP manifest: MainApp's install gets its keychain through it. */
+function testCertificationProxy() {
+    const withManifest = (name, manifest, pkgExtra) => {
+        const pkg = Object.assign({ name, version: '1.0.0', description: 'deploy test app', mguLocalOnly: true }, pkgExtra);
+        const file = path.join(fs.mkdtempSync(path.join(T, 'app-')), `${name}@1.0.0.tgz`);
+        const files = [
+            { name: 'javascript/app.js', data: Buffer.from('console.log(1);\n'), mode: 0o644 },
+            { name: 'package.json', data: Buffer.from(JSON.stringify(pkg, null, 2) + '\n'), mode: 0o644 }];
+        if (manifest) files.push({ name: manifest.name, data: Buffer.from(JSON.stringify(manifest.data)), mode: 0o644 });
+        fs.writeFileSync(file, tgz(files, 1700000000));
+        return file;
+    };
+    const installed = (root, id, name) => readJson(path.join(root.home(readJson(root.entry(id)).userId), 'source', name || 'manifest.json'));
+    const root = fakeRoot();
+    const r = root.run(['install', '--artifact', withManifest('cert_app', { name: 'manifest.json',
+        data: { proxies: { 'de.bmw.infotainment.hmi.entrypoint.EntryPoint': '*' }, services: {} } }), '--yes']);
+    const m = r.status === 0 ? installed(root, 'cert_app') : {};
+    check('certification: a SOME/IP manifest without the certification service gets it, the rest kept',
+        r.status === 0 && r.out.includes('the certification service added to manifest.json') &&
+        m.proxies['de.bmw.infotainment.certification.Certification'] === '*' &&
+        m.proxies['de.bmw.infotainment.hmi.entrypoint.EntryPoint'] === '*' && JSON.stringify(m.services) === '{}', r.out);
+    const named = root.run(['install', '--artifact', withManifest('named_app', { name: 'someip.json', data: { proxies: {} } },
+        { oapAppSettings: { someipManifest: 'someip.json' } }), '--yes']);
+    check('certification: the manifest package.json names is the one completed', named.status === 0 &&
+        installed(root, 'named_app', 'someip.json').proxies['de.bmw.infotainment.certification.Certification'] === '*', named.out);
+    const has = withManifest('has_app', { name: 'manifest.json',
+        data: { proxies: { 'de.bmw.infotainment.certification.Certification': '*' } } });
+    const hr = root.run(['install', '--artifact', has, '--yes']);
+    check('certification: a manifest that names it, and a package with no manifest, are not prepared for it',
+        hr.status === 0 && !hr.out.includes('prepared has_app') && !hr.out.includes('certification service added') &&
+        !root.run(['install', '--artifact', withManifest('plain_app', null), '--yes']).out.includes('prepared plain_app'), hr.out);
+}
+
+/* What an interrupted install left: removed only when this tool put it there. */
+function testInterrupted() {
+    const leftover = (root, id) => {
+        const list = root.p(`var/opt/public/oap/oap_${MGR}/data/custom_apps.json`);
+        const c = readJsonOrNull(list) || {};
+        c[id] = { '-enabled': 'true', '-allowed': 'true', '-appStartType': 'manually' };
+        fs.writeFileSync(list, JSON.stringify(c));
+        fs.copyFileSync(appArtifact(id, '1.0.0', true), root.p(`usr/lib/oap-mainapp/preinstalled_apps/${id}@1.0.0.tgz`));
+        return list;
+    };
+    const setState = (root, f) => {
+        const file = root.p('var/opt/mgu-deploy/state.json');
+        const st = readJsonOrNull(file) || {};
+        f(st);
+        fs.writeFileSync(file, JSON.stringify(st));
+    };
+    // its record names a run that is gone
+    const a = fakeRoot();
+    a.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
+    const list = leftover(a, 'ghost_app');
+    setState(a, (st) => { st.inflight = { id: 'ghost_app', version: '1.0.0', pid: 999999, boot: fs.readFileSync(a.p('proc/boot_id'), 'utf8').trim() }; });
+    const ar = a.run(['install', '--artifact', appArtifact('second_app', '1.0.0', true), '--yes']);
+    check('interrupted: an install whose run is gone is unlisted and its package removed, before the next install',
+        ar.status === 0 && ar.out.includes('removed what an interrupted install of ghost_app left (its interrupted run)') &&
+        !('ghost_app' in readJson(list)) && !fs.existsSync(a.p('usr/lib/oap-mainapp/preinstalled_apps/ghost_app@1.0.0.tgz')) &&
+        'second_app' in readJson(list) && !('inflight' in a.state()), ar.out);
+    // a finished install leaves no record
+    check('interrupted: a finished install leaves no inflight record', !('inflight' in a.state()), JSON.stringify(a.state()));
+    // no record: the snapshot of its install shows this tool put it there
+    const b = fakeRoot();
+    b.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
+    const snap = b.p('var/opt/mgu-deploy/backups/20260101T000000000Z-install');
+    fs.mkdirSync(path.join(snap, 'files'), { recursive: true });
+    fs.writeFileSync(path.join(snap, 'files/0'), JSON.stringify({ fixture_app: {} }));
+    fs.writeFileSync(path.join(snap, 'manifest.json'), JSON.stringify({ command: 'install', entries: [
+        { path: b.p('usr/lib/oap-mainapp/preinstalled_apps/ghost_app@1.0.0.tgz'), kind: 'absent' },
+        { path: b.p(`var/opt/public/oap/oap_${MGR}/data/custom_apps.json`), kind: 'file', stored: 'files/0' }] }));
+    const blist = leftover(b, 'ghost_app');
+    const br = b.run(['install', '--artifact', appArtifact('second_app', '1.0.0', true), '--yes']);
+    check('interrupted: without a record, the snapshot of its install shows this tool listed it: removed',
+        br.status === 0 && br.out.includes('removed what an interrupted install of ghost_app left (snapshot 20260101T000000000Z-install)') &&
+        !('ghost_app' in readJson(blist)), br.out);
+    // nothing says this tool put it there: left, said
+    const c = fakeRoot();
+    c.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
+    const clist = leftover(c, 'other_app');
+    const cr = c.run(['install', '--artifact', appArtifact('second_app', '1.0.0', true), '--yes']);
+    check('interrupted: a listing this tool has no record of is left, with a warning',
+        cr.status === 0 && cr.out.includes('other_app is listed for the app manager without being installed') &&
+        'other_app' in readJson(clist) && fs.existsSync(c.p('usr/lib/oap-mainapp/preinstalled_apps/other_app@1.0.0.tgz')), cr.out);
+    // a run still alive is not interrupted; an installed app is never touched
+    const d = fakeRoot();
+    d.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
+    const dlist = leftover(d, 'ghost_app');
+    setState(d, (st) => { st.inflight = { id: 'ghost_app', version: '1.0.0', pid: process.pid, boot: fs.readFileSync(d.p('proc/boot_id'), 'utf8').trim() }; });
+    const dr = d.run(['install', '--artifact', appArtifact('second_app', '1.0.0', true), '--yes']);
+    check('interrupted: a recorded run that is still alive is left alone; the installed app stays listed',
+        dr.status === 0 && 'ghost_app' in readJson(dlist) && 'fixture_app' in readJson(dlist) && !dr.out.includes('removed what'), dr.out);
 }
 
 /* The manager a bounce respawned on the hook ($FAKE_MGR_HOOK), stopped. */
@@ -4155,6 +4266,8 @@ const SUITES = [
     testFallback,
     testInplace,
     testCertCopy,
+    testCertificationProxy,
+    testInterrupted,
     testInplaceKeepCopy,
     testInplaceHook,
     testInplaceUninstall,

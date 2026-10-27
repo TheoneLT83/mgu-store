@@ -1,5 +1,9 @@
 # Updater changelog
 
+## 0.7.8
+
+- `deploy_timeout_s` is 5400 (90 min): longer than the deploy tool's 60-minute wait for another run's lock plus its longest run, so a queued run is never stopped mid-change.
+
 ## 0.7.7
 
 - A branch source's new commit makes an installed app of the same version an update only when the app's own folder, or the shared code it is built with (its build script's folder, outside the other components' folders), changed since the commit it was built from - one GitHub compare per commit. Before, every commit made every app of the source an update. When the changes can't be read, it is an update, as before.

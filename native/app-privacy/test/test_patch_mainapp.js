@@ -210,6 +210,14 @@ const EARLIER_SETS_SHA256 = {
     '1.2.2': 'd494bf13326a07a6275f762b25d0639efb6eb12258718289000bb05ecbca5d8c',
     '1.1.0': '65fdf5a71cb95d465b37811cb2f326495686d4edcbd33566c07bad6c3ddc484e'
 };
+// What check names as the release whose edits a bundle carries, for each
+// earlier release's edits: none when this release keeps them; 1.2.2's
+// AppManagement.js edits are 1.4.0's.
+const PATCHED_BY = {
+    '1.4.0': { main: null, appmanagement: '1.4.0' },
+    '1.2.2': { main: '1.2.2', appmanagement: '1.4.0' },
+    '1.1.0': { main: '1.1.0', appmanagement: '1.1.0' }
+};
 // sha256 of the reference firmware bundles as each release patches them:
 // the current edits (1.5.0), 1.4.0's (and 1.3.0's), 1.2.2's (and 1.2.0's,
 // 1.2.1's) and 1.1.0's (and 1.0.0's).
@@ -781,11 +789,8 @@ test('reference firmware bundles patch, upgrade, parse and revert exactly', () =
             assert.strictEqual(r.code, 1, r.stdout);
             // A bundle whose edits this release keeps is patched already; edits
             // several releases shipped are named by the newest of them.
-            const same = (kind) => patcher.EARLIER_PATCH_SETS.find((e) =>
-                JSON.stringify(e[kind]) === JSON.stringify(earlier[kind])).version;
             lastJson(r.stdout).files.forEach((f) => assert.strictEqual(f.patchedBy,
-                JSON.stringify(earlier[f.kind]) === JSON.stringify(patcher.PATCH_SETS[f.kind]) ?
-                    null : same(f.kind)));
+                PATCHED_BY[earlier.version][f.kind], earlier.version + ' ' + f.kind));
             r = runTool(['apply'].concat(args));
             assert.strictEqual(r.code, 0, r.stdout);
             Object.keys(paths).forEach((kind) => assert.strictEqual(fs.readFileSync(paths[kind], 'utf8'),

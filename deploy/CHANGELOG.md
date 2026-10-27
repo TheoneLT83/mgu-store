@@ -1,6 +1,20 @@
 # Deploy tool changelog
 
+## 0.5.8
+
+- Apps whose SOME/IP manifest does not name the certification service (`de.bmw.infotainment.certification.Certification`), which includes every idrive7-apps app, install: the deploy tool adds that entry when it prepares the package. Without it, the car does not let the new app's uid reach the service that creates its keychain: MainApp's install waited for a keychain that never came and failed. The emulator does not check those permissions, which is why it never showed this.
+- What an interrupted app install left (the app listed for MainApp and its package in `preinstalled_apps`, which MainApp tries to install at every start) is removed before the next app install, when this tool put it there: its record of the install names a run that is gone, or its install snapshot shows the app was not listed and the package absent before. Anything else stays, said in the output.
+
 ## 0.5.7
+
+- Putting the copy of `CertificateManager.js` in place never fails an install: on any error the stock script stays, with a warning.
+- An install MainApp failed as already installed is waited for as before, and needs no bounce once the app is there.
+- Only MainApp's own rejection of an install or update ends it at once; a failure of its AppManagement child or channel goes through the bounce, which restarts the child.
+- The copy's keychain wait is 115 s, inside the 125 s MainApp gives it with app-privacy 1.5.0.
+
+## 0.5.7 (as published in this repo first: the 0.5.6 notes below)
+
+## 0.5.6
 
 - An app install or update that MainApp itself fails (for example, when the head unit's certificate service does not create the app's keychain) fails at once with MainApp's reason, in one line. MainApp is not restarted and no 10-minute wait follows: a restarted MainApp runs the same install, and restarting it stops every app, the Store included.
 - MainApp's installs wait up to 120 s for an app's keychain, and when it is not created, the error names the certificate service's states, the app's security folder before the request and the uid. The deploy tool binds its copy of `CertificateManager.js` over MainApp's at each app install; app-privacy 1.5.0 lets it run that long for our apps (without it, MainApp stops it after 35 s, as before).

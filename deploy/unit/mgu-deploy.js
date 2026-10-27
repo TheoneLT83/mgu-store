@@ -44,7 +44,7 @@ var cp = require('child_process');
 
 /* deploy/component.json's version; bumped when a file under deploy/unit/
  * changes. */
-var VERSION = '0.5.7';
+var VERSION = '0.5.8';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -987,7 +987,8 @@ function validateApp(file, dir, pkgDir) {
     if (pkg && pkg.name === AM.app) throw refuse(file + ': ' + AM.app + " is IterioDev's App Manager, which the Store replaces");
     checkPkg(file, pkg);
     var a = { kind: 'app', file: file, dir: dir, pkgDir: pkgDir, pkg: pkg, id: pkg.name, version: pkg.version };
-    a.prepare = pkgDir !== dir || pkg.mguLocalOnly !== true || linker().needsSdk(pkgDir) ? 'package' : null;
+    a.prepare = pkgDir !== dir || pkg.mguLocalOnly !== true || linker().needsSdk(pkgDir) ||
+        linker().needsCertification(pkgDir) ? 'package' : null;
     appHmi(a, file, pkg.mguHmi, [path.join(pkgDir, 'rhmiData'), path.join(dir, 'rhmiData')]);
     return a;
 }
@@ -1242,7 +1243,8 @@ function prepareApp(a, stage) {
             say('prepared ' + a.id + ' ' + a.version + ': marked local-only' +
                 (r.sdk ? ', node_modules/oap-sdk generated from ' + r.sdk.donor + ' (' + r.sdk.api.join(', ') + ')' : '') +
                 (r.shrinkwrap ? ', npm-shrinkwrap.json added' : '') +
-                (r.permissions.length ? ', ' + r.permissions.join(' and ') + ' added to permissions.json' : ''));
+                (r.permissions.length ? ', ' + r.permissions.join(' and ') + ' added to permissions.json' : '') +
+                (r.certification ? ', the certification service added to ' + r.certification : ''));
         }
     } catch (e) {
         if (ENV_ERRORS.indexOf(e.code) >= 0) throw e;
@@ -2059,9 +2061,19 @@ function inplaceAsk(app, version, action) {
     if (!st) return { why: 'the app manager did not take the request within ' + Math.round(CFG.inplaceAckMs / 1000) + 's' };
     return { pid: m.pid, id: id, st: st };
 }
-/* The manager ran this app's install, update or uninstall in its
- * AppManagement child and it failed there (the hook's trace). */
+/* The app manager's installer rejected this app's install or update (the
+ * hook's trace has the run failing), as opposed to its AppManagement child
+ * or the channel to it failing, which a bounce restarts: the stub's own
+ * wrapper with no reason from AppManager in it, or a child that did not
+ * start. MainApp passes a rejection's reason code (UPDATE_FAILED, an
+ * install's reason or code) as the error, else AppManager's message. */
+function channelFailed(st) {
+    var err = String(st.error || '');
+    return /^AppManagerStub::_callMethod /.test(err) && !/AppManager::\w+ Failed due to/.test(err) ||
+        !!(st.trace && st.trace.fork && st.trace.fork.err);
+}
 function ranAndFailed(st, app) {
+    if (channelFailed(st)) return false;
     var ops = st.trace && Array.isArray(st.trace.ops) ? st.trace.ops : [];
     return ops.some(function (o) {
         return o.k === 'run' && o.app === app && !!o.err && typeof st.taken === 'number' && o.t >= st.taken - 1000;
@@ -2075,8 +2087,9 @@ function managerReason(err) {
     var told = /keychain of \S+ [^\n]*/.exec(text), m = /uidrun exited with return code (\d+)/.exec(line);
     if (told) return "MainApp's CertificateManager: " + told[0];
     if (/CertificateManager\.js/.test(text)) {
+        var killed = /#timeout after (\d+) sec/.exec(text);
         return "MainApp's CertificateManager did not create the app's keychain (" +
-            (m ? 'uidrun exited ' + m[1] : /#timeout after (\d+) sec/.test(text) ? 'killed after ' + /#timeout after (\d+) sec/.exec(text)[1] + ' s' : 'failed') + ')';
+            (m ? 'uidrun exited ' + m[1] : killed ? 'killed after ' + killed[1] + ' s' : 'failed') + ')';
     }
     line = line.replace(/^AppManagerStub::_callMethod appManager\.\w+\([^)]*\) failed due to (Error: )?/, '')
         .replace(/^AppManager::\w+ Failed due to \{? ?(Error: )?/, '');
@@ -2109,7 +2122,8 @@ function installInPlace(a, existing) {
         }
         if (st.state === 'refused' || st.state === 'failed') {
             return { why: 'the app manager ' + st.state + ' the in-place ' + action + (st.error ? ' (' + oneLine(st.error) + ')' : ''),
-                state: st.state, error: st.error, ranFailed: st.state === 'failed' && !s.done && ranAndFailed(st, a.id) };
+                state: st.state, error: st.error,
+                ranFailed: st.state === 'failed' && !/^APP_ALREADY_/.test(String(st.error)) && !s.done && ranAndFailed(st, a.id) };
         }
         if (st.state === 'done' && s.done && (!existing || s.uid === existing.uid)) {
             say(a.id + ' ' + a.version + ' ' + (existing ? 'updated' : 'installed') + ' in place by the app manager (pid ' +
@@ -2151,10 +2165,10 @@ function installedAlready(a, why) {
  * folder's files before the request (name:uid:size) and its uid (the
  * record is an expression, as the stock call it precedes is); MainApp
  * puts the script's stderr in the install's error. MainApp kills the
- * script after 35 s; app-privacy 1.5.0 gives our apps' 125 s. Each
+ * script after 35 s; app-privacy 1.5.0 gives our apps 125 s. Each
  * edit's anchor must occur once in the stock script and the copy must
  * parse, or no copy is bound and the stock script runs. */
-var CERT_WAIT_S = 120;
+var CERT_WAIT_S = 115;
 var CERT_PROBE = '__mgu={t0:Date.now(),states:[],before:(()=>{try{const fs=require("fs"),p=require("path");' +
     'return fs.readdirSync(keyChainPath).map(n=>{const s=fs.lstatSync(p.join(keyChainPath,n));' +
     'return n+":"+s.uid+":"+s.size}).join(" ")||"empty"}catch(e){return String(e&&e.code||e)}})(),' +
@@ -2172,7 +2186,6 @@ var CERT_EDITS = [
     ['logger.error(`${logPrefix} Terminating due to ${TIMEOUT}ms timeout.`),',
         '__mgu.tell("not ready after "+TIMEOUT/1e3+"s"),logger.error(`${logPrefix} Terminating due to ${TIMEOUT}ms timeout.`),']
 ];
-/* The copy's text, or null when an anchor does not occur exactly once. */
 function certCopySource(text) {
     for (var i = 0; i < CERT_EDITS.length; i++) {
         if (text.split(CERT_EDITS[i][0]).length !== 2) return null;
@@ -2181,8 +2194,15 @@ function certCopySource(text) {
     return text;
 }
 /* Built from the stock script (a bound copy is unmounted for the read)
- * and bound over it; written only when its bytes change. */
+ * and bound over it; written only when its bytes change. It never fails
+ * an install: on any error the stock script stays in place. */
 function ensureCertCopy() {
+    try { bindCertCopy(); } catch (e) {
+        try { rmrf(path.join(DEPLOY_DIR, 'CertificateManager.tmp-' + process.pid + '.js')); } catch (e2) { /* left for cleanStale */ }
+        warn('the copy of ' + certManagerJs() + ' is not in place (' + e.message + '): MainApp keeps its 30 s keychain wait');
+    }
+}
+function bindCertCopy() {
     var stock = certManagerJs(), wasBound = !FAKE && bindMounted(stock), built;
     if (!wasBound && !fs.existsSync(stock)) return;
     if (wasBound) runOk(CFG.umount, [stock]);
@@ -2208,6 +2228,56 @@ function ensureCertCopy() {
 function unbindCertCopy() {
     if (!FAKE && bindMounted(certManagerJs())) runOk(CFG.umount, [certManagerJs()]);
     rmrf(CERT_COPY);
+}
+
+/* ---- interrupted installs ---------------------------------------------------- */
+/* An app install this tool started and that did not finish (the head unit
+ * restarted, the run was stopped) leaves the app listed in custom_apps.json
+ * with its package in preinstalled_apps, and the manager tries to install
+ * it again at every start. Each app install is recorded in state.json
+ * (inflight) until it finishes or is rolled back. Before the next install,
+ * an app that is listed and has no registry entry is unlisted and its
+ * package removed when this tool put both there: its inflight record names
+ * a run that is gone, or else the newest install snapshot of that package
+ * recorded the package absent and the app not listed before. Anything
+ * else stays, said in the output. */
+function snapshotPlaced(id) {
+    var dirs;
+    try { dirs = fs.readdirSync(BACKUPS_DIR).filter(function (n) { return /-install$/.test(n); }).sort().reverse(); } catch (e) { return null; }
+    var pre = path.join(preinstalledDir(), id + '@');
+    for (var i = 0; i < dirs.length; i++) {
+        var dir = path.join(BACKUPS_DIR, dirs[i]), man = readJsonOrNull(path.join(dir, 'manifest.json'));
+        if (!man || !Array.isArray(man.entries)) continue;
+        var pkg = man.entries.filter(function (e) { return e.path.indexOf(pre) === 0 && /\.tgz$/.test(e.path); })[0];
+        if (!pkg) continue;
+        var list = man.entries.filter(function (e) { return e.path === customAppsFile(); })[0], listed = false;
+        if (list && list.kind === 'file' && list.stored) {
+            var before = readJsonOrNull(path.join(dir, list.stored));
+            listed = !!(before && typeof before === 'object' && id in before);
+        }
+        return pkg.kind === 'absent' && !listed ? { from: 'snapshot ' + dirs[i] } : null;
+    }
+    return null;
+}
+function cleanInterrupted(state) {
+    var fl = state.inflight, listed = readCustomApps();
+    Object.keys(listed).forEach(function (id) {
+        if (readJsonOrNull(appEntryFile(id))) return;
+        var placed = null;
+        if (fl && fl.id === id && (fl.boot !== bootId() || !pidAlive(fl.pid))) placed = { from: 'its interrupted run' };
+        else if (!fl || fl.id !== id) placed = snapshotPlaced(id);
+        if (!placed) {
+            warn(id + ' is listed for the app manager without being installed, and this tool has no record of putting it there; left as it is');
+            return;
+        }
+        var pkgs = preinstalledFor(id);
+        customAppsRemove(id);
+        if (pkgs.length) rootfsWindow(pkgs.map(function (p) { return { type: 'delete', path: p }; }));
+        say('removed what an interrupted install of ' + id + ' left (' + placed.from + '): its listing' +
+            (pkgs.length ? ' and ' + pkgs.map(function (p) { return path.basename(p); }).join(', ') : '') +
+            ', which the app manager tried to install at every start');
+    });
+    if (fl && (fl.boot !== bootId() || !pidAlive(fl.pid))) delete state.inflight;
 }
 
 /* Privacy, the fallback, the package, the app listed by the fallback; then
@@ -2243,9 +2313,8 @@ function installApp(a, state, decision) {
     placePreinstalled(a);
     customAppsPut(a.id, entry ? entry.provisioningCache : null, a.pkg.mguAppStartType || 'manually');
     var r = installInPlace(a, existing), uid = r.uid;
-    /* The manager's own install or update of the app failed in its
-     * installer: a restarted manager runs the same install, and restarting
-     * it stops every app. */
+    /* MainApp's installer rejected the app's install or update: a restarted
+     * manager runs the same install, and restarting it stops every app. */
     if (r.ranFailed) {
         throw fail('the app manager could not ' + (existing ? 'update ' : 'install ') + a.id + ' ' + a.version + ': ' +
             managerReason(r.error));
@@ -4049,15 +4118,24 @@ function cmdInstall(args) {
                     if (done.length) say('installed before this failure, and kept: ' + done.join(', '));
                     throw e;
                 }
+                if (!id8) {
+                    try { cleanInterrupted(state); saveState(state); }
+                    catch (e) { warn('what interrupted installs left was not looked at: ' + e.message); }
+                }
             }
             var tx = {}, backup = takeSnapshot('install', artifactTouched(a));
             attempted = true;
-            if (a.kind === 'app' && !id8) beginAppTx(tx);
+            if (a.kind === 'app' && !id8) {
+                beginAppTx(tx);
+                state.inflight = { id: a.id, version: a.version, pid: process.pid, boot: bootId() };
+                saveState(state);
+            }
             try {
                 if (a.kind === 'tool') installTool(a, state, tx);
                 else if (id8) installAppId8(a, state, decisions[a.id]);
                 else installApp(a, state, decisions[a.id]);
                 syncDropIns();
+                delete state.inflight;
                 done.push(a.id + ' ' + a.version);
             } catch (e) {
                 process.stderr.write(a.id + ' ' + a.version + ' failed: ' + e.message + '\n');
@@ -4065,6 +4143,7 @@ function cmdInstall(args) {
                     if (a.kind === 'tool') rollbackTool(a, tx, backup, e, state);
                     else if (id8) { restoreSnapshot(backup); pruneCreatedDirs(state); }
                     else rollbackApp(a, tx, backup, state);
+                    delete state.inflight;
                 } catch (e2) { process.stderr.write('rollback failed: ' + e2.message + '\n'); }
                 if (done.length) {
                     say('installed before this failure, and kept: ' + done.join(', '));
