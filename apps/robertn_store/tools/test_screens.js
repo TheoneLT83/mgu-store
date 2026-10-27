@@ -235,7 +235,14 @@ f = screen('internet');
 eq([own(f), text(f, 'status')], [['Back'], 'Connected']);
 ok(/USB LTE stick/.test(text(f, 'steps')) && /USB tethering/.test(text(f, 'steps')) && /Personal Hotspot/.test(text(f, 'steps')), 'the ways to connect');
 eq(text(screen('internet-offline'), 'status'), 'Not connected');
-eq(text(screen('store-no-internet'), 'subtitle'), 'No internet: Settings › Internet shows how to connect the car');
+eq(text(screen('store-no-internet'), 'subtitle'), 'No internet: Settings → Internet shows how to connect the car');
+// every character on these screens is in the baked fonts (tools/bake_fonts.py TEXT); others draw as '?'
+const BAKED = new Set(Array.from({ length: 95 }, (_, i) => String.fromCharCode(32 + i)).concat(Array.from('·…→–—°×\n')));
+['internet', 'store-no-internet'].forEach((name) => ['steps', 'subtitle'].forEach((k) => {
+    const t = text(screen(name), k) || '';
+    const missing = Array.from(t).filter((c) => !BAKED.has(c));
+    eq(`${name} ${k}: ${missing.join('')}`, `${name} ${k}: `);
+}));
 f = screen('settings');
 eq(f.items[f.labels.indexOf('Internet')].act, { do: 'open', page: { name: 'internet' } });
 

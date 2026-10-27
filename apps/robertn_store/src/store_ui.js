@@ -156,7 +156,7 @@ function storeView(m) {
     return {
         title: { text: 'Store' },
         subtitle: busyRow ? { text: `${busy.phase === 'download' ? `Downloading ${percent(busy)} %` : PHASE[busy.phase] || 'Installing'} · ${busyRow.title}`, color: BLUE }
-            : m.connected && !checking && !online ? { text: 'No internet: Settings › Internet shows how to connect the car', color: AMBER }
+            : m.connected && !checking && !online ? { text: 'No internet: Settings → Internet shows how to connect the car', color: AMBER }
                 : { text: m.connected ? statusLine(m.st, true) : statusLine(null, false, m.secret), color: DIM },
         filter: { sel: Math.max(0, FILTERS.indexOf(m.filter)), acts: FILTERS.map((f) => ({ do: 'filter', filter: f })) },
         online: { items: !m.connected ? [] : checking ? [{ text: 'Checking', color: BLUE, dot: true }]
@@ -435,10 +435,10 @@ function phoneView(m) {
  * gives it through a USB device. */
 const INTERNET_STEPS = [
     'The head unit has no internet of its own. Plug one of these into a USB port in the car:',
-    '•  a USB LTE stick with a SIM card that has mobile data (e.g. Huawei E3372h)',
-    '•  a USB network adapter, cabled to a mobile router',
-    '•  an Android phone: Settings › Network › Hotspot & tethering › USB tethering on',
-    '•  an iPhone: Personal Hotspot on, phone unlocked, tap Trust when it asks',
+    '·  a USB LTE stick with a SIM card that has mobile data (e.g. Huawei E3372h)',
+    '·  a USB network adapter, cabled to a mobile router',
+    '·  an Android phone: Settings → Network → Hotspot & tethering → USB tethering on',
+    '·  an iPhone: Personal Hotspot on, phone unlocked, tap Trust when it asks',
     'Within a minute this page says Connected and the Store finds new apps and updates.',
     'No internet at all? Apps on a USB stick show under USB.'
 ].join('\n');
