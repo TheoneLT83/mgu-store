@@ -3,8 +3,9 @@
  * Tests for patch_mainapp.js. Run on the head unit's Node with
  * `sh test/run.sh`, or on any Node with `node test/test_patch_mainapp.js`.
  *
- * The firmware case runs when a decoded oap-mainapp is available
- * (FIRMWARE_MAINAPP_DIR names its folder); it is skipped otherwise.
+ * The firmware cases run when a decoded oap-mainapp is available
+ * (FIRMWARE_MAINAPP_DIR names iDrive 7's folder, FIRMWARE_MAINAPP21_DIR
+ * iDrive 8's MainApp-21); each is skipped otherwise.
  */
 const assert = require('assert');
 const childProcess = require('child_process');
@@ -243,6 +244,58 @@ test('the patch set is recorded', () => {
         'then record ' + sha + ' here (the reference firmware case checks the edits\' output)');
 });
 
+// sha256 of JSON.stringify(PATCH_SETS_21) as shipped by 1.4.0, and of
+// MainApp-21's reference bundles (I-step 036.010.004) as it patches them.
+const PATCH_SETS_21_SHA256 = '44b92e5de169297798163bd2b9a31728027f78b3db793f08de810c9d911b0f5a';
+const PATCHED_21_SHA256 = {
+    main: '10c59be5b5e75bfa21f5d5fae806e6c85ffa4ed8b5b83f980a178f1cec64bba3',
+    appmanagement: 'b8ad9c0d6acce898f783a0bfa7bf51c363754b4b4c92c3a7680c0feb59a1ceb8'
+};
+
+test('the MainApp-21 patch set is recorded', () => {
+    const sha = setsSha(patcher.PATCH_SETS_21);
+    assert.strictEqual(sha, PATCH_SETS_21_SHA256,
+        'PATCH_SETS_21 differs from the released one: keep the released sets as MainApp-21\'s earlier release ' +
+        '(UNITS.ID8.sets.earlier) and bump the version; then record ' + sha + ' here');
+});
+
+test('the kernel command line picks the MainApp', () => {
+    assert.strictEqual(patcher.unitOf('root=/dev/x hwtype=MGU hwgen=21 hwvariant=HIGH'), 'ID8');
+    assert.strictEqual(patcher.unitOf('hwgen=22'), 'ID8');
+    assert.strictEqual(patcher.unitOf('hwgen=18 quiet'), 'ID7');
+    assert.strictEqual(patcher.unitOf('xhwgen=21'), 'ID7');
+    assert.strictEqual(patcher.unitOf(''), 'ID7');
+    assert.strictEqual(patcher.UNITS.ID8.paths.main, '/usr/lib/oap-mainapp21/src/main.js');
+    assert.strictEqual(patcher.UNITS.ID7.paths.main, '/usr/lib/oap-mainapp/src/main.js');
+});
+
+test('--unit ID8 checks, applies and reverts MainApp-21\'s edits', () => {
+    const dir = tmpdir();
+    try {
+        const paths = {};
+        Object.keys(patcher.PATCH_SETS_21).forEach((kind) => {
+            paths[kind] = path.join(dir, kind + '.js');
+            fs.writeFileSync(paths[kind], syntheticBundle(patcher.PATCH_SETS_21[kind]));
+        });
+        const stock = { main: fs.readFileSync(paths.main, 'utf8'), appmanagement: fs.readFileSync(paths.appmanagement, 'utf8') };
+        const args = (command) => [command, '--json', '--unit', 'ID8', '--main', paths.main, '--appmanagement', paths.appmanagement];
+        let r = runTool(args('check'));
+        assert.strictEqual(r.code, 1, r.stdout);
+        assert.strictEqual(lastJson(r.stdout).unit, 'ID8');
+        r = runTool(args('apply'));
+        assert.strictEqual(r.code, 0, r.stdout);
+        assert.strictEqual(fs.readFileSync(paths.main, 'utf8'), patcher.applyPatches(stock.main, patcher.PATCH_SETS_21.main));
+        // iDrive 7's edits do not fit MainApp-21: refused, nothing written
+        r = runTool(['apply', '--unit', 'ID7', '--main', paths.main, '--appmanagement', paths.appmanagement]);
+        assert.strictEqual(r.code, 2, r.stdout);
+        assert.strictEqual(runTool(args('check')).code, 0);
+        assert.strictEqual(runTool(args('revert')).code, 0);
+        Object.keys(paths).forEach((kind) => assert.strictEqual(fs.readFileSync(paths[kind], 'utf8'), stock[kind]));
+    } finally {
+        rmrf(dir);
+    }
+});
+
 test('the earlier releases\' patch sets are recorded', () => {
     assert.deepStrictEqual(patcher.EARLIER_PATCH_SETS.map((s) => s.version), Object.keys(EARLIER_SETS_SHA256));
     patcher.EARLIER_PATCH_SETS.forEach((s) => assert.strictEqual(setsSha(s), EARLIER_SETS_SHA256[s.version], s.version));
@@ -400,6 +453,10 @@ function fakeProc(dir, secondsAgo, mainapp) {
 }
 
 const MAINAPP_EMU = { argv: ['node', 'src/main.js'], cwd: '/usr/lib/oap-mainapp' };
+const MAINAPP21 = { argv: ['/usr/bin/node', '--expose-gc', '/usr/lib/oap-mainapp21/src/main.js'], cwd: '/' };
+// as the emulator starts it: a module preloaded with -r
+const MAINAPP21_EMU = { argv: ['/usr/bin/node', '-r', '/usr/local/libexec/emu/emu-dlt-print.js', '--expose-gc',
+    '/usr/lib/oap-mainapp21/src/main.js'], cwd: '/' };
 const MAINAPP_OPTS = { argv: ['/usr/bin/node', '--max-old-space-size=256', '/usr/lib/oap-mainapp/src/main.js'], cwd: '/' };
 
 test('restartNeeded while MainApp runs code older than the bundles', () => withBundles((b) => {
@@ -419,13 +476,18 @@ test('restartNeeded while MainApp runs code older than the bundles', () => withB
     assert.strictEqual(patcher.run('check', b.paths, quiet, fakeProc(b.dir, 600, MAINAPP_OPTS))
         .result.restartNeeded, true);
     assert.strictEqual(patcher.run('check', b.paths, quiet, path.join(b.dir, 'none')).result.restartNeeded, false);
+    rmrf(path.join(b.dir, 'proc'));
+    // MainApp-21 counts for iDrive 8 only
+    assert.strictEqual(patcher.run('check', b.paths, quiet, fakeProc(b.dir, 600, MAINAPP21)).result.restartNeeded, false);
+    assert.strictEqual(patcher.run('check', b.paths, quiet, path.join(b.dir, 'proc'), patcher.UNITS.ID7.sets, 'ID8')
+        .result.nextStart, true);
 }));
 
 /* The helper as injected into oap-mainapp, evaluated against a fake
  * unit filesystem: files maps a path to its content (a string, or a
  * Buffer for a package); reads collects every path read. Returns the
  * appIds reported, or with no appIds the helper itself. */
-function evaluateHelper(files, appIds, reads) {
+function evaluateHelper(files, appIds, reads, helper) {
     const enoent = (file) => {
         const e = new Error('ENOENT: ' + file);
         e.code = 'ENOENT';
@@ -463,7 +525,7 @@ function evaluateHelper(files, appIds, reads) {
         assert.ok(modules[name], 'helper requires ' + name);
         return modules[name];
     } };
-    vm.runInNewContext(patcher.HELPER_JS + ';this.isLocalOnlyApp=isLocalOnlyApp;', sandbox);
+    vm.runInNewContext((helper || patcher.HELPER_JS) + ';this.isLocalOnlyApp=isLocalOnlyApp;', sandbox);
     return appIds ? appIds.filter((id) => !sandbox.isLocalOnlyApp(id)) : sandbox.isLocalOnlyApp;
 }
 
@@ -556,6 +618,16 @@ test('an app being installed is decided by its preinstalled package', () => {
     files[PRE + 'string_marker@1.0.0.tgz'] = tgz({ 'package.json': JSON.stringify({ mguLocalOnly: 'true' }) });
     assert.deepStrictEqual(evaluateHelper(files, ['ours', 'ours_npm', 'genuine', 'string_marker', 'absent']),
         ['genuine', 'string_marker', 'absent']);
+});
+
+test('MainApp-21 decides an app being installed by its own preinstalled package', () => {
+    const PRE21 = patcher.PREINSTALLED_DIR_21;
+    const files = {};
+    files[PRE21 + 'ours@1.0.0.tgz'] = tgz({ 'package/package.json': JSON.stringify({ name: 'ours', mguLocalOnly: true }) });
+    files[PRE + 'other@1.0.0.tgz'] = tgz({ 'package/package.json': JSON.stringify({ name: 'other', mguLocalOnly: true }) });
+    installed(files, 'registered', 12230, { name: 'registered', mguLocalOnly: true });
+    assert.deepStrictEqual(evaluateHelper(files, ['ours', 'other', 'registered', 'genuine'], null, patcher.HELPER_JS_21),
+        ['other', 'genuine']);
 });
 
 test('an installed app is decided by its installed package, not the preinstalled one', () => {
@@ -884,6 +956,256 @@ test('reference firmware: a local-only app stays so through a failed read, and s
         assert.strictEqual(starts(), 5);
         assert.deepStrictEqual(h.kinds('ours').filter((k) => k !== 'start'), ['warn']);
     });
+});
+
+/* MainApp-21's CorruptAppsHandler module (its browserify module, patched),
+ * run against fake collaborators as crashHandler runs iDrive 7's. A crash
+ * goes the way AppLauncher reports one: the app is held unstartable
+ * (NOT_IN_CORRUPT_APPS_HANDLING false), then terminated reaches the
+ * handler. The forced update ('update') and the 48 h reset timer are
+ * recorded, not waited for. */
+function crashHandler21(root, apps, localOnly) {
+    const main = patcher.applyPatches(fs.readFileSync(path.join(root, 'src', 'main.js'), 'utf8'),
+        patcher.PATCH_SETS_21.main);
+    const at = main.indexOf('let CorruptAppsHandler=class');
+    const start = main.lastIndexOf('function(require,module,exports){', at) + 'function(require,module,exports){'.length;
+    const source = main.slice(start, main.indexOf('\n},{', at));
+    const events = [];
+    const clock = { now: 1e12 };
+    const state = { unreadable: false, shuttingDown: false };
+    const log = (kind) => (id) => { events.push([kind, id]); return Promise.resolve(); };
+    const fakeFs = { readFileSync: (file) => {
+        if (file === patcher.OVERRIDE_FILE && !state.unreadable) {
+            return JSON.stringify(localOnly);
+        }
+        const e = new Error('ENOENT: ' + file);
+        e.code = 'ENOENT';
+        throw e;
+    }, readdirSync: () => [] };
+    const logger = { info() {}, debug() {}, error() {}, warn(m) { events.push(['warn', m.split(' ')[1], m]); } };
+    const decorator = () => () => undefined;
+    const modules = {
+        events: require('events'),
+        util: require('util'),
+        fs: fakeFs,
+        inversify: { inject: decorator, injectable: decorator, named: decorator },
+        'lodash/defaults': (o, d) => { Object.keys(d).forEach((k) => { if (o[k] === undefined) o[k] = d[k]; }); return o; },
+        'lodash/forIn': (o, f) => Object.keys(o).forEach((k) => f(o[k], k)),
+        'oap-sdk/src/analytics/AnalyticsServiceBuilders': { buildAnalyticsService: () => ({
+            sendPlatformEvent: (e) => events.push(['analytics', e.payload.appName]) }) },
+        'oap-sdk/src/analytics/interface/analyticsservice': {
+            AnalyticsPlatformEventType: { APP_CRASH: 'APP_CRASH' }, AnalyticsPlatformLogLevel: { ERROR: 'ERROR' } },
+        'oap-sdk/src/config/config': { get: (k) => (k === 'corruptAppsHandler.waitForAppStartable' ? 0 : 172800000) },
+        'oap-sdk/src/errors/OAPError': Error,
+        'oap-sdk/src/internal/StartReason': { CONFIG_STATE: 'CONFIG_STATE' },
+        'oap-sdk/src/logging/logging': { getLogger: () => logger, logMarker() {} },
+        'oap-sdk/src/utils/getVin': () => Promise.resolve('VIN'),
+        semver: { gt: () => false },
+        './AppFolderControl': {}, './AppManagementController': {}, './AppRegistry': {},
+        './AppRuntime/AppStartQueue': {}, './AppRuntime/AppsRuntimeController': {}, './BackendTransport': {},
+        './StartableCouncil': { NOT_CORRUPTED: 'NOT_CORRUPTED', NOT_IN_CORRUPT_APPS_HANDLING: 'NOT_IN_CORRUPT_APPS_HANDLING' },
+        './event/EventBroker': { EventBroker: {} },
+        './inversify/types': { TYPES: {}, NAMES: {} }
+    };
+    const registry = {};
+    Object.keys(apps).forEach((id) => {
+        registry[id] = {
+            getAppId: () => id, getSettings: () => ({ version: '1.0.0' }), getUserId: () => Promise.resolve(id),
+            unregisterAllParticipantIds: () => Promise.resolve(), isHeadUnitShuttingDown: () => state.shuttingDown,
+            council: {}, updateStartableCouncil(k, v) { this.council[k] = v; },
+            isStartable() { return Object.keys(this.council).every((k) => this.council[k]); },
+            getLastStartArguments: () => [], getStartReason: () => 'AUTOSTART', getUpdateMechanism: () => 'PLATFORM',
+            getAppVariant: () => undefined, on() {}, addListener() {}, removeListener() {},
+            disableAllEntryPoints: () => log('disable')(id),
+            appControl: { appEvents: { restoreEntryPoints: { next: () => events.push(['restore', id]) } } }
+        };
+    });
+    const module = { exports: {} };
+    const sandbox = { require: (name) => {
+        assert.ok(name in modules, 'module requires ' + name);
+        return modules[name];
+    }, module, exports: module.exports, Date: { now: () => clock.now }, Promise, Object, Array, JSON, String,
+    Reflect: {}, console,
+    setTimeout: (fn, ms) => (ms > 60000 ? (events.push(['timer', ms]), 0) : setTimeout(fn, ms)), clearTimeout() {} };
+    vm.runInNewContext('(function(){' + source + '\n}).call(this)', sandbox);
+    const Handler = module.exports;
+    const handler = new Handler();
+    Object.assign(handler, {
+        backendTransport: { reportCorruptApp: log('report') },
+        appFolderControl: { removeAppPersonalDataFolder: log('wipe'), removeAppDataFolder: log('wipe'),
+            removeAppShareFolder: log('wipe'), removeAppKeyValueStorageFolder: log('wipe'),
+            createAppDataFolder: log('create'), initializeAppSharedFolders: log('create'),
+            createAppKeyValueStorageFolder: log('create') },
+        appManager: { update: log('update') },
+        appRegistry: { getAll: () => Object.keys(registry).map((id) => registry[id]), on() {},
+            getById: (id) => registry[id] },
+        appsRuntimeController: { updateEntryPointStartArguments: (id, args) => args },
+        appStartQueue: { queuedAppStart: (app) => { events.push(['start', app.getAppId()]);
+            return apps[app.getAppId()].start(); } },
+        provisioningBroker: { callMethod: () => ({ app_management: {} }) },
+        initTimeout: 10000
+    });
+    const crash = (id) => {
+        registry[id].updateStartableCouncil('NOT_IN_CORRUPT_APPS_HANDLING', false);
+        return handler.handleAppTerminated(registry[id]);
+    };
+    const kinds = (id) => events.filter((e) => e[1] === id).map((e) => e[0]);
+    return { events, clock, state, crash, kinds, registry, handler };
+}
+
+function firmware21Dir() {
+    const dir = process.env.FIRMWARE_MAINAPP21_DIR;
+    return dir && fs.existsSync(path.join(dir, 'src', 'main.js')) ? dir : undefined;
+}
+
+test('on iDrive 8 MainApp-21 is never to be bounced: nextStart instead of changed and restartNeeded', () => {
+    const dir = tmpdir();
+    try {
+        const paths = {};
+        Object.keys(patcher.PATCH_SETS_21).forEach((kind) => {
+            paths[kind] = path.join(dir, kind + '.js');
+            fs.writeFileSync(paths[kind], syntheticBundle(patcher.PATCH_SETS_21[kind]));
+        });
+        const running = fakeProc(dir, 60, MAINAPP21_EMU);
+        let r = patcher.run('apply', paths, quiet, running, null, 'ID8');
+        assert.strictEqual(r.code, 0);
+        assert.strictEqual(r.written, true);
+        assert.strictEqual(fs.readFileSync(paths.main, 'utf8').indexOf('function isLocalOnlyApp(') >= 0, true);
+        assert.deepStrictEqual([r.result.changed, r.result.restartNeeded, r.result.nextStart], [false, false, true]);
+        r = patcher.run('check', paths, quiet, running, null, 'ID8');
+        assert.deepStrictEqual([r.result.restartNeeded, r.result.nextStart], [false, true]);
+        r = patcher.run('revert', paths, quiet, running, null, 'ID8');
+        assert.deepStrictEqual([r.written, r.result.changed, r.result.nextStart], [true, false, true]);
+        assert.strictEqual(patcher.run('apply', paths, quiet, path.join(dir, 'none'), null, 'ID8').result.nextStart, false);
+    } finally {
+        rmrf(dir);
+    }
+});
+
+test('MainApp-21: a local-only app is only restarted, a stock app keeps its recovery', () => {
+    const root = firmware21Dir();
+    if (!root) {
+        return 'skipped: decoded MainApp-21 not available';
+    }
+    const ok = () => Promise.resolve();
+    const h = crashHandler21(root, { ours: { start: ok }, stock: { start: ok } }, ['ours']);
+    return crashes(h, 'ours', 5).then(() => crashes(h, 'stock', 4)).then(() => {
+        assert.deepStrictEqual(h.kinds('ours'), ['start', 'start', 'start', 'start', 'start']);
+        assert.strictEqual(h.registry.ours.isStartable(), true);
+        assert.strictEqual(h.handler.getRecoveryAttempt('ours'), 0);
+        // the stock ladder: restart; forced update (its second rung refuses); data wipe; disable and report
+        const stock = h.kinds('stock');
+        assert.deepStrictEqual(stock.filter((k) => k !== 'wipe' && k !== 'create'), [
+            'analytics', 'start', 'analytics', 'analytics', 'update', 'start', 'analytics', 'start',
+            'analytics', 'disable', 'report']);
+        assert.strictEqual(stock.filter((k) => k === 'wipe').length, 4);
+        assert.strictEqual(h.registry.stock.isStartable(), false);
+        return h.crash('ours');
+    }).then(() => {
+        assert.strictEqual(h.kinds('ours').filter((k) => k === 'start').length, 5);
+        assert.deepStrictEqual(h.events.filter((e) => e[0] === 'warn').map((e) => e[2]), [
+            'CorruptAppsHandler::tryRecoverApp ours is local-only and was restarted 5 times in 10 minutes; ' +
+            'left stopped until it is started again.']);
+        assert.strictEqual(h.registry.ours.isStartable(), true);
+        // The 48 h reset rehabilitates the stock app; the local-only window stays.
+        h.handler.resetRecoveryAttemptsSinceCorruption();
+        return new Promise((resolve) => setTimeout(resolve, 10));
+    }).then(() => {
+        assert.strictEqual(h.registry.stock.isStartable(), true);
+        assert.deepStrictEqual(h.kinds('stock').slice(-1), ['restore']);
+        return h.crash('ours');
+    }).then(() => {
+        assert.strictEqual(h.kinds('ours').filter((k) => k === 'start').length, 5);
+        h.clock.now += 10 * 60 * 1000;
+        return h.crash('ours');
+    }).then(() => {
+        assert.strictEqual(h.kinds('ours').filter((k) => k === 'start').length, 6);
+        assert.deepStrictEqual(h.kinds('ours').filter((k) => k !== 'start' && k !== 'warn'), []);
+    });
+});
+
+test('MainApp-21: a local-only app whose restart fails is tried 5 times', () => {
+    const root = firmware21Dir();
+    if (!root) {
+        return 'skipped: decoded MainApp-21 not available';
+    }
+    const h = crashHandler21(root, { ours: { start: () => Promise.reject(new Error('no start')) } }, ['ours']);
+    return h.crash('ours').then(() => {
+        assert.deepStrictEqual(h.kinds('ours'), ['start', 'start', 'start', 'start', 'start', 'warn']);
+        assert.strictEqual(h.registry.ours.isStartable(), true);
+    });
+});
+
+test('MainApp-21: a local-only app stays so through a failed read, and shutdown deaths do not count', () => {
+    const root = firmware21Dir();
+    if (!root) {
+        return 'skipped: decoded MainApp-21 not available';
+    }
+    const ok = () => Promise.resolve();
+    const h = crashHandler21(root, { ours: { start: ok } }, ['ours']);
+    const starts = () => h.kinds('ours').filter((k) => k === 'start').length;
+    return h.crash('ours').then(() => {
+        h.state.unreadable = true;
+        return crashes(h, 'ours', 2);
+    }).then(() => {
+        assert.strictEqual(starts(), 3);
+        h.state.unreadable = false;
+        h.state.shuttingDown = true;
+        return crashes(h, 'ours', 4);
+    }).then(() => {
+        assert.strictEqual(starts(), 3);
+        h.state.shuttingDown = false;
+        return crashes(h, 'ours', 3);
+    }).then(() => {
+        assert.strictEqual(starts(), 5);
+        assert.deepStrictEqual(h.kinds('ours').filter((k) => k !== 'start'), ['warn']);
+    });
+});
+
+/* Every browserify module that calls the predicate defines it once. */
+function helperPerModule(text) {
+    text.split(/\],\d+:\[function\(require,module,exports\)\{/).forEach((m, i) => {
+        if (m.indexOf('isLocalOnlyApp(') >= 0) {
+            assert.strictEqual(m.split('function isLocalOnlyApp(').length - 1, 1, 'module ' + i + ' has no single helper');
+        }
+    });
+}
+
+test('MainApp-21 reference bundles patch, parse and revert exactly', () => {
+    const root = process.env.FIRMWARE_MAINAPP21_DIR;
+    if (!root || !fs.existsSync(path.join(root, 'src', 'main.js'))) {
+        return 'skipped: decoded MainApp-21 not available';
+    }
+    const dir = tmpdir();
+    try {
+        const paths = { main: path.join(dir, 'main.js'), appmanagement: path.join(dir, 'AppManagement.js') };
+        const stock = {
+            main: fs.readFileSync(path.join(root, 'src', 'main.js'), 'utf8'),
+            appmanagement: fs.readFileSync(path.join(root, 'src', 'AppManagement', 'AppManagement.js'), 'utf8')
+        };
+        Object.keys(paths).forEach((kind) => {
+            fs.writeFileSync(paths[kind], stock[kind]);
+            const patched = patcher.applyPatches(stock[kind], patcher.PATCH_SETS_21[kind]);
+            assert.strictEqual(sha256(patched), PATCHED_21_SHA256[kind], kind + ': the edits differ from the released ones');
+            helperPerModule(patched);
+        });
+        const args = ['--unit', 'ID8', '--main', paths.main, '--appmanagement', paths.appmanagement];
+        let r = runTool(['check', '--json'].concat(args));
+        assert.strictEqual(r.code, 1, r.stdout);
+        lastJson(r.stdout).files.forEach((f) => assert.strictEqual(f.reference, true));
+        assert.strictEqual(runTool(['check'].concat(args.slice(2))).code, 2, 'iDrive 7\'s edits must not fit');
+        r = runTool(['apply'].concat(args));
+        assert.strictEqual(r.code, 0, r.stdout);
+        Object.keys(paths).forEach((kind) => {
+            const check = childProcess.spawnSync(process.execPath, ['--check', paths[kind]], { encoding: 'utf8' });
+            assert.strictEqual(check.status, 0, check.stderr);
+        });
+        assert.strictEqual(runTool(['revert'].concat(args)).code, 0);
+        Object.keys(paths).forEach((kind) => assert.strictEqual(fs.readFileSync(paths[kind], 'utf8'), stock[kind]));
+    } finally {
+        rmrf(dir);
+    }
+    return null;
 });
 
 let failed = 0;

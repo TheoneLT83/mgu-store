@@ -448,8 +448,10 @@ whose das edits and removal steps it follows:
   has, a package's own is kept when it is free, otherwise the tool picks a
   free one and says so. When the tool cannot read the ids in use, it
   stops the install rather than guess.
-  Neither app-privacy nor the provisioning fallback is used there (`fallback
-  on|off|migrate` is refused).
+  With app-privacy installed, its `apply` runs first and the app is
+  refused when it fails; MainApp-21 is not restarted for it, and the patch
+  is in effect from the start that installs the app. The provisioning
+  fallback is not used there (`fallback on|off|migrate` is refused).
 - `uninstall` queues the removal (`removed at the next start`); for an app
   only queued, it drops the queued install. Installing the installed
   version again drops a queued removal.
@@ -707,7 +709,8 @@ older artifact.
 The `app-privacy` tool must be in effect before the manager sees an app
 (`native/app-privacy/INTEGRATION.md`). After installing or rolling back the
 tool, the installer runs its `patch_mainapp.js apply --json` and bounces the
-manager when it reports `changed` or `restartNeeded`. When `apply` fails,
+manager when it reports `changed` or `restartNeeded`; on iDrive 8 it bounces
+nothing and reports app-privacy pending until the next start. When `apply` fails,
 `current` returns to the previous version and its `apply` runs again (exit
 1); with no previous version the tool stays installed and the output says
 the patch is not in effect, so app installs are refused until `apply`

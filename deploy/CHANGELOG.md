@@ -1,8 +1,12 @@
 # Deploy tool changelog
 
-## 0.5.5
+## 0.5.6
 
 - The Store's own app comes first: in `custom_apps.json`, and at the front of the provisioning list the fallback adds the apps to (the others after the provisioned ones).
+
+## 0.5.5
+
+- iDrive 8: app-privacy installs, updates, rolls back and uninstalls without restarting MainApp-21; its patch takes effect at the next start of the head unit, and app-privacy shows as pending until then. With app-privacy installed, an app is queued only after its patch applies.
 
 ## 0.5.4
 

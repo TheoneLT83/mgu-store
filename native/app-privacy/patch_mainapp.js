@@ -9,7 +9,10 @@
  * repository by app name. This tool patches its two bundles so that every
  * such path skips local-only apps; genuine backend-delivered apps are
  * reported exactly as before. A crashed local-only app is only restarted
- * (CRASH_GATE_JS), never wiped, reinstalled or disabled.
+ * (CRASH_GATE_JS), never wiped, reinstalled or disabled. iDrive 7 runs
+ * /usr/lib/oap-mainapp, iDrive 8 MainApp-21 (/usr/lib/oap-mainapp21), each
+ * with its own edits (UNITS); the unit is the one the kernel command line
+ * names (unitOf).
  *
  * An app is local-only when its installed package.json carries
  * "mguLocalOnly": true (stamped by this repository's packaging, see
@@ -21,9 +24,9 @@
  * Runs on the head unit as root with its Node 8; no dependencies.
  *
  *   patch_mainapp.js --version
- *   patch_mainapp.js check  [--json] [--main PATH] [--appmanagement PATH]
- *   patch_mainapp.js apply  [--json] [--main PATH] [--appmanagement PATH]
- *   patch_mainapp.js revert [--json] [--main PATH] [--appmanagement PATH]
+ *   patch_mainapp.js check  [--json] [--unit ID7|ID8] [--main PATH] [--appmanagement PATH]
+ *   patch_mainapp.js apply  [--json] [--unit ID7|ID8] [--main PATH] [--appmanagement PATH]
+ *   patch_mainapp.js revert [--json] [--unit ID7|ID8] [--main PATH] [--appmanagement PATH]
  *   patch_mainapp.js boot
  *   patch_mainapp.js check-apps APPS_DIR [APPS_DIR ...]
  *
@@ -36,15 +39,15 @@
  * refuse (mismatch; nothing written) and 1 on an error while writing.
  * boot is apply for the boot unit and always exits 0. With --json the last
  * stdout line is one JSON object: {version, command, state, changed,
- * restartNeeded, files}; restartNeeded is true while a running MainApp
- * started before the bundles were last written.
+ * restartNeeded, files, unit}; restartNeeded is true while a running
+ * MainApp started before the bundles were last written.
  */
 const childProcess = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-const VERSION = '1.3.0';
+const VERSION = '1.4.0';
 const MARKER_KEY = 'mguLocalOnly';
 const OAP_ROOT = '/var/opt/public/oap/';
 const OVERRIDE_FILE = OAP_ROOT + 'oap_12201/data/local-only-apps.json';
@@ -64,33 +67,35 @@ const DEFAULT_PATHS = {
 // (flat or under package/) carries the marker. Each package is read once
 // per size and mtime. Any read or parse failure means "not local-only", so
 // an unmarked app is reported as before.
-const HELPER_JS =
-    'function isLocalOnlyApp(appId){' +
-    'var fs=require("fs"),root=' + JSON.stringify(OAP_ROOT) + ',entry=null;' +
-    'try{var listed=JSON.parse(fs.readFileSync(' + JSON.stringify(OVERRIDE_FILE) +
-    ',"utf8"));if(Array.isArray(listed)&&listed.indexOf(appId)>=0)return!0}catch(e){}' +
-    'if(typeof appId!=="string"||!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(appId))return!1;' +
-    'try{entry=fs.readFileSync(root+"oap_12201/data/apps/"+appId+".json","utf8")}' +
-    'catch(e){if(e.code!=="ENOENT")return!1}' +
-    'if(entry!==null){try{var uid=JSON.parse(entry).userId;' +
-    'if(typeof uid!=="number"||uid%1!==0)return!1;' +
-    'return JSON.parse(fs.readFileSync(root+"oap_"+uid+"/source/package.json","utf8"))' +
-    '.' + MARKER_KEY + '===!0}catch(e){return!1}}' +
-    'var dir=' + JSON.stringify(PREINSTALLED_DIR) + ',' +
-    'read=isLocalOnlyApp.read||(isLocalOnlyApp.read={});' +
-    'try{return fs.readdirSync(dir).some(function(file){' +
-    'var m=/^(.+)[@-](\\d+\\..+)\\.tgz$/.exec(file);if(!m||m[1]!==appId)return!1;' +
-    'var st=fs.statSync(dir+file),key=file+":"+st.size+":"+st.mtime.getTime();' +
-    'if(!(key in read))read[key]=packageMarked(dir+file);return read[key]})}catch(e){return!1}' +
-    'function packageMarked(file){var t,o=0;' +
-    'try{t=require("zlib").gunzipSync(fs.readFileSync(file));' +
-    'while(o+512<=t.length&&t[o]!==0){' +
-    'var name=field(o,100).replace(/^\\.\\//,""),size=parseInt(field(o+124,12).trim(),8)||0;' +
-    'if(name==="package.json"||name==="package/package.json")' +
-    'return JSON.parse(t.toString("utf8",o+512,o+512+size)).' + MARKER_KEY + '===!0;' +
-    'o+=512+Math.ceil(size/512)*512}}catch(e){}return!1;' +
-    'function field(at,len){var s=t.toString("latin1",at,at+len),' +
-    'end=s.indexOf(String.fromCharCode(0));return end<0?s:s.slice(0,end)}}}';
+function helperJs(preinstalledDir) {
+    return 'function isLocalOnlyApp(appId){' +
+        'var fs=require("fs"),root=' + JSON.stringify(OAP_ROOT) + ',entry=null;' +
+        'try{var listed=JSON.parse(fs.readFileSync(' + JSON.stringify(OVERRIDE_FILE) +
+        ',"utf8"));if(Array.isArray(listed)&&listed.indexOf(appId)>=0)return!0}catch(e){}' +
+        'if(typeof appId!=="string"||!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(appId))return!1;' +
+        'try{entry=fs.readFileSync(root+"oap_12201/data/apps/"+appId+".json","utf8")}' +
+        'catch(e){if(e.code!=="ENOENT")return!1}' +
+        'if(entry!==null){try{var uid=JSON.parse(entry).userId;' +
+        'if(typeof uid!=="number"||uid%1!==0)return!1;' +
+        'return JSON.parse(fs.readFileSync(root+"oap_"+uid+"/source/package.json","utf8"))' +
+        '.' + MARKER_KEY + '===!0}catch(e){return!1}}' +
+        'var dir=' + JSON.stringify(preinstalledDir) + ',' +
+        'read=isLocalOnlyApp.read||(isLocalOnlyApp.read={});' +
+        'try{return fs.readdirSync(dir).some(function(file){' +
+        'var m=/^(.+)[@-](\\d+\\..+)\\.tgz$/.exec(file);if(!m||m[1]!==appId)return!1;' +
+        'var st=fs.statSync(dir+file),key=file+":"+st.size+":"+st.mtime.getTime();' +
+        'if(!(key in read))read[key]=packageMarked(dir+file);return read[key]})}catch(e){return!1}' +
+        'function packageMarked(file){var t,o=0;' +
+        'try{t=require("zlib").gunzipSync(fs.readFileSync(file));' +
+        'while(o+512<=t.length&&t[o]!==0){' +
+        'var name=field(o,100).replace(/^\\.\\//,""),size=parseInt(field(o+124,12).trim(),8)||0;' +
+        'if(name==="package.json"||name==="package/package.json")' +
+        'return JSON.parse(t.toString("utf8",o+512,o+512+size)).' + MARKER_KEY + '===!0;' +
+        'o+=512+Math.ceil(size/512)*512}}catch(e){}return!1;' +
+        'function field(at,len){var s=t.toString("latin1",at,at+len),' +
+        'end=s.indexOf(String.fromCharCode(0));return end<0?s:s.slice(0,end)}}}';
+}
+const HELPER_JS = helperJs(PREINSTALLED_DIR);
 
 // The predicate as 1.0.0 and 1.1.0 shipped it: registered apps only.
 const HELPER_JS_1_1_0 =
@@ -112,8 +117,8 @@ const KNOWN_SHA256 = {
     appmanagement: '73a4645586d4e1e67d2d477e6276207134246dfc5dfaa555f64644197d9fdc71'
 };
 
-function helperInjection(anchor) {
-    return [anchor, HELPER_JS + anchor, 1];
+function helperInjection(anchor, helper) {
+    return [anchor, (helper || HELPER_JS) + anchor, 1];
 }
 
 /* An edit that inserts `insert` between the stock text `before` and
@@ -142,16 +147,19 @@ const CRASH_RESTARTS = 5;
 const CRASH_WINDOW_MS = 10 * 60 * 1000;
 const CRASH_GATE_BEFORE =
     'appCorruptInfo=_.defaults(this._appIdToCorruptAppInfo[appId],{recoveryAttemptsSinceCorruption:0});';
-const CRASH_GATE_JS =
-    'if(appCorruptInfo.localOnlyRestarts||isLocalOnlyApp(appId)){const now=Date.now(),' +
-    'restarts=appCorruptInfo.localOnlyRestarts=(appCorruptInfo.localOnlyRestarts||[])' +
-    '.filter(at=>now-at<' + CRASH_WINDOW_MS + ');' +
-    'if(restarts.length>=' + CRASH_RESTARTS + '){' +
-    'const log=typeof logger==="object"&&logger&&typeof logger.warn==="function"?logger:console;' +
-    'return log.warn(`CorruptAppsHandler::_tryRecoverApp ${appId} is local-only ' +
-    'and was restarted ' + CRASH_RESTARTS + ' times in ' + CRASH_WINDOW_MS / 60000 + ' minutes; ' +
-    'left stopped until it is started again.`),Promise.resolve()}' +
-    'appCorruptInfo.recoveryAttemptsSinceCorruption=0}else ';
+/* giveUp: MainApp code run just before the app is left stopped. */
+function crashGateJs(logPrefix, giveUp) {
+    return 'if(appCorruptInfo.localOnlyRestarts||isLocalOnlyApp(appId)){const now=Date.now(),' +
+        'restarts=appCorruptInfo.localOnlyRestarts=(appCorruptInfo.localOnlyRestarts||[])' +
+        '.filter(at=>now-at<' + CRASH_WINDOW_MS + ');' +
+        'if(restarts.length>=' + CRASH_RESTARTS + '){' + (giveUp || '') +
+        'const log=typeof logger==="object"&&logger&&typeof logger.warn==="function"?logger:console;' +
+        'return log.warn(`' + logPrefix + ' ${appId} is local-only ' +
+        'and was restarted ' + CRASH_RESTARTS + ' times in ' + CRASH_WINDOW_MS / 60000 + ' minutes; ' +
+        'left stopped until it is started again.`),Promise.resolve()}' +
+        'appCorruptInfo.recoveryAttemptsSinceCorruption=0}else ';
+}
+const CRASH_GATE_JS = crashGateJs('CorruptAppsHandler::_tryRecoverApp');
 // At the restart, after MainApp's head-unit-shutdown check.
 const CRASH_COUNT_JS = 'appCorruptInfo.localOnlyRestarts&&(appCorruptInfo.recoveryAttemptsSinceCorruption=0,' +
     'appCorruptInfo.localOnlyRestarts.push(Date.now())),';
@@ -163,7 +171,6 @@ const CRASH_EDITS = [
 const KEEP_APP = '.filter(app=>!isLocalOnlyApp(app.getAppId()))';
 const KEEP_APP_ID = '.filter(appId=>!isLocalOnlyApp(appId))';
 
-// Each patch: [anchor, replacement, expected anchor occurrences].
 const MAIN_PATCHES = [
     // Predicate, one copy per bundle module that uses it.
     helperInjection('var AppManagementFfProviderImplOptions;'),
@@ -231,6 +238,116 @@ const EARLIER_PATCH_SETS = [
     { version: '1.1.0', main: withHelper(MAIN_PATCHES_1_2_2, HELPER_JS_1_1_0),
         appmanagement: withHelper(APPMANAGEMENT_PATCHES, HELPER_JS_1_1_0) }
 ];
+
+// MainApp-21 (iDrive 8). Its predicate decides an app MainApp-21 is
+// installing by MainApp-21's own preinstalled_apps; registry, app folders
+// and override list are where iDrive 7 has them.
+const PREINSTALLED_DIR_21 = '/usr/lib/oap-mainapp21/preinstalled_apps/';
+const HELPER_JS_21 = helperJs(PREINSTALLED_DIR_21);
+
+// oap-mainapp 9.3.4-pr-1052.3, HU I-step 036.010.004.
+const KNOWN_SHA256_21 = {
+    main: 'c96c81653952fd9b24e2718cead75b18c1a1d5be7b336f6f7053ce3c23490b33',
+    appmanagement: 'fb9a9b5326264bf68e39db577b6d123b5f7e657b1c8d3abf996511799c1e517a'
+};
+
+/* A NpmPackageManager method's first statement: a local-only app's
+ * request is refused before it reaches the app repository. */
+function refuseLocalOnly(method) {
+    return 'if(params&&isLocalOnlyApp(params.packageName))return PromiseExt_1.default.reject(' +
+        'new OAPError_1.default(`NpmPackageManager::' + method + ' ${params.packageName} is local-only; ' +
+        'the app repository is not queried.`,"LOCAL_ONLY_APP"));';
+}
+
+const MAIN_PATCHES_21 = [
+    // Predicate, one copy per bundle module that uses it.
+    helperInjection('class AppManagementFfProviderImpl{', HELPER_JS_21),
+    helperInjection('let AppManagementController=AppManagementController_1=class', HELPER_JS_21),
+    helperInjection('let CorruptAppsHandler=class', HELPER_JS_21),
+    helperInjection('let AppsAutoupdater=class', HELPER_JS_21),
+    helperInjection('let MainApp=class', HELPER_JS_21),
+    helperInjection('class DiagOapProvider21{', HELPER_JS_21),
+    helperInjection('class NpmPackageManager{', HELPER_JS_21),
+    helperInjection('let AnalyticsAppStartStopEvents=class', HELPER_JS_21),
+    helperInjection('let AppReleaseNotesControl=class', HELPER_JS_21),
+    // Backend inventory (AppManagement_ff.getAllInstalledApps) and the
+    // backend-triggered update of every app (updateAllApps).
+    ins('installedApps=this._appRegistry.getAll()', KEEP_APP, ';', 1),
+    ins('getAllAppIds()', KEEP_APP_ID, ',resultArgs=', 1),
+    // Update-availability sweep against the app repository.
+    ins('this.appRegistry.getAll()', KEEP_APP, ',(app=>{const appId', 1),
+    // Platform analytics APP_INSTALL events, success and failure.
+    ins('const settings=app.getSettings();', 'isLocalOnlyApp(entry.appId)||', '(0,AnalyticsServiceBuilders_1', 1),
+    ins('entry.appId&&', '!isLocalOnlyApp(entry.appId)&&', '(0,AnalyticsServiceBuilders_1', 1),
+    // Crash recovery (after MainApp-21's head-unit-shutdown check), and no
+    // APP_CRASH analytics event for local-only apps. A local-only app never
+    // reaches MainApp-21's later rungs (the forced update, the data wipe,
+    // the disable); its 48 h reset clears the stock counters only.
+    // MainApp-21 holds a crashed app unstartable (NOT_IN_CORRUPT_APPS_HANDLING)
+    // until its recovery ends; an app left stopped is released, so its tile
+    // starts it again.
+    ins('Promise.resolve();', crashGateJs('CorruptAppsHandler::tryRecoverApp',
+        'app.updateStartableCouncil(StartableCouncil_1.default.NOT_IN_CORRUPT_APPS_HANDLING,!0);'),
+    '(0,AnalyticsServiceBuilders_1', 1),
+    ins('appCorruptInfo.recoveryAttemptsSinceCorruption++,', CRASH_COUNT_JS, 'app.updateStartableCouncil(', 1),
+    // The corrupt-app report.
+    ins('return ', 'isLocalOnlyApp(appId)?Promise.resolve():', 'this.backendTransport.reportCorruptApp(appId,version', 1),
+    // Platform analytics APP_START and APP_STOP events.
+    ins('sendStopEvent(payload){', 'if(isLocalOnlyApp(payload.appName))return;', 'const logPrefix=', 1),
+    ins('sendStartEvent(payload){', 'if(isLocalOnlyApp(payload.appName))return;', 'const logPrefix=', 1),
+    // Periodic autonomous update of every app, and the user-triggered
+    // update of every app.
+    ins('!appsUpdated.includes(entry)', '&&!isLocalOnlyApp(entry)', ')', 1),
+    ins('getAllAppIds()', KEEP_APP_ID, ',reSortedList=', 1),
+    // Release notes request for updated apps.
+    ins('apps:updatedAppsMetadata', '.filter(metadata=>!isLocalOnlyApp(metadata.appId))', '.map(', 1),
+    // App-repository version queries and package downloads (also the
+    // predownload before a software update).
+    ins('download(params){', refuseLocalOnly('download'), 'const logPrefix="NpmPackageManager::download";', 1),
+    ins('getLatestAppVersion(params){', refuseLocalOnly('getLatestAppVersion'), 'const logPrefix=', 1),
+    ins('getLatestAppVersionInfo(params){', refuseLocalOnly('getLatestAppVersionInfo'), 'const logPrefix=', 1),
+    // Diagnostic readout (DiagOap StatusOap); provisioning lists our apps
+    // as installable too.
+    ins('_.union(this.installableApps,this.appRegistry.getAllAppIds())', KEEP_APP_ID, ';', 2),
+    ins('data){const logPrefix=`${this.CLASS_NAME}::persistCrashedStartingRunning`;',
+        'if(isLocalOnlyApp(data.name))return Promise.resolve();', '', 1),
+    ins('for(const entry of entries', '.filter(_e=>!isLocalOnlyApp(_e.name))', ')', 1),
+    ins('entryValue=entries', '.filter(_e=>!isLocalOnlyApp(_e.appId))', '.map(', 1)
+];
+
+const APPMANAGEMENT_PATCHES_21 = [
+    helperInjection('class AppManager{', HELPER_JS_21),
+    // Corrupt-app report on package verification failure.
+    ins('vin=>{', 'isLocalOnlyApp(appId)||', 'this.backendTransport.reportCorruptApp(', 1)
+];
+
+const PATCH_SETS_21 = { main: MAIN_PATCHES_21, appmanagement: APPMANAGEMENT_PATCHES_21 };
+
+// MainApp-21 has no earlier release's edits.
+function bundlePaths(root) {
+    return { main: root + '/src/main.js', appmanagement: root + '/src/AppManagement/AppManagement.js' };
+}
+const UNITS = {
+    ID7: { paths: DEFAULT_PATHS, sets: { current: PATCH_SETS, earlier: EARLIER_PATCH_SETS }, known: KNOWN_SHA256 },
+    ID8: { paths: bundlePaths('/usr/lib/oap-mainapp21'), sets: { current: PATCH_SETS_21, earlier: [] },
+        known: KNOWN_SHA256_21 }
+};
+
+/* The head unit whose MainApp oapcontroller starts: iDrive 8's MainApp-21
+ * when the kernel command line names hardware generation 21 or later
+ * (hwgen=21), else iDrive 7's. */
+function unitOf(cmdline) {
+    const m = /(?:^|\s)hwgen=(\d+)(?:\s|$)/.exec(cmdline || '');
+    return m && Number(m[1]) >= 21 ? 'ID8' : 'ID7';
+}
+
+function detectUnit() {
+    try {
+        return unitOf(fs.readFileSync('/proc/cmdline', 'utf8'));
+    } catch (e) {
+        return 'ID7';
+    }
+}
 
 const PREDICATE = 'isLocalOnlyApp';
 const HELPER_NAME = 'function ' + PREDICATE + '(';
@@ -391,18 +508,26 @@ function writeInPlace(file, data) {
 
 const USER_HZ = 100;
 
-/* Whether argv runs MainApp: node with DEFAULT_PATHS.main as its script
- * (the first argument that is not a node option), relative to cwd. */
-function runsMainapp(argv, cwd) {
+/* Whether argv runs MainApp: node with mainJs as its script (the first
+ * argument that is not a node option or a module -r preloads), relative
+ * to cwd. */
+function runsMainapp(argv, cwd, mainJs) {
     if (!/(^|\/)node$/.test(argv[0])) {
         return false;
     }
-    const script = argv.slice(1).filter((arg) => arg && arg[0] !== '-')[0];
-    return script !== undefined && path.resolve(cwd, script) === DEFAULT_PATHS.main;
+    let script;
+    for (let i = 1; i < argv.length && script === undefined; i += 1) {
+        if (argv[i] === '-r' || argv[i] === '--require') {
+            i += 1;
+        } else if (argv[i] && argv[i][0] !== '-') {
+            script = argv[i];
+        }
+    }
+    return script !== undefined && path.resolve(cwd, script) === mainJs;
 }
 
 /* Start times (ms since the epoch) of running MainApp processes. */
-function mainappStarts(procRoot) {
+function mainappStarts(procRoot, mainJs) {
     const uptime = parseFloat(fs.readFileSync(path.join(procRoot, 'uptime'), 'utf8').split(' ')[0]);
     const now = Date.now();
     const starts = [];
@@ -412,7 +537,7 @@ function mainappStarts(procRoot) {
         }
         try {
             const argv = fs.readFileSync(path.join(procRoot, pid, 'cmdline'), 'utf8').split('\0');
-            if (!runsMainapp(argv, fs.readlinkSync(path.join(procRoot, pid, 'cwd')))) {
+            if (!runsMainapp(argv, fs.readlinkSync(path.join(procRoot, pid, 'cwd')), mainJs)) {
                 return;
             }
             const stat = fs.readFileSync(path.join(procRoot, pid, 'stat'), 'utf8');
@@ -427,10 +552,10 @@ function mainappStarts(procRoot) {
 
 /* Whether a running MainApp started before a bundle was last written, so
  * it still runs the older code: bounce it. */
-function restartNeeded(files, procRoot) {
+function restartNeeded(files, procRoot, mainJs) {
     let starts;
     try {
-        starts = mainappStarts(procRoot);
+        starts = mainappStarts(procRoot, mainJs);
     } catch (e) {
         return false;
     }
@@ -481,7 +606,7 @@ function overallState(files) {
 
 /* Prepares every file before writing any: a problem in one file leaves
  * both untouched. */
-function runCommand(command, paths, log, sets) {
+function runCommand(command, paths, log, sets, known) {
     const jobs = Object.keys(paths).map((kind) => {
         const file = paths[kind];
         const patches = sets.current[kind];
@@ -495,7 +620,7 @@ function runCommand(command, paths, log, sets) {
             return job;
         }
         job.sha256 = sha256(text);
-        job.reference = job.sha256 === KNOWN_SHA256[kind];
+        job.reference = job.sha256 === known[kind];
         const found = examine(text, kind, sets, command);
         if (found.problems) {
             job.problems = found.problems;
@@ -568,7 +693,7 @@ function runCommand(command, paths, log, sets) {
     } catch (e) {
         log('ERROR: ' + e.message);
         result.error = e.message;
-        return { result: refresh(result, jobs), code: 1 };
+        return { result: refresh(result, jobs, known), code: 1 };
     } finally {
         if (remounted) {
             try {
@@ -581,26 +706,41 @@ function runCommand(command, paths, log, sets) {
         }
     }
     if (result.error) {
-        return { result: refresh(result, jobs), code: 1 };
+        return { result: refresh(result, jobs, known), code: 1 };
     }
-    return { result: refresh(result, jobs), code: 0 };
+    return { result: refresh(result, jobs, known), code: 0 };
 }
 
-/* runCommand, plus whether MainApp must be bounced to load the files. */
-function run(command, paths, log, procRoot, sets) {
-    const r = runCommand(command, paths, log,
-        sets || { current: PATCH_SETS, earlier: EARLIER_PATCH_SETS });
-    r.result.restartNeeded = restartNeeded(r.result.files.map((f) => f.path), procRoot || '/proc');
-    if (r.result.restartNeeded) {
+/* MainApp-21 is never bounced for this patch, whoever calls the tool: on
+ * iDrive 8 changed and restartNeeded stay false, and nextStart says the
+ * running MainApp-21 has not loaded the files as they are now (it does at
+ * its next start). r.written: this call wrote the files. */
+function run(command, paths, log, procRoot, sets, unit) {
+    const u = UNITS[unit || 'ID7'];
+    const r = runCommand(command, paths, log, sets || u.sets, u.known);
+    const stale = restartNeeded(r.result.files.map((f) => f.path), procRoot || '/proc', u.paths.main);
+    r.written = r.result.changed;
+    r.result.unit = unit || 'ID7';
+    if (r.result.unit === 'ID8') {
+        r.result.changed = false;
+        r.result.restartNeeded = false;
+        r.result.nextStart = stale;
+        if (stale) {
+            log('MainApp-21 loads the bundles as they are now at its next start');
+        }
+        return r;
+    }
+    r.result.restartNeeded = stale;
+    if (stale) {
         log('MainApp started before the bundles were last written; bounce its node child');
     }
     return r;
 }
 
-function refresh(result, jobs) {
+function refresh(result, jobs, known) {
     jobs.forEach((j, i) => {
         result.files[i].sha256 = j.sha256;
-        result.files[i].reference = j.sha256 === KNOWN_SHA256[j.kind];
+        result.files[i].reference = j.sha256 === known[j.kind];
         result.files[i].state = j.state;
         result.files[i].patchedBy = j.patchedBy;
     });
@@ -688,7 +828,7 @@ function checkApps(appsDirs, log) {
 }
 
 function usage() {
-    return 'usage: patch_mainapp.js --version | check|apply|revert [--json] ' +
+    return 'usage: patch_mainapp.js --version | check|apply|revert [--json] [--unit ID7|ID8] ' +
         '[--main PATH] [--appmanagement PATH] | boot | check-apps APPS_DIR...';
 }
 
@@ -710,31 +850,37 @@ function main(argv) {
         out(usage());
         return 2;
     }
-    const paths = Object.assign({}, DEFAULT_PATHS);
+    const given = {};
     let json = false;
+    let unit = null;
     for (let i = 1; i < argv.length; i += 1) {
         const arg = argv[i];
         if (arg === '--json') {
             json = true;
         } else if ((arg === '--main' || arg === '--appmanagement') && i + 1 < argv.length) {
-            paths[arg.slice(2)] = argv[i + 1];
+            given[arg.slice(2)] = argv[i + 1];
+            i += 1;
+        } else if (arg === '--unit' && UNITS[argv[i + 1]]) {
+            unit = argv[i + 1];
             i += 1;
         } else {
             out(usage());
             return 2;
         }
     }
+    unit = unit || detectUnit();
+    const paths = Object.assign({}, UNITS[unit].paths, given);
     if (command === 'boot') {
         let r;
         try {
-            r = run('apply', paths, (line) => out('app-privacy: ' + line));
-            out('app-privacy: ' + r.result.state + (r.result.changed ? ' (applied)' : ''));
+            r = run('apply', paths, (line) => out('app-privacy: ' + line), null, null, unit);
+            out('app-privacy: ' + r.result.state + (r.written ? ' (applied)' : ''));
         } catch (e) {
             out('app-privacy: ERROR: ' + e.message);
         }
         return 0;
     }
-    const r = run(command, paths, json ? () => {} : out);
+    const r = run(command, paths, json ? () => {} : out, null, null, unit);
     if (json) {
         out(JSON.stringify(r.result));
     }
@@ -743,6 +889,7 @@ function main(argv) {
 
 module.exports = {
     VERSION, MARKER_KEY, OVERRIDE_FILE, PREINSTALLED_DIR, HELPER_JS, PATCH_SETS, EARLIER_PATCH_SETS, KNOWN_SHA256,
+    PREINSTALLED_DIR_21, HELPER_JS_21, PATCH_SETS_21, KNOWN_SHA256_21, UNITS, unitOf,
     classify, applyPatches, removePatches, run, stampPackage, checkApps, main
 };
 

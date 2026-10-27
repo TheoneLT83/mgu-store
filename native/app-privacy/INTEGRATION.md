@@ -71,6 +71,20 @@ place queries the app repository with the VIN.
 
 Uninstall needs no app-privacy step.
 
+### iDrive 8
+
+MainApp-21 is never bounced for app-privacy. The tool's JSON says so
+itself: on iDrive 8 `changed` and `restartNeeded` are always false, and
+`nextStart` is true while the running MainApp-21 has not loaded the
+bundles as they are now (it does at its next start). An app install is queued and
+MainApp-21 installs it at the next start of the head unit, after
+`app-privacy.service` has applied the patch (§3); so before queueing an
+app the installer runs `apply --json` as above but does not bounce, and
+refuses the app on any exit other than 0. With no tool at that path the
+app is queued anyway (an older installation without the component), and
+MainApp-21 reports it until the component is installed. The package goes
+to `/usr/lib/oap-mainapp21/preinstalled_apps/` at that start.
+
 ## 3. The patch stays applied
 
 The `app-privacy` tool component (`component.json`) installs
@@ -88,10 +102,11 @@ release's patch, and the unit runs the new release from the next boot on.
 `apply` and `boot` replace an earlier release's edits with the current
 release's, so an update needs no `revert` first. After installing or
 updating the component, the installer runs `apply --json` and bounces
-MainApp's node child when `changed` or `restartNeeded` is true (§2).
-Removing the component is refused while any of our apps is installed;
-otherwise it runs `revert` first, which also removes an earlier release's
-edits, then bounces MainApp the same way.
+MainApp's node child when `changed` or `restartNeeded` is true (§2); on
+iDrive 8 it bounces nothing and, when `nextStart` is true, reports the component pending until the
+next start. Removing the component is refused while any of our apps is
+installed; otherwise it runs `revert` first, which also removes an
+earlier release's edits, then bounces MainApp the same way.
 
 `/etc` is on the root filesystem. A software update that rewrites the
 whole root filesystem removes `app-privacy.service` and its recmgr entries
