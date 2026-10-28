@@ -8,7 +8,7 @@
  *
  *   frame(model, { textScale, focus, scroll, layout }) -> { screen, rec, items, regions, icons }
  *   dragOf(model, { textScale, scroll, layout }, key) -> what a drag of grid or list key draws (store_drawn.js)
- *   dragFrame(drag, base, rows, from, top, textScale) -> one frame of that drag
+ *   dragFrame(drag, baseLayer, rowsLayer, from, top, textScale) -> one frame of that drag
  *
  * layout: placement()'s; the iDrive 8 design when null.
  *
@@ -156,11 +156,12 @@ const recordOpts = (layout, textScale) => (layout ? { textScale: textScale || 1,
     area: { x: 0, y: 0, w: layout.design.w, h: layout.design.h } } : { textScale: textScale || 1, view: 'id8' });
 
 /* A drag of grid or list key, so a drag frame moves its rows without the
- * frame built again: rec, the frame as it is (no focus ring); box, step
- * (a row's height), rows, shown (rows the box holds), max (the largest
- * scroll); bg, the colour under the rows; bar, the grid's scroll bar
- * colour (null: a list, no bar); and draw(from, n): rows from..from+n
- * drawn from 0, 0, n * step high. null when key is not on the screen. */
+ * frame built again: rec, the frame as it is without the grid's or list's
+ * rows (what is behind them shows between them); box, step (a row's
+ * height), rows (their count), shown (rows the box holds), max (the
+ * largest scroll); bar, the grid's scroll bar colour (null: a list, no
+ * bar); and draw(from, n): rows from..from+n drawn from 0, 0, n * step
+ * high. null when key is not on the screen. */
 function dragOf(m, opts, key) {
     const o = opts || {};
     const layout = o.layout || null;
@@ -173,26 +174,26 @@ function dragOf(m, opts, key) {
     const grid = c.gpu === 'appGrid';
     const g = grid ? gridView(b, c.opts) : listView(b, c.opts);
     const step = grid ? g.th : g.rh;
-    const t = kitTheme(st.theme);
     const ro = recordOpts(layout, o.textScale);
+    const without = Object.assign({}, st, { components: st.components.map((x) => (x === c
+        ? Object.assign({}, c, { opts: Object.assign({}, c.opts, { hidden: true }) }) : x)) });
     const draw = (from, n) => record({ kind: 'gpu', name: st.name, theme: st.theme, bg: 'none',
         components: [Object.assign({}, c, { x: 0, y: 0, h: n * step, opts: Object.assign({}, c.opts, { top: from, bar: false }) })] },
     Object.assign({}, ro, { design: { w: b.w, h: n * step }, area: { x: 0, y: 0, w: b.w, h: n * step } }));
-    return { rec: record(st, ro), box: b, step, rows: grid ? g.rows : g.all.length, shown: grid ? g.shown : g.n, max: g.max,
-        bg: st.bg && st.bg !== 'theme' ? st.bg : t.bg, bar: grid ? withAlpha(t.text, 0.25) : null, draw };
+    return { rec: record(without, ro), box: b, step, rows: grid ? g.rows : g.all.length, shown: grid ? g.shown : g.n, max: g.max,
+        bar: grid ? withAlpha(kitTheme(st.theme).text, 0.25) : null, draw };
 }
 
-/* A frame of a drag (dragOf's d): base, the layer of d.rec, and rows, the
- * layer of d.draw(from, n), drawn with the rows at scroll top (rows) in the
- * box, over its background, and the grid's scroll bar. */
-function dragFrame(d, base, rows, from, top, textScale) {
+/* A frame of a drag (dragOf's d): baseLayer, the layer of d.rec, and
+ * rowsLayer, the layer of d.draw(from, n), drawn with the rows at scroll
+ * top (rows) in the box, and the grid's scroll bar. */
+function dragFrame(d, baseLayer, rowsLayer, from, top, textScale) {
     const b = d.box;
     const r = new Recorder(d.rec.w, d.rec.h, { textScale: textScale || 1 });
     r.clear([0, 0, 0, 0]);
-    r.blit(base, 0, 0);
+    r.blit(baseLayer, 0, 0);
     r.clip(b.x, b.y, b.w, b.h);
-    r.fillRect(b.x, b.y, b.w, b.h, d.bg);
-    r.blit(rows, b.x, b.y + (from - top) * d.step);
+    r.blit(rowsLayer, b.x, b.y + (from - top) * d.step);
     r.noclip();
     if (d.bar && d.max > 0) {
         const h = b.h * d.shown / d.rows;

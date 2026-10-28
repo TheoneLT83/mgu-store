@@ -963,6 +963,33 @@ function runDrawn() {
             'at rest: the frame built again, the drag\'s two layers dropped');
         const top = drawn.scroll[g.key], first = drawn.items.find((i) => i.label === 'DOOM');
         eq(Math.round(first.y), Math.round(g.y - top * g.step), 'items where the rows came to rest');
+        // the page built whole during a drag (a state change): the next drag frame draws from it, the old layers dropped
+        gpu.emit('touch', 'down', x0, y0);
+        gpu.emit('touch', 'move', x0, y0 - 40);
+        const before = [...frames[frames.length - 1].layersUsed];
+        app._client.emit('state', Object.assign({}, many, { busy: { id: 'x3', op: 'install', phase: 'download', progress: 10 } }));
+        const d1 = dropped.length;
+        gpu.emit('touch', 'move', x0, y0 - 80);
+        const after = [...frames[frames.length - 1].layersUsed];
+        eq([after.length, after.some((id) => before.indexOf(id) >= 0), dropped.length - d1 >= 0], [2, false, true],
+            'a state change mid-drag: new layers for the next drag frame');
+        gpu.emit('touch', 'up', x0, y0 - 80);
+        // a drag the rows cannot follow (past the top) draws nothing
+        drawn.scroll = {};
+        drawn.render();
+        const n1 = frames.length;
+        gpu.emit('touch', 'down', x0, g.y + 20);
+        [40, 80, 120].forEach((dy) => gpu.emit('touch', 'move', x0, g.y + 20 + dy));
+        eq(frames.length - n1, 0, 'no drag frames where the rows cannot move');
+        gpu.emit('touch', 'up', x0, g.y + 140);
+        // the renderer's connection lost mid-drag: the gesture ends with it
+        gpu.emit('touch', 'down', x0, y0);
+        gpu.emit('touch', 'move', x0, y0 - 40);
+        gpu.emit('close');
+        eq([drawn.touch, drawn.drag], [null, null], 'a lost connection ends the drag');
+        gpu.emit('ready', { w: 1920, h: 720 }, { version: 1, modes: ['layer', 'embed'], embedBox: { x: 104, y: 88, w: 1796, h: 632 },
+            appArea: { x: 108, y: 82, w: 1790, h: 638 }, controller: false, touch: true, pixmap: true });
+        app._states[host(1)].emit('visible', { visible: true });
         drawn.scroll = {};
         app._client.emit('state', st);
         // focus moves with the HMI's

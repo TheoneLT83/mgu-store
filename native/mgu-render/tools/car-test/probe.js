@@ -9,8 +9,8 @@
  *   node probe.js gpu                         DRM devices, i915 frequencies, the GL libraries
  *                                             HmiMain3D and mgu-render have loaded, /dev/dri
  *   node probe.js cpu [seconds] [--gpu-freq]  per-second CPU of mgu-render, HmiMain3D (per thread), the Store and
- *                                             the system, and the fastest core's clock (cpufreq) with its policy
- *                                             and the Store, and the whole system (default 10 s)
+ *                                             the whole system, and the fastest core's clock (cpufreq) with its
+ *                                             policy (default 10 s)
  *   node probe.js all                         globals, then gpu
  *
  *   --json <file>   also write the results as JSON

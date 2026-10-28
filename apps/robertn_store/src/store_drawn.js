@@ -127,6 +127,7 @@ class Drawn extends EventEmitter {
         this.keepalive = null;
         this.touch = null;
         this.drag = null;                   // a drag's cached layers (_dragFrame)
+        this.retired = [];                  // layers to drop once the next frame is sent
         this.ccu = null;
         this.fccu = null;
         this.embedProxies = false;          // the HMI routes presses to embed proxies
@@ -198,6 +199,8 @@ class Drawn extends EventEmitter {
             return;
         }
         this.mode = mode;
+        this.touch = null;                  // a gesture the old connection had ends with it
+        this._dragEnd();
         this.visibleHosts.clear();
         this.focusLost = false;
         this.reset();
@@ -384,6 +387,7 @@ class Drawn extends EventEmitter {
         this.regions = r.regions;
         this._proxies();
         this._pictures(r.icons);
+        this._dragEnd();                    // built whole: a drag goes on from this page
         if (t0) {
             const ms = msNow() - t0;
             this.timing.builds++; this.timing.build += ms; this.timing.buildMax = Math.max(this.timing.buildMax, ms);
@@ -399,26 +403,33 @@ class Drawn extends EventEmitter {
         this.dirty = false;
         this.sentAt = now;
         this._send(rec);
-        this._dragEnd();                    // a drag's layers show the frame before this one
     }
 
     _model() {
         return Object.assign(this.host.model(), { stack: this.stack, tab: this.tab, filter: this.filter });
     }
 
+    /* Sends a frame, then drops the layers retired before it (none of them
+     * drawn by it or any frame after). */
     _send(rec) {
         const t1 = this.timing.on ? msNow() : 0;
         this.gpu.frame(rec);
         if (t1) { this.timing.frames++; this.timing.send += msNow() - t1; }
+        this.retired.forEach((L) => {
+            kit.dropLayer(L);
+            this.gpu.dropLayer(L.layerId);
+        });
+        this.retired = [];
     }
 
-    /* A frame of a drag: the frame as it was when the drag started and the
-     * dragged grid's or list's rows are cached layers (the rows again when
-     * the ones shown leave them), so a frame is those two, the rows moved,
-     * and the grid's scroll bar. */
+    /* A frame of a drag (the touch drags a region): the page as it was when
+     * the drag started, without the dragged grid's or list's rows, and those
+     * rows are cached layers, so a frame is the two, the rows moved, and the
+     * grid's scroll bar. The rows are drawn again when the ones shown leave
+     * them; both when the page was built whole since (render()). */
     _dragFrame() {
-        const g = this.touch && this.touch.region;
-        if (!g || !this.on_) {
+        const key = this.touch.region.key;
+        if (!this.on_) {
             this.render();
             return;
         }
@@ -428,21 +439,23 @@ class Drawn extends EventEmitter {
             return;
         }
         const t0 = this.timing.on ? msNow() : 0;
-        const d = this.drag || (this.drag = this._dragStart(g.key));
+        if (this.drag && this.drag.key !== key) {
+            this._dragEnd();
+        }
+        const d = this.drag || (this.drag = this._dragStart(key));
         if (!d) {
             this.render();
             return;
         }
-        const v = d.view, top = this.scroll[g.key] || 0;
-        const old = !d.rows || top < d.from || top + v.shown > d.from + d.n + 1e-6 ? this._dragRows(d, top) : null;
-        const r = dragFrame(v, d.base, d.rows, d.from, top, this.scale);
+        const v = d.view, top = this.scroll[key] || 0;
+        if (!d.rowsLayer || top < d.from || top + v.shown > d.from + d.n + 1e-6) {
+            this._dragRows(d, top);
+        }
+        const r = dragFrame(v, d.baseLayer, d.rowsLayer, d.from, top, this.scale);
         if (t0) { this.timing.drags++; this.timing.dragMs += msNow() - t0; }
         this.dirty = false;
         this.sentAt = now;
         this._send(r);
-        if (old) {
-            this._dropLayer(old);           // after the frame that no longer draws it
-        }
     }
 
     _dragStart(key) {
@@ -450,39 +463,35 @@ class Drawn extends EventEmitter {
         if (!view) {
             return null;
         }
-        return { view, base: kit.makeLayer(view.rec.w, view.rec.h, (r) => r.append(view.rec), this.scale), rows: null, from: 0, n: 0 };
+        return { key, view, baseLayer: kit.makeLayer(view.rec.w, view.rec.h, (r) => r.append(view.rec), this.scale), rowsLayer: null,
+            from: 0, n: 0 };
     }
 
-    /* The rows around top that fit DRAG_ROWS_PX, as a layer in place of the
-     * ones before; returns the layer they replace (null: none). */
+    /* The rows around top that fit DRAG_ROWS_PX, as the rows' layer; the
+     * one before is retired. */
     _dragRows(d, top) {
         const v = d.view;
-        const shown = Math.ceil(v.shown) + 1;
-        const n = Math.min(v.rows, Math.max(shown, Math.floor(DRAG_ROWS_PX / (v.step * this.scale))));
-        const from = Math.max(0, Math.min(v.rows - n, Math.floor(top) - Math.floor((n - shown) / 2)));
-        const old = d.rows;
+        const whole = Math.ceil(v.shown) + 1;
+        const n = Math.min(v.rows, Math.max(whole, Math.floor(DRAG_ROWS_PX / (v.step * this.scale))));
+        const from = Math.max(0, Math.min(v.rows - n, Math.floor(top) - Math.floor((n - whole) / 2)));
         const rec = v.draw(from, n);
-        d.rows = kit.makeLayer(v.box.w, n * v.step, (r) => r.append(rec), this.scale);
+        if (d.rowsLayer) {
+            this.retired.push(d.rowsLayer);
+        }
+        d.rowsLayer = kit.makeLayer(v.box.w, n * v.step, (r) => r.append(rec), this.scale);
         d.from = from;
         d.n = n;
-        return old;
     }
 
+    /* The drag's layers retired: dropped after the next frame sent. */
     _dragEnd() {
         const d = this.drag;
         this.drag = null;
         if (d) {
-            this._dropLayer(d.base);
-            if (d.rows) {
-                this._dropLayer(d.rows);
+            this.retired.push(d.baseLayer);
+            if (d.rowsLayer) {
+                this.retired.push(d.rowsLayer);
             }
-        }
-    }
-
-    _dropLayer(L) {
-        kit.dropLayer(L);
-        if (this.gpu.dropLayer) {
-            this.gpu.dropLayer(L.layerId);
         }
     }
 
@@ -519,7 +528,11 @@ class Drawn extends EventEmitter {
             }
             if (t.drag) {
                 const step = t.region.step;     // whole pixels: the rows' layer lands where the frame built whole draws them
-                this.scroll[t.region.key] = Math.max(0, Math.min(t.region.max, Math.round(t.from * step + t.y - y) / step));
+                const top = Math.max(0, Math.min(t.region.max, Math.round(t.from * step + t.y - y) / step));
+                if (top === (this.scroll[t.region.key] || 0) && this.focus === -1) {
+                    return;                     // nothing moved
+                }
+                this.scroll[t.region.key] = top;
                 this.focus = -1;
                 if (this.on_ && this.gpu.waiting) {
                     this.dirty = true;          // drawn on the renderer's TICK

@@ -108,8 +108,8 @@ restart, not a renderer restart.
 1. Owner: close the Store (HOME).
 2. `k install`. It records the installed versions, copies the published
    release (every artifact checked against the catalog), builds HEAD's
-   mgu-render (and the Store, when the branch has a newer version) and
-   installs them with the unit's own deploy tool (the deploy tool itself
+   mgu-render and Store, each when the branch has a newer version than the
+   unit, and installs them with the unit's own deploy tool (the deploy tool itself
    is not changed). A few minutes; a Store install waits for the app
    manager. It refuses, changing nothing, when it cannot record the
    versions, when the unit's versions are not the published ones, or when
