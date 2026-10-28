@@ -24,6 +24,26 @@ plays, and says what they see.
 | `kit.js` | `install-test.sh`'s version checks, on the Mac |
 | `test_probe.js` | `node test_probe.js`: the probe against a fake compositor |
 
+## Short check: a Store-only change
+
+When the branch changes only the Store (mgu-render's version is the
+published one), `install` puts on only the Store and nothing needs a
+head-unit restart. About 10 minutes:
+
+1. `k status` (the published versions), `k stats on`.
+2. Owner: open the Store on its list. `k drag before` while the owner drags
+   the list. Owner: close the Store.
+3. `k install` (the Store only).
+4. Owner: open the Store on its list. `k drag after`; the owner says whether
+   the list moves whole and smoothly. Then the Installed tab: `k drag
+   after-installed` while the owner drags its list. Owner: close the Store.
+5. `k restore`, `k status`.
+
+Each `<name>.txt` has the probe's per-second table with the fastest core's
+clock (`cpu MHz`) and the clock policy; each `<name>.stats` has mgu-render's
+lines and the Store's (`stats store: N builds avg ... (model ..., layout
+...), N drag frames avg ... ms, ...`).
+
 ## Before the car
 
 - The branch is committed: `install` builds HEAD (`release/release.js

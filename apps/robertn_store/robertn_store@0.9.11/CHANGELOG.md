@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.11
+
+Dragging a list or grid moves its rows without building the page again:
+when the drag starts, the page as it is and the rows around the ones shown
+are drawn once and kept by the renderer, and each drag frame places the
+rows, which takes a fraction of a millisecond in place of a whole page
+build. The rows stop on whole pixels; the page is built again where they
+come to rest. While mgu-render's stats-log is on, the Store's line also
+splits its builds into model and layout and counts the drag frames.
+
 ## 0.9.10
 
 While mgu-render's stats-log (`/run/mgu-render/stats-log`) exists, the

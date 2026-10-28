@@ -8,7 +8,8 @@
  *                                             zwp_linux_dmabuf_v1 bound and their events listed
  *   node probe.js gpu                         DRM devices, i915 frequencies, the GL libraries
  *                                             HmiMain3D and mgu-render have loaded, /dev/dri
- *   node probe.js cpu [seconds] [--gpu-freq]  per-second CPU of mgu-render, HmiMain3D (per thread)
+ *   node probe.js cpu [seconds] [--gpu-freq]  per-second CPU of mgu-render, HmiMain3D (per thread), the Store and
+ *                                             the system, and the fastest core's clock (cpufreq) with its policy
  *                                             and the Store, and the whole system (default 10 s)
  *   node probe.js all                         globals, then gpu
  *
@@ -454,6 +455,25 @@ function freqCard() {
     return c ? '/sys/class/drm/' + c : null;
 }
 
+/* the cores' clock policy (intel_pstate / cpufreq), a line; null without cpufreq */
+const CPU_SYS = '/sys/devices/system/cpu';
+function cpuPolicy() {
+    const gov = readTrim(CPU_SYS + '/cpu0/cpufreq/scaling_governor');
+    if (gov === null) return null;
+    const v = (f) => { const x = readTrim(CPU_SYS + '/' + f); return x === null ? '-' : x; };
+    return 'governor ' + gov + ', max ' + Math.round(Number(v('cpu0/cpufreq/cpuinfo_max_freq')) / 1000) + ' MHz, max_perf_pct ' +
+        v('intel_pstate/max_perf_pct') + ', min_perf_pct ' + v('intel_pstate/min_perf_pct') + ', no_turbo ' + v('intel_pstate/no_turbo');
+}
+/* the fastest core's clock now (MHz), or null */
+function cpuMhz(ncpu) {
+    let best = null;
+    for (let i = 0; i < ncpu; i++) {
+        const f = readTrim(CPU_SYS + '/cpu' + i + '/cpufreq/scaling_cur_freq');
+        if (f !== null && (best === null || Number(f) > best)) best = Number(f);
+    }
+    return best === null ? null : Math.round(best / 1000);
+}
+
 function cmdCpu(seconds, gpuFreq) {
     const ncpu = cpuCount();
     const card = gpuFreq ? freqCard() : null;
@@ -463,11 +483,13 @@ function cmdCpu(seconds, gpuFreq) {
         store: storePids()
     });
     const found = groupsNow();
-    const res = { seconds: seconds, cpus: ncpu, clkTck: CLK_TCK, pids: found, gpuFreqFile: card ? card + '/gt_act_freq_mhz' : null, samples: [], summary: {} };
+    const policy = cpuPolicy(), cpuf = cpuMhz(ncpu) !== null;
+    const res = { seconds: seconds, cpus: ncpu, clkTck: CLK_TCK, pids: found, gpuFreqFile: card ? card + '/gt_act_freq_mhz' : null, cpuPolicy: policy, samples: [], summary: {} };
     const head = 'pids: ' + Object.keys(found).map((k) => k + ' ' + (found[k].length ? found[k].join(',') : '-')).join(', ') +
         '; ' + ncpu + ' cpus; process % is of one core, system % of all cores';
     console.log('== cpu, ' + seconds + ' s\n' + head);
     if (gpuFreq && !card) console.log('gpu frequency: no gt_act_freq_mhz found');
+    console.log('cpu clock: ' + (policy || 'no cpufreq'));
     const snap = () => {
         const s = { t: process.hrtime(), sys: systemTicks(), groups: {}, threads: {} };
         Object.keys(found).forEach((k) => {
@@ -480,7 +502,7 @@ function cmdCpu(seconds, gpuFreq) {
         return s;
     };
     const cols = ['mgu-render', 'HmiMain3D', 'store'];
-    console.log(['  s', 'system%', 'mgu-render%', 'HmiMain3D%', 'store%'].concat(card ? ['gpu MHz'] : []).map((c, i) => lpad(c, i ? 12 : 3)).join(''));
+    console.log(['  s', 'system%', 'mgu-render%', 'HmiMain3D%', 'store%'].concat(card ? ['gpu MHz'] : [], cpuf ? ['cpu MHz'] : []).map((c, i) => lpad(c, i ? 12 : 3)).join(''));
     return new Promise((resolve) => {
         let prev = snap(), n = 0;
         const step = () => {
@@ -505,10 +527,11 @@ function cmdCpu(seconds, gpuFreq) {
                 const f = readTrim(card + '/gt_act_freq_mhz');
                 row.gpuMhz = f === null ? null : Number(f);
             }
+            if (cpuf) row.cpuMhz = cpuMhz(ncpu);
             res.samples.push(row);
             const cell = (v) => lpad(v === null || v === undefined ? '-' : v.toFixed(1), 12);
             console.log([lpad(n, 3), cell(row.system)].concat(cols.map((k) => cell(row.groups[k])))
-                .concat(card ? [lpad(row.gpuMhz === null ? '-' : row.gpuMhz, 12)] : []).join(''));
+                .concat(card ? [lpad(row.gpuMhz === null ? '-' : row.gpuMhz, 12)] : [], cpuf ? [lpad(row.cpuMhz === null ? '-' : row.cpuMhz, 12)] : []).join(''));
             prev = cur;
             if (n < seconds) setTimeout(step, 1000);
             else finish();
@@ -522,6 +545,7 @@ function cmdCpu(seconds, gpuFreq) {
             res.summary.system = stats(res.samples.map((r) => r.system));
             cols.forEach((k) => { res.summary[k] = stats(res.samples.map((r) => r.groups[k])); });
             if (card) res.summary.gpuMhz = stats(res.samples.map((r) => r.gpuMhz));
+            if (cpuf) res.summary.cpuMhz = stats(res.samples.map((r) => r.cpuMhz));
             const th = {};
             res.samples.forEach((r) => Object.keys(r.threads).forEach((key) => {
                 (th[key] = th[key] || { name: r.threads[key].name, vals: [] }).vals.push(r.threads[key].pct);
@@ -534,6 +558,7 @@ function cmdCpu(seconds, gpuFreq) {
             const out = ['summary:', '  system      ' + fmt(res.summary.system)];
             cols.forEach((k) => out.push('  ' + pad(k, 11) + ' ' + fmt(res.summary[k])));
             if (card) out.push('  gpu MHz     ' + (res.summary.gpuMhz ? 'mean ' + res.summary.gpuMhz.mean + ' max ' + res.summary.gpuMhz.max : '-'));
+            if (cpuf) out.push('  cpu MHz     ' + (res.summary.cpuMhz ? 'mean ' + res.summary.cpuMhz.mean + ' max ' + res.summary.cpuMhz.max : '-'));
             const busy = res.summary.threads.filter((t) => t.max >= 1);
             if (busy.length) {
                 out.push('threads at 1% or more (process:pid:tid name):');

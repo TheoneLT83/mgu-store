@@ -7,6 +7,8 @@
  * focus ring use the same list. No I/O (tools/test_screens.js).
  *
  *   frame(model, { textScale, focus, scroll, layout }) -> { screen, rec, items, regions, icons }
+ *   dragOf(model, { textScale, scroll, layout }, key) -> what a drag of grid or list key draws (store_drawn.js)
+ *   dragFrame(drag, base, rows, from, top, textScale) -> one frame of that drag
  *
  * layout: placement()'s; the iDrive 8 design when null.
  *
@@ -21,6 +23,8 @@
 const SCREENS = require('./am_screens.js');
 const { record } = require('./am_gpu.js');
 const { Recorder } = require('./kit_record.js');
+const { withAlpha } = require('./kit_canvas.js');
+const { theme: kitTheme } = require('./kit_themes.js');
 const { view, icons } = require('./store_ui.js');
 const { tabCells } = require('./am_widgets.js');
 const { gridView, listView, navItems, rightBoxes, keyBoxes, shown } = require('./am_store_widgets.js');
@@ -147,6 +151,56 @@ function screenOf(v, scroll, layout) {
         }) };
 }
 
+/* record()'s options for a layout (null: the iDrive 8 design). */
+const recordOpts = (layout, textScale) => (layout ? { textScale: textScale || 1, design: layout.design,
+    area: { x: 0, y: 0, w: layout.design.w, h: layout.design.h } } : { textScale: textScale || 1, view: 'id8' });
+
+/* A drag of grid or list key, so a drag frame moves its rows without the
+ * frame built again: rec, the frame as it is (no focus ring); box, step
+ * (a row's height), rows, shown (rows the box holds), max (the largest
+ * scroll); bg, the colour under the rows; bar, the grid's scroll bar
+ * colour (null: a list, no bar); and draw(from, n): rows from..from+n
+ * drawn from 0, 0, n * step high. null when key is not on the screen. */
+function dragOf(m, opts, key) {
+    const o = opts || {};
+    const layout = o.layout || null;
+    const st = screenOf(view(m), o.scroll || {}, layout);
+    const c = st.components.find((x) => `${st.name}.${x.name}` === key);
+    if (!c || (c.gpu !== 'appGrid' && c.gpu !== 'appList') || c.opts.hidden) {
+        return null;
+    }
+    const b = { x: c.x, y: c.y, w: c.w, h: c.h };
+    const grid = c.gpu === 'appGrid';
+    const g = grid ? gridView(b, c.opts) : listView(b, c.opts);
+    const step = grid ? g.th : g.rh;
+    const t = kitTheme(st.theme);
+    const ro = recordOpts(layout, o.textScale);
+    const draw = (from, n) => record({ kind: 'gpu', name: st.name, theme: st.theme, bg: 'none',
+        components: [Object.assign({}, c, { x: 0, y: 0, h: n * step, opts: Object.assign({}, c.opts, { top: from, bar: false }) })] },
+    Object.assign({}, ro, { design: { w: b.w, h: n * step }, area: { x: 0, y: 0, w: b.w, h: n * step } }));
+    return { rec: record(st, ro), box: b, step, rows: grid ? g.rows : g.all.length, shown: grid ? g.shown : g.n, max: g.max,
+        bg: st.bg && st.bg !== 'theme' ? st.bg : t.bg, bar: grid ? withAlpha(t.text, 0.25) : null, draw };
+}
+
+/* A frame of a drag (dragOf's d): base, the layer of d.rec, and rows, the
+ * layer of d.draw(from, n), drawn with the rows at scroll top (rows) in the
+ * box, over its background, and the grid's scroll bar. */
+function dragFrame(d, base, rows, from, top, textScale) {
+    const b = d.box;
+    const r = new Recorder(d.rec.w, d.rec.h, { textScale: textScale || 1 });
+    r.clear([0, 0, 0, 0]);
+    r.blit(base, 0, 0);
+    r.clip(b.x, b.y, b.w, b.h);
+    r.fillRect(b.x, b.y, b.w, b.h, d.bg);
+    r.blit(rows, b.x, b.y + (from - top) * d.step);
+    r.noclip();
+    if (d.bar && d.max > 0) {
+        const h = b.h * d.shown / d.rows;
+        r.roundRect(b.x + b.w - 6, b.y + (b.h - h) * top / d.max, 6, h, 3, d.bar);
+    }
+    return r;
+}
+
 function frame(m, opts) {
     const o = opts || {};
     const scroll = o.scroll || {};
@@ -161,8 +215,7 @@ function frame(m, opts) {
         st = screenOf(v, scroll, layout);
         laid = itemsOf(st, page);
     }
-    const rec = record(st, layout ? { textScale: o.textScale || 1, design: layout.design,
-        area: { x: 0, y: 0, w: layout.design.w, h: layout.design.h } } : { textScale: o.textScale || 1, view: 'id8' });
+    const rec = record(st, recordOpts(layout, o.textScale));
     const f = laid.items[o.focus];
     if (f && !f.reveal) {
         rec.strokeRoundRect(f.x - 8, f.y - 8, f.w + 16, f.h + 16, f.r + 8, 5, FOCUS);
@@ -184,4 +237,4 @@ function hit(items, x, y) {
     return -1;
 }
 
-module.exports = { frame, hit, placement };
+module.exports = { frame, dragOf, dragFrame, hit, placement };

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# A temporary test install of this branch's mgu-render (and Store, when the branch has a newer one)
+# A temporary test install of this branch's mgu-render and Store (each when the branch has a newer one)
 # on the head unit, the measurements around it, and the restore to the published versions.
 # Runs on the Mac from a mgu-store checkout; reaches the unit through deploy/hu connect.
 #
@@ -166,13 +166,15 @@ cmd_install() {
 	[ -f "$pub/catalog.json" ] || die "no catalog in $pub; nothing installed" 2
 	node "$KIT/kit.js" plan "$REPO" "$work/before/status.json" "$pub/catalog.json" >"$work/plan.json" || exit 2
 	node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).notes.forEach((n) => console.log(n))' "$work/plan.json"
-	# the unit's mgu-render must be the published artifact byte for byte, or restore could not
-	# put it back
+	# an mgu-render this test replaces must be the published artifact byte for byte, or restore could
+	# not put it back
 	local pub_render
-	pub_render=$(node -e 'const p = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); console.log(p.restore.find((r) => r.id === "mgu-render").artifact)' "$work/plan.json")
-	tar -xzOf "$pub/$pub_render" component.json >"$work/published-render.component.json"
-	cmp -s "$work/published-render.component.json" "$work/before/mgu-render.component.json" ||
-		die "the unit's mgu-render is not the published $pub_render; nothing installed" 2
+	pub_render=$(node -e 'const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).restore.find((x) => x.id === "mgu-render"); console.log(r ? r.artifact : "")' "$work/plan.json")
+	if [ -n "$pub_render" ]; then
+		tar -xzOf "$pub/$pub_render" component.json >"$work/published-render.component.json"
+		cmp -s "$work/published-render.component.json" "$work/before/mgu-render.component.json" ||
+			die "the unit's mgu-render is not the published $pub_render; nothing installed" 2
+	fi
 
 	say "== building HEAD ($head)"
 	local ids
@@ -212,7 +214,11 @@ cmd_install() {
 	say "== now"
 	show_renderer
 	[ $rc -eq 0 ] || die "the install failed (exit $rc); the deploy tool rolled it back. Run restore to check the versions" $rc
-	say "Installed. mgu-render runs the test build from its next start, which is to be on a freshly started HMI: with no app on screen, run: $0 reboot --off-screen"
+	if [ -n "$pub_render" ]; then
+		say "Installed. mgu-render runs the test build from its next start, which is to be on a freshly started HMI: with no app on screen, run: $0 reboot --off-screen"
+	else
+		say "Installed. The Store runs the test build from its next opening; mgu-render stays as it is (no restart)"
+	fi
 }
 
 cmd_restore() {
@@ -269,7 +275,11 @@ cmd_restore() {
 	done_dir="$STATE/restored-$(date '+%Y%m%d-%H%M%S')"
 	mv "$TEST" "$done_dir"
 	rm -rf "$d"
-	say "Restored (record moved to $done_dir). Finish with a head-unit restart, so the published mgu-render starts on a fresh HMI: with no app on screen, run: $0 reboot --off-screen"
+	if grep -q '^mgu-render ' "$done_dir/installed"; then
+		say "Restored (record moved to $done_dir). Finish with a head-unit restart, so the published mgu-render starts on a fresh HMI: with no app on screen, run: $0 reboot --off-screen"
+	else
+		say "Restored (record moved to $done_dir). mgu-render was not changed: no restart"
+	fi
 }
 
 cmd_restart() {
