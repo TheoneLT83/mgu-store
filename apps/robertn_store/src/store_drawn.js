@@ -285,15 +285,29 @@ class Drawn extends EventEmitter {
     proxyFocus(depth, i, value) {
         if (depth === this.stack.length && value) {
             this.focus = i;
+            this._focusBack();
             this.render();
         }
     }
 
     proxyPress(depth, i) {
         this._proxyInput();
+        if (depth === this.stack.length) {
+            this._focusBack();
+        }
         if (depth === this.stack.length && this.items[i]) {
             this.focus = i;
             this.host.act(this.items[i].act);
+        }
+    }
+
+    /* The HMI's focus is on the top page's buttons, so no popup covers it: the HMI does not always
+     * say the page has its focus back (after another app was updated in place, the picture stayed
+     * hidden behind the page's empty rows). */
+    _focusBack() {
+        if (this.focusLost) {
+            this.focusLost = false;
+            this._updateShow();
         }
     }
 

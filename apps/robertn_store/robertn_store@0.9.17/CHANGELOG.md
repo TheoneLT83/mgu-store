@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.17
+
+The controller moving or pressing on the top page counts as that page having the HMI's focus again: after another app was updated in place, the HMI did not say the page had its focus back, and the drawn picture stayed hidden behind the page's empty rows.
+
 ## 0.9.16
 
 The widget screens also take over when the renderer takes the Store's picture off screen later while the Store still asks for it (it showed for a minute, then left the empty host page).
