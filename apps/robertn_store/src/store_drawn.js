@@ -343,11 +343,10 @@ class Drawn extends EventEmitter {
         const n = this.host.proxies[depth - 1] || 0;
         for (let i = 0; i < n; i++) {
             const name = this.host.proxyName(this.mode, depth, i);
-            const it = this.items[i];
-            if (it) {
-                this.host.set(name, it.label);
-            }
-            this.host.show(name, !!it);
+            // unlabelled: the HMI shows the host state for a moment when the page opens and closes,
+            // before the renderer's picture is over it and after it has gone
+            this.host.set(name, ' ');
+            this.host.show(name, !!this.items[i]);
         }
     }
 

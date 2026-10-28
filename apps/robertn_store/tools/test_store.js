@@ -938,8 +938,9 @@ function runDrawn() {
         eq(gpu.claims, [mode === 'embed' ? { x: 0, y: 0, w: 1796, h: 632 } : { x: 0, y: 0, w: 1790, h: 638 }], 'touch claimed: the box');
         eq(frames.length > 0 && drawn.items.some((i) => i.label === 'DOOM'), true, 'the Store tab drawn');
         eq(app._drawnModel().version, 'test', 'the Store\'s version, from where this HMI\'s oap-sdk keeps package.json');
-        eq([lastText(proxy(1, 0)), lastText(proxy(1, 3)), lastText(proxy(1, 4)), lastText(proxy(1, 7))],
-            ['Store', 'Settings', 'All', 'DOOM'], 'proxies in focus order: side menu, filters, tiles');
+        eq([drawn.items[0].label, drawn.items[3].label, drawn.items[4].label, drawn.items[7].label],
+            ['Store', 'Settings', 'All', 'DOOM'], 'items in focus order: side menu, filters, tiles');
+        eq([lastText(proxy(1, 0)), lastText(proxy(1, 7))], [' ', ' '], 'proxies unlabelled: the HMI never shows the names');
         eq(last(new RegExp(`^${proxy(1, 12)}\\.Visible`)), `${proxy(1, 12)}.Visible=0`, 'unused proxies hidden');
         // focus moves with the HMI's
         app._components[proxy(1, 9)].emit('focus', { value: true });
@@ -959,7 +960,6 @@ function runDrawn() {
     }).then(() => {
         const labels = drawn.items.map((i) => i.label);
         eq(labels.indexOf('Update to 1.0.1') >= 0 && labels.indexOf('Remove') >= 0, true, 'Update and Remove on the page');
-        eq(lastText(proxy(2, labels.indexOf('Update to 1.0.1'))), 'Update to 1.0.1');
         reset();
         app._components[proxy(2, labels.indexOf('Update to 1.0.1'))].emit('action', {});
         return tick();

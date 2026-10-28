@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.14
+
+The drawn screens' HMI host states carry no labels: when the Store opens or closes, the HMI shows that state for a moment before the renderer's picture is over it (layer mode) and after it has gone, and it showed the page's names (Store, Installed, USB, Settings, All, Apps) as a list.
+
 ## 0.9.13
 
 From robertnisipeanu/mgu-store's 0.9.9. Dragging a list builds the drawn frame only when the renderer asks for the
