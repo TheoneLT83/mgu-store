@@ -161,7 +161,7 @@ const recordOpts = (layout, textScale) => (layout ? { textScale: textScale || 1,
  * height), rows (their count), shown (rows the box holds), max (the
  * largest scroll); bar, the grid's scroll bar colour (null: a list, no
  * bar); and draw(from, n): rows from..from+n drawn from 0, 0, n * step
- * high. null when key is not on the screen. */
+ * high. null when key is not on the screen or has nothing to scroll. */
 function dragOf(m, opts, key) {
     const o = opts || {};
     const layout = o.layout || null;
@@ -173,6 +173,9 @@ function dragOf(m, opts, key) {
     const b = { x: c.x, y: c.y, w: c.w, h: c.h };
     const grid = c.gpu === 'appGrid';
     const g = grid ? gridView(b, c.opts) : listView(b, c.opts);
+    if (g.max <= 0) {
+        return null;
+    }
     const step = grid ? g.th : g.rh;
     const ro = recordOpts(layout, o.textScale);
     const without = Object.assign({}, st, { components: st.components.map((x) => (x === c

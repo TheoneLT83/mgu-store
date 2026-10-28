@@ -964,15 +964,20 @@ function runDrawn() {
         const top = drawn.scroll[g.key], first = drawn.items.find((i) => i.label === 'DOOM');
         eq(Math.round(first.y), Math.round(g.y - top * g.step), 'items where the rows came to rest');
         // the page built whole during a drag (a state change): the next drag frame draws from it, the old layers dropped
+        // (a frame pending at the renderer: the whole build waits for its TICK, the drag frame after it draws from it)
         gpu.emit('touch', 'down', x0, y0);
         gpu.emit('touch', 'move', x0, y0 - 40);
         const before = [...frames[frames.length - 1].layersUsed];
+        gpu.waiting = true;
+        const n2 = frames.length, d1 = dropped.length;
         app._client.emit('state', Object.assign({}, many, { busy: { id: 'x3', op: 'install', phase: 'download', progress: 10 } }));
-        const d1 = dropped.length;
         gpu.emit('touch', 'move', x0, y0 - 80);
+        eq(frames.length, n2, 'nothing sent while a frame is pending');
+        gpu.waiting = false;
+        gpu.emit('tick');
         const after = [...frames[frames.length - 1].layersUsed];
-        eq([after.length, after.some((id) => before.indexOf(id) >= 0), dropped.length - d1 >= 0], [2, false, true],
-            'a state change mid-drag: new layers for the next drag frame');
+        eq([frames.length - n2, after.length, after.some((id) => before.indexOf(id) >= 0), dropped.slice(d1).sort()],
+            [1, 2, false, before.sort()], 'at the TICK: a drag frame of new layers from the new state, the old ones dropped');
         gpu.emit('touch', 'up', x0, y0 - 80);
         // a drag the rows cannot follow (past the top) draws nothing
         drawn.scroll = {};

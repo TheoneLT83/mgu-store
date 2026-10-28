@@ -530,7 +530,7 @@ class Drawn extends EventEmitter {
                 const step = t.region.step;     // whole pixels: the rows' layer lands where the frame built whole draws them
                 const top = Math.max(0, Math.min(t.region.max, Math.round(t.from * step + t.y - y) / step));
                 if (top === (this.scroll[t.region.key] || 0) && this.focus === -1) {
-                    return;                     // nothing moved
+                    return;
                 }
                 this.scroll[t.region.key] = top;
                 this.focus = -1;
