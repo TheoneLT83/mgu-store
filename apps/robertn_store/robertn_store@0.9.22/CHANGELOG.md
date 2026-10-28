@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.22
+
+The Installed page's Update chip only says an update is there: the row opens the app's page, whose button updates it (Update all updates them all).
+
 ## 0.9.21
 
 An app or tool's page: its version opens its changelog, every entry of its update history in full (each version with all its notes, or each commit with its date), newest first, scrolled by a finger or the controller.

@@ -201,8 +201,9 @@ function installedView(m) {
         const open = { do: 'open', page: pageOf(c) };
         return Object.assign(iconOf(c), { id: c.id, title: c.title, act: open,
             sub: [up ? (c.installed === c.version ? `${c.installed} · new build` : `${c.installed} > ${target(c)}`) : `${c.installed}${isTool(c) ? ' · tool' : ''}`, srcName(m, c)].filter(Boolean).join(' · '), subColor: up ? BLUE : DIM,
+            // the Update chip only says so: the row opens the page, whose button updates (Update all for all)
             right: up ? 'chip:Update' : s.sub !== 'Installed' ? `chip:${s.sub}` : 'chevron', chipColor: up ? BLUE : s.subColor,
-            chipAct: up ? { do: 'install', id: c.id } : null });
+            chipAct: null });
     };
     return {
         title: { text: 'Installed' },

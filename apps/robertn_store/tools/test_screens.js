@@ -256,10 +256,11 @@ f = screen('confirm-account');
 eq(f.items[1].act, { do: 'account-remove', id: '3f9a01c2' });
 eq(text(f, 'text'), 'robertn · TheoneLT83/mgu-store');
 
-// Installed: Update all for what can update now; a row's chip updates it
+// Installed: Update all for what can update now; a row's Update chip is no button (the row opens its page)
 f = screen('installed');
 eq(f.labels[4], 'Update all (1)', 'DOOM downloads and Extended dashboard waits: one update left');
-eq(f.items.find((i) => i.label === 'Update').act, { do: 'install', id: 'gauges' });
+ok(!f.items.some((i) => i.label === 'Update'), 'the Update chip is not pressed on its own');
+eq(f.items.find((i) => i.label === 'Extended dashboard' || i.act && i.act.page && i.act.page.id === 'gauges').act.do, 'open', 'its row opens the page');
 ok(f.labels.indexOf('Display bridge') >= 0 && f.labels.indexOf('M Vitals') < 0, 'installed ones only');
 eq(f.values.apps.items.filter((i) => i.id === 'gauges' || i.id === 'robertn_store').map((i) => i.sub),
     ['1.2.0 · new build · idrive7-apps', '0.7.0 · mgu-store'], 'a row names its source (an update first)');
