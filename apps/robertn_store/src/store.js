@@ -1412,7 +1412,8 @@ class Store extends OnlineApp {
             this._rows[kind] = rows.map((r) => r.id);
         });
         const removingComponent = this._component(this._removeId);
-        this._text(C.removeName, removingComponent ? `${removingComponent.title} ${removingComponent.installed}` : '');
+        // a queued install (iDrive 8) has no installed version
+        this._text(C.removeName, removingComponent ? [removingComponent.title, removingComponent.installed].filter(Boolean).join(' ') : '');
 
         // an updater that reports no sources or web hides Sources and Phone access
         const sources = connected && Array.isArray(st.sources) ? st.sources : null;

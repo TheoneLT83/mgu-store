@@ -24,6 +24,11 @@
  * a request, "late" announces it 1.5 s after the start.
  * $FAKE_MGR_PASS_MS: the start-up provisioning pass that many ms after the
  * start (fake_manager.js startupPass).
+ *
+ * On a fake iDrive 8 ($FAKE_MGR_DIR oap-mainapp21) it is MainApp-21: the
+ * stub's members have no underscore, and the controller takes install(id,
+ * {requestSource}) and update(id, {updateType, requestSource}), failing
+ * any call that does not ask for the preinstalled package.
  */
 const fs = require('fs');
 const path = require('path');
@@ -85,39 +90,42 @@ const settle = (fn) => {
 /* The installer, as MainApp's AppManagerStub: install, update and
  * uninstall are queued, and run through _callMethod in an AppManagement child that
  * _fork starts ($FAKE_INPLACE_FORK_MS). */
+const id8 = env.FAKE_MGR_DIR === 'oap-mainapp21';
+const u = id8 ? '' : '_';
+const preinstalled = (opts) => !id8 || (opts && opts.requestSource === 'PREINSTALLED');
 let stubQueue = Promise.resolve();
 const work = {
-    install: (id) => settle(() => {
-        if (fake.install(id, ' in place') === null) throw new Error(`no package for ${id}`);
+    install: (id, opts) => settle(() => {
+        if (!preinstalled(opts) || fake.install(id, ' in place') === null) throw new Error(`no package for ${id}`);
     }),
     update: (id, mechanism) => settle(() => {
-        if (mechanism !== 'PLATFORM' || !fake.update(id, ' in place')) throw new Error(`no update for ${id}`);
+        const platform = id8 ? preinstalled(mechanism) && mechanism.updateType === 'PLATFORM' : mechanism === 'PLATFORM';
+        if (!platform || !fake.update(id, ' in place')) throw new Error(`no update for ${id}`);
     }),
     uninstall: (id) => settle(() => {
         if (!fake.uninstall(id, ' in place')) throw Object.assign(new Error(`${id} not installed`), { reason: 'APP_NOT_INSTALLED' });
     }),
     other: () => delay(Number(env.FAKE_INPLACE_AHEAD_MS || 0))
 };
-const stub = {
-    _childProcess: null,
-    _forkPromise: null,
-    _fork() {
-        if (this._childProcess) return Promise.resolve();
-        if (!this._forkPromise) {
-            this._forkPromise = delay(Number(env.FAKE_INPLACE_FORK_MS || 0)).then(() => {
-                this._childProcess = {};
-                this._forkPromise = null;
-            });
-        }
-        return this._forkPromise;
-    },
-    _callMethod(m, id, ...args) {
-        return this._fork().then(() => work[m](id, ...args));
+const stub = {};
+stub[`${u}childProcess`] = null;
+stub[`${u}forkPromise`] = null;
+stub[`${u}fork`] = function () {
+    if (this[`${u}childProcess`]) return Promise.resolve();
+    if (!this[`${u}forkPromise`]) {
+        this[`${u}forkPromise`] = delay(Number(env.FAKE_INPLACE_FORK_MS || 0)).then(() => {
+            this[`${u}childProcess`] = {};
+            this[`${u}forkPromise`] = null;
+        });
     }
+    return this[`${u}forkPromise`];
+};
+stub[`${u}callMethod`] = function (m, id, ...args) {
+    return this[`${u}fork`]().then(() => work[m](id, ...args));
 };
 ['install', 'update', 'uninstall', 'other'].forEach((m) => {
     stub[m] = function (id, ...args) {
-        const p = stubQueue.then(() => this._callMethod(m, id, ...args));
+        const p = stubQueue.then(() => this[`${u}callMethod`](m, id, ...args));
         stubQueue = p.catch(() => {});
         return p;
     };
@@ -127,7 +135,7 @@ const stub = {
 let ahead = Number(env.FAKE_INPLACE_AHEAD_MS || 0) > 0;
 const appManager = {
     appManager: stub,
-    install: (id) => stub.install(id),
+    install: (id, opts) => stub.install(id, opts),
     update: (id, mechanism) => {
         if (ahead) {
             ahead = false;

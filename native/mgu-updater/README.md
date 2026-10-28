@@ -733,13 +733,26 @@ each request, and whenever it changes (at most every 250 ms):
     "build": null, "optional": false, "uninstallable": true, "revision": null,
     "description": "…", "author": "…", "icon": "/var/opt/mgu-updater/state/icons/…png",
     "mguHmi": ["ID7"], "compat": "yes", "provides": null, "service": null,
-    "listedId": null, "installAs": "doom", "blocked": null, "pendingReboot": false, "problem": null, "queued": false, "error": null } ] }
+    "listedId": null, "installAs": "doom", "blocked": null, "pendingReboot": false, "problem": null, "nextStart": null, "queued": false, "error": null } ] }
 ```
 
 - `components`: each origin's component of an id (Sources, "Ids"); `id`
   the row's id (requests and `busy` name it), `listedId` the id its source
   lists when `id` is another, `installAs` the id it is or would be
   installed under, `blocked` why it cannot be installed (else null);
+  `pendingReboot` true while the deploy tool reports that id pending a
+  restart, also an iDrive 8 app install queued for the next start, or one
+  this start put in place that MainApp does not list yet (for 5 minutes;
+  after that it is a failed install, `put in place at the last start but
+  not registered`); `nextStart` `install` or `remove` for such an iDrive 8
+  app change (else null; a queued install can be removed, which drops
+  it). An id not installed is pending only on the row of the origin that
+  queued it, and only that row can remove it; `error` also why the
+  last start failed to apply its change (the deploy tool's `last_apply`),
+  with `applyFailed` `install` or `remove` (else null), until an install
+  or removal of it is asked for or a newer start applies
+  (`state/apply-seen.json`); the removal of an app not installed whose
+  change failed only puts the failure aside;
   `source` is null for an installed component without an origin. `status` is `installed`,
   `update`, `available` or `newer` (a local build ahead of its source);
   `build` is `"unit"` for what is built on the unit; `revision` the short

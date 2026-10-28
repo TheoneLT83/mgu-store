@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.9.12
+
+From robertnisipeanu/mgu-store's 0.9.8.
+
+An app install queued for the next start (iDrive 8: MainApp takes the
+app only then) shows `Restart pending` instead of Install or Update
+again, on its tile, its row and the Installed tab, and is not counted
+as an update; its page offers Restart head unit. Before, a first
+install showed Install once it finished (with mgu-updater 0.8.3 the
+updater reports it pending), and a press installed it a second time. An
+app whose removal is queued shows `Restart pending` too.
+
+With mgu-updater 0.8.3: a queued first install can be removed, which
+drops it from the queue; an app whose removal is queued for the next
+start offers no Remove again. A change the last start failed to apply
+shows as Failed with the reason (the updater's error): Try again repeats
+what failed, the removal or the install, and an install that failed can
+also be cleared with Remove.
+
 ## 0.9.11
 
 From robertnisipeanu/mgu-store's 0.9.7: an installed tool's page shows what the tool says is wrong (the updater's

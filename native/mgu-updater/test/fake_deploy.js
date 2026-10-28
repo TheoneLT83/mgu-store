@@ -23,7 +23,9 @@
  * to $FAKE_DEPLOY_LOG; while $FAKE_DEPLOY_LOG.fail exists, install exits
  * with the status it holds, giving "test failure <status>" as its reason.
  * $FAKE_DEPLOY_LOG.pending lists ids (one per line) reported under
- * pending_reboot, whose service counts as not restarted;
+ * pending_reboot, whose service counts as not restarted; $FAKE_PENDING
+ * more, comma-separated, each `id` or `id=reason`; $FAKE_LAST_APPLY is
+ * the JSON status --json gives as last_apply;
  * while $FAKE_DEPLOY_LOG.rollbackfail exists, rollback exits 1.
  * status --json says the head unit is $FAKE_UNIT_HMI (ID7 without it) and
  * lists every installed tool with what it provides (component.json
@@ -165,7 +167,8 @@ if (cmd === 'status') {
     const pending = (process.env.FAKE_PENDING || '').split(',').filter(Boolean).concat(pendingIds());
     console.log(JSON.stringify({ unit: { hmi: process.env.FAKE_UNIT_HMI || 'ID7', firmware: 'test firmware' },
         components: tools().map((c) => ({ id: c.id, kind: 'tool', version: c.version, provides: c.mguProvides || null })).concat(apps()),
-        pending_reboot: pending.map((id) => ({ id, reason: 'test' })), appmanager: readAm(),
+        pending_reboot: pending.map((p) => ({ id: p.split('=')[0], reason: p.split('=')[1] || 'test' })), appmanager: readAm(),
+        last_apply: process.env.FAKE_LAST_APPLY ? JSON.parse(process.env.FAKE_LAST_APPLY) : null,
         idrive7: { apps: fs.existsSync(`${process.env.FAKE_DEPLOY_LOG}.idrive7`) ? JSON.parse(fs.readFileSync(`${process.env.FAKE_DEPLOY_LOG}.idrive7`, 'utf8')) : [] } }));
     process.exit(0);
 }

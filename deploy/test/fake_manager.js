@@ -55,7 +55,9 @@ const write = (p, data) => { fs.mkdirSync(path.dirname(p), { recursive: true });
 const oap = env.MGU_DEPLOY_OAP;
 const mgr = path.join(oap, 'oap_12201');
 const appsDir = path.join(mgr, 'data', 'apps');
-const pre = path.join(env.MGU_DEPLOY_MAINAPP, 'preinstalled_apps');
+// MainApp's folder: MainApp-21's on a fake iDrive 8 ($FAKE_MGR_DIR oap-mainapp21)
+const mainapp = env.FAKE_MGR_DIR === 'oap-mainapp21' ? env.MGU_DEPLOY_MAINAPP21 : env.MGU_DEPLOY_MAINAPP;
+const pre = path.join(mainapp, 'preinstalled_apps');
 const entries = () => (fs.existsSync(appsDir) ? fs.readdirSync(appsDir) : [])
     .filter((n) => n.endsWith('.json')).map((n) => ({ id: n.slice(0, -5), file: path.join(appsDir, n), entry: readJson(path.join(appsDir, n)) }));
 const home = (uid) => path.join(oap, `oap_${uid}`);
@@ -73,6 +75,12 @@ function unpack(file, source) {
     fs.rmSync(source, { recursive: true, force: true });
     fs.mkdirSync(source, { recursive: true });
     cp.execFileSync('tar', ['-xzf', file, '-C', source]);
+    // an npm-format package (files under package/), as MainApp-21 installs it
+    const npm = path.join(source, 'package');
+    if (fs.existsSync(path.join(npm, 'package.json')) && !fs.existsSync(path.join(source, 'package.json'))) {
+        fs.readdirSync(npm).forEach((n) => fs.renameSync(path.join(npm, n), path.join(source, n)));
+        fs.rmdirSync(npm);
+    }
 }
 const fallbackActive = () => fs.existsSync(path.join(env.MGU_DEPLOY_VAR_OPT, 'mgu-deploy', 'main.js')) &&
     fs.existsSync(path.join(env.MGU_DEPLOY_SYSTEMD, 'mgu-app-fallback.service'));
@@ -89,7 +97,7 @@ function install(id, how, source) {
         log(`backend-query ${id}`);
         return null;
     }
-    const range = readJson(path.join(env.MGU_DEPLOY_MAINAPP, 'config', 'base.json')).usableUidsAndGids;
+    const range = readJson(path.join(mainapp, 'config', 'base.json')).usableUidsAndGids;
     const used = new Set(entries().map((e) => e.entry && e.entry.userId));
     let uid = range.min;
     while (used.has(uid)) uid += 1;

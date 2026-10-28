@@ -1,4 +1,4 @@
-# robertn_store 0.9.6
+# robertn_store 0.9.8
 
 The Store: every app and head-unit tool of every source, each with its
 state, the progress of the running install, the sources, the phone page
@@ -43,7 +43,9 @@ USB, Settings) beside:
   holds; installed, it shows as installed, with Remove and no update), `Not for this head unit` / `For
   iDrive 8` (that version is not offered), the failure, what an installed tool says is wrong (the updater's `problem`: `In-page drawing unavailable: <reason>` from the renderer), `Restart pending`; and what can be done:
   Install, Update to, Try again, Restart head unit, Remove (a confirm step). A second renderer
-  installs beside the first.
+  installs beside the first. On iDrive 8 an app install or removal is
+  queued for the next start: its row shows `Restart pending`, as a tool
+  pending a restart does.
 - **Installed**: apps and head-unit tools, each with its version and
   source, its update (a press on Update installs it) or state, and Update all.
 - **USB**: the components of the sticks' sources.
@@ -116,8 +118,9 @@ installs it; the same package runs on iDrive 7.
 | `DOOM` · `42%` / `Verifying` / `Building` / `Installing` / `Removing` | nothing (in progress) |
 | `Extended dashboard` · `Waiting` | nothing (queued) |
 | `Display bridge` · `Restart pending` | nothing (installed; active after the next reboot) |
+| `Car Data` · `Restart pending` | an iDrive 8 app install queued for the next start (the updater's `nextStart: "install"`): *Remove?* when `uninstallable`, which drops it; a queued removal (`nextStart: "remove"`) offers nothing |
 | `Car Data` · `Not for this head unit` | nothing (installed; the updater marks the new version `compat: "no"`); *Remove?* when `uninstallable` |
-| `DOOM` · `Failed, retry` | try again (the status line names the error) |
+| `DOOM` · `Failed, retry` | try again (the status line names the error); a removal the last start failed to apply is removed again (*Remove?*); an install it failed to apply is installed again, and its page also has *Remove* (when `uninstallable`), which clears it |
 | `Renderer` · `Install 0.2.0` | install it (beside another installed renderer) |
 
 The start screen has a status line (`1 update, checked 14:02`, `Offline`,
@@ -324,15 +327,15 @@ tools/test_screens.js      every drawn screen in iDrive 7's and 8's boxes: in th
 tools/test_store.js        src/store.js's flows against stand-in SDK, RHMI, updater, speller and renderer
 tools/shots.js             screenshots of the drawn screens through mgu-render --replay
 tools/make_icon.py         the 140x140 tile icon from tools/store_icon.svg (headless Chromium)
-robertn_store@0.9.11/       staged package tree (no javascript/: the build writes it)
+robertn_store@0.9.12/       staged package tree (no javascript/: the build writes it)
 ```
 
 ## Build
 
 ```sh
 cd apps/robertn_store
-node tools/build.js                                # robertn_store@0.9.11.src.tgz
-node tools/build.js --sdk <donor .tgz|.js>         # and robertn_store@0.9.11.tgz (MGU_SDK_DONOR)
+node tools/build.js                                # robertn_store@0.9.12.src.tgz
+node tools/build.js --sdk <donor .tgz|.js>         # and robertn_store@0.9.12.tgz (MGU_SDK_DONOR)
 node tools/test_view.js && node tools/test_rhmi.js && node tools/test_qr.js && node tools/test_speller.js &&
     node tools/test_screens.js && node tools/test_store.js && STORE_HMI=ID8 node tools/test_store.js
 (cd ../../native/mgu-render && make test) && node tools/shots.js <out dir>     # screenshots

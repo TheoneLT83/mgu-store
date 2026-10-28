@@ -397,6 +397,7 @@ first. `restore` needs `--yes`, or `YES` typed at a terminal.
 /var/opt/public/oap/oap_12201/data/apps/<id>.json   an app's registry entry
 /var/opt/public/oap/oap_12201/data/custom_apps.json the apps the fallback lists
 /var/opt/public/oap/oap_12201/data/mgu-deploy-inplace.json the manager's in-place hook and its last answer
+/var/opt/public/oap/oap_12201/data/mgu-deploy-guard.json   iDrive 8: the copy's guard for this boot
 /var/opt/public/oap/oap_<uid>/           an app's home (source/, data/, security/, someipInterfaces/, ...)
 ```
 
@@ -431,10 +432,46 @@ artifact is skipped, saying why, and the others install.
 
 MainApp-21 installs an app it finds in its `preinstalled_apps` when
 provisioning, the six das files under `/usr/share/tm/prov`, lists it, at
-its start; it does not update a preinstalled app in place, and an app is
-not taken apart while it runs. So an app install or uninstall on iDrive 8
-is queued and applied at the next start of the head unit, the way
-IterioDev's App Manager does (`appmanager-service/oap.js` in
+its start. Provisioning reads the das files only at its own start, so a
+change takes one of two paths.
+
+**Live.** The fallback copy of MainApp-21's `main.js`, bound at boot by
+`mgu-app-fallback.service` (from `mgu-app-fallback-id8.service`), carries
+the in-place hook. When the running MainApp-21 started on it, `install`,
+an update and `uninstall` are MainApp-21's own install, update or
+uninstall of that one app, as on iDrive 7, and its tile appears or goes at
+once. The package (`preinstalled_apps/<id>@<version>.tgz`) and the app's
+das lines go in first, as `apply-pending` puts them (below), so every later
+start has the app; its `custom_apps.json` entry gives it its provisioning
+section until then (the copy fills only a listed app's empty section and
+never adds to `installable_apps`). `status`, run as root (the updater
+runs it right after it installs the deploy tool), turns the fallback on
+once, when a copy of this MainApp-21's `main.js` builds, with the crash
+list's rules for remounting `/`; it reports `live_installs` in `status
+--json`, and does not turn it on again after `fallback off`. A MainApp-21
+the copy does not fit is tried again when its `main.js`, the deploy tool
+or app-privacy changes (`id8-live.json`). From the next start on, changes
+are live; until then they are queued. A
+change the running MainApp-21 does not take (no hook, the request not
+taken or refused, MainApp-21 restarted) is queued instead, with what was
+placed for it put back; one its installer failed fails, rolled back. On a
+MainApp-21 the copy does not fit, every change is queued. An app
+uninstalled live goes on app-privacy's override list
+(`local-only-apps.json`): provisioning lists it until the next start, and
+a MainApp-21 restarted meanwhile would otherwise ask the backend for it.
+MainApp-21 is never restarted.
+
+The copy is built at every boot from the stock `main.js` and bound only
+when its three anchors each occur once, app-privacy's patch applies to it
+and it parses; otherwise the stock file stays in effect. Every edit in it
+runs inside `try`/`catch`. oapcontroller wipes every app's ACLs and data
+on the third MainApp-21 crash in a row (30 s up ends a row), so the copy
+keeps a guard (`oap_12201/data/mgu-deploy-guard.json`): when MainApp-21
+restarted within a minute of starting, or during a live change, the copy
+behaves as the stock file for the rest of that boot, and changes are
+queued, the status file saying why.
+
+**Queued**, the way IterioDev's App Manager does (`appmanager-service/oap.js` in
 [IterioDev/mgu-app-store](https://github.com/IterioDev/mgu-app-store)),
 whose das edits and removal steps it follows:
 
@@ -453,8 +490,8 @@ whose das edits and removal steps it follows:
   stops the install rather than guess.
   With app-privacy installed, its `apply` runs first and the app is
   refused when it fails; MainApp-21 is not restarted for it, and the patch
-  is in effect from the start that installs the app. The provisioning
-  fallback is not used there (`fallback on|off|migrate` is refused).
+  is in effect from the start that installs the app. `fallback migrate`
+  is refused.
 - `uninstall` queues the removal (`removed at the next start`); for an app
   only queued, it drops the queued install. Installing the installed
   version again drops a queued removal.
@@ -1416,7 +1453,10 @@ whole iDrive 8 path:
   from an iDrive 8 donor;
 - the renderer and tether units as written here (a renderer the App
   Manager installed is refused here; remove it there first);
-- MainApp-21's process command line holding `oap-mainapp21/src/main.js`
+- MainApp-21 running as node with `oap-mainapp21/src/main.js` as its script
   (`apply-pending` refuses while it runs, by that);
+- live changes (the copy bound at boot, the hook, tiles shown and removed
+  at once, no corruption handling in oapcontroller's log) on the car's
+  MainApp-21 build;
 - MainApp-21 supplying `oap-sdk` to an npm package that names it in
   `dependencies` without shipping it (IterioDev's packages do so).

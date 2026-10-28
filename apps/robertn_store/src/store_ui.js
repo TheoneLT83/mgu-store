@@ -41,7 +41,7 @@
  */
 const { PHASE, percent, rowAction, statusLine, sourceLabel, sourceState, sourceActions, sourceChannel, sourceAccount,
     tokenLabel, tokenState, tokenSources, accountsState, loginStatus, loginCode, phoneState, phoneAddress, hmiNames,
-    notForUnit, removable, pickOptions, probeStatus, sourceNames, listed } = require('./store_view.js');
+    notForUnit, removable, pickOptions, probeStatus, sourceNames, listed, startPending } = require('./store_view.js');
 
 const GREEN = '#35d07f';
 const BLUE = '#3d9bff';
@@ -134,6 +134,9 @@ function tileState(c, busy) {
     if (c.error) {
         return { sub: 'Failed', subColor: RED, badge: '', progress: -1 };
     }
+    if (startPending(c)) {
+        return { sub: 'Restart pending', subColor: AMBER, badge: c.installed ? 'installed' : '', progress: -1 };
+    }
     if (c.status === 'update') {
         return { sub: `Update ${target(c)}`, subColor: BLUE, badge: 'update', progress: -1 };
     }
@@ -151,10 +154,10 @@ function tile(m, c, busy) {
 }
 
 function nav(m, sel) {
-    const updates = comps(m).filter((c) => c.status === 'update' && !notForUnit(c) && !c.blocked).length;
+    const updates = comps(m).filter((c) => c.status === 'update' && !notForUnit(c) && !c.blocked && !startPending(c)).length;
     const usbIds = (sources(m) || []).filter((s) => s.usb).map((s) => s.id);
     const usbNew = comps(m).filter((c) => usbIds.indexOf(c.source) >= 0 && (c.status === 'available' || c.status === 'update') &&
-        !notForUnit(c) && !c.blocked).length;
+        !notForUnit(c) && !c.blocked && !startPending(c)).length;
     return { sel, items: [['Store', 'grid', ''], ['Installed', 'check', updates || ''], ['USB', 'usb', usbNew || ''], ['Settings', 'gear', '']]
         .map(([label, vicon, badge], i) => ({ id: TABS[i], label, vicon, badge: String(badge), act: { do: 'tab', tab: TABS[i] } })) };
 }
@@ -345,7 +348,11 @@ function appView(m, page) {
         sub: busy.phase === 'download' && busy.total ? `${size(busy.progress)} of ${size(busy.total)}` : '' }
         : c.queued ? { hidden: false, label: 'Waiting', value: 0, right: '', sub: '' } : hidden;
     const action = rowAction(c, busy);
-    if (action === 'install') {
+    const retryRemove = action === 'remove' && !!c.error;
+    if (retryRemove) {
+        v.primary = button('Try again', { do: 'open', page: { name: 'confirm', kind: 'remove', id: c.id } },
+            { vicon: 'refresh', style: 'primary', color: BLUE });
+    } else if (action === 'install') {
         v.primary = button(c.error ? 'Try again' : c.status === 'update' ? `Update to ${target(c)}` : 'Install', { do: 'install', id: c.id },
             { vicon: c.error ? 'refresh' : 'arrowDown', style: 'primary', color: BLUE });
     } else if (c.pendingReboot && canRestart(m)) {
@@ -354,7 +361,7 @@ function appView(m, page) {
     } else {
         v.primary = hidden;
     }
-    v.secondary = removable(c, busy) ? button('Remove', { do: 'open', page: { name: 'confirm', kind: 'remove', id: c.id } },
+    v.secondary = removable(c, busy) && !retryRemove ? button('Remove', { do: 'open', page: { name: 'confirm', kind: 'remove', id: c.id } },
         { vicon: 'trash', style: 'outline' }) : hidden;
     return v;
 }

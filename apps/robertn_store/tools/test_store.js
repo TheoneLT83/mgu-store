@@ -830,6 +830,38 @@ function runWidgetsExtra() {
         return tick();
     }).then(() => {
         eq([states, sent], [[], [{ op: 'install', id: 'mgu-render' }]], 'a second renderer installs beside the first, no confirm step');
+        // an install or removal of id running, then ending with its row changed by o
+        const ends = (id, o, op) => {
+            const done = Object.assign({}, st, { components: [comp({}), id8only, id8installed, renderer, held]
+                .map((c) => (c.id === id ? Object.assign({}, c, o) : c)) });
+            app._client.emit('state', Object.assign({}, st, { busy: { id, op: op || 'install', phase: 'install' } }));
+            app._client.emit('state', done);
+            app._client.emit('state', done);
+        };
+        // a tool pending a restart, an app install queued for the next start: nothing opens by itself
+        reset();
+        ends('mgu-render', { installed: '0.1.0', status: 'installed', pendingReboot: true });
+        app._client.emit('state', Object.assign({}, st, { components: [comp({ installed: '1.0.0', status: 'update' }), id8only, id8installed,
+            renderer, held] }));
+        app._install('doom');
+        reset();
+        ends('doom', { pendingReboot: true, nextStart: 'install' });
+        eq(states, [], 'no restart step opens by itself');
+        app._client.emit('state', st);
+        // a queued first install (the updater's nextStart): its row asks to remove it, and Remove drops it
+        reset();
+        app._client.emit('state', Object.assign({}, st, { components: [comp({ installed: null, status: 'available', pendingReboot: true,
+            nextStart: 'install' }), id8only, id8installed, renderer, held] }));
+        return tick();
+    }).then(() => {
+        eq(last(/storeAppList\.0\.Text2ndCol/), 'storeAppList.0.Text2ndCol=Restart pending');
+        app._onRow('app', 0);
+        return tick();
+    }).then(() => {
+        eq([states, last(/storeRemoveName\.0\.Text=/)], [['open ST_OnlineApps_StoreRemove'], 'storeRemoveName.0.Text=DOOM']);
+        reset();
+        app._remove();
+        eq(sent.map(secretless), [{ op: 'uninstall', id: 'doom' }]);
         reset();
         app._client.emit('state', Object.assign({}, st, { signin: true }));
         return tick();
@@ -879,6 +911,13 @@ function runDrawn() {
             comp({ id: 'mgu-render', kind: 'tool', title: 'Renderer', version: '0.1.0', installed: null, status: 'available',
                 provides: 'renderer' }),
             comp({ id: 'mgu-renderd', kind: 'tool', title: 'GPU renderer', version: '1.1.0', installed: '1.1.0', provides: 'renderer' })] });
+    // an install of id running, then ending with its row changed by o
+    const ends = (id, o) => {
+        app._client.emit('state', Object.assign({}, st, { busy: { id, op: 'install', phase: 'install' } }));
+        const done = Object.assign({}, st, { components: st.components.map((c) => (c.id === id ? Object.assign({}, c, o) : c)) });
+        app._client.emit('state', done);
+        app._client.emit('state', done);
+    };
     app._entryUuid = 'entry';
     reset();
     gpuLog.length = 0;
@@ -965,6 +1004,25 @@ function runDrawn() {
         return tick();
     }).then(() => {
         eq(sent, [{ op: 'install', id: 'mgu-render' }]);
+        // the install ends with the tool pending a restart: nothing opens; its page offers Restart head unit
+        reset();
+        ends('mgu-render', { installed: '0.1.0', status: 'installed', pendingReboot: true });
+        return tick();
+    }).then(() => {
+        eq([states, drawn.top().name], [[], 'app'], 'none for a tool pending a restart');
+        // an iDrive 8 app's update queued for the next start: the same
+        app._client.emit('state', st);
+        app._act({ do: 'install', id: 'doom' });
+        drawn.pop();
+        drawn.push({ name: 'app', id: 'doom' });
+        reset();
+        ends('doom', { pendingReboot: true, nextStart: 'install' });
+        return tick();
+    }).then(() => {
+        eq([states, drawn.top().name, drawn.items.map((i) => i.label).indexOf('Restart head unit') >= 0], [[], 'app', true],
+            'none for an app queued for the next start; its page offers Restart head unit');
+        drawn.pop();
+        app._client.emit('state', st);
         // a drag scrolls without pressing
         reset();
         app._act({ do: 'tab', tab: 'settings' });

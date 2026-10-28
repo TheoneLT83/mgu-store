@@ -1615,7 +1615,7 @@ function testSources(certs) {
     // a second source: a folder with the same id at another version
     const second = path.join(M, 'second');
     mkdirp(second);
-    publish(second, [entry(appTgz(second, 'dup_app', '2.0.0'), 'app', 'Dup two')]);
+    publish(second, [Object.assign(entry(appTgz(second, 'dup_app', '2.0.0'), 'app', 'Dup two'), { uninstallable: true })]);
     // a private repo with its own catalog
     ghRepo('owner/private', { private: true, tokens: ['tok-all', 'tok-device'] });
     gh.repos['owner/private'].catalog = Buffer.from(JSON.stringify({ schema: 1, components:
@@ -1979,7 +1979,26 @@ function testSources(certs) {
             ok('uninstall: through the deploy tool\'s uninstall; the row is available again', err === null &&
                 /^uninstall needs_app --yes$/m.test(fs.readFileSync(deployLog, 'utf8')) &&
                 !JSON.parse(fs.readFileSync(path.join(state, 'origins.json'), 'utf8')).needs_app);
-            return ask(sock, { op: 'install', id: 'dup_app' }).then(() => installed('dup_app'));
+            // another source's row of an id whose install it queued for the next start (iDrive 8)
+            process.env.FAKE_PENDING = 'dup_app=installs at the next start';
+            u.origins.dup_app = { source: 'second', commit: null };
+            fs.writeFileSync(deployLog, '');
+            return u.refresh().then(() => {
+                ok('pending: only the row of the origin that queued an id shows it pending', comp('dup_app@second').nextStart === 'install' &&
+                    comp('dup_app@second').pendingReboot === true && comp('dup_app').nextStart === null && comp('dup_app').pendingReboot === false,
+                    JSON.stringify([comp('dup_app'), comp('dup_app@second')]));
+                return priv({ op: 'uninstall', id: 'dup_app' });
+            }).then((err) => {
+                ok('uninstall: another origin\'s row cannot remove an id queued from another', err === 'dup_app cannot be removed' && !deployed().length, err);
+                return priv({ op: 'uninstall', id: 'dup_app@second' });
+            }).then((err) => until(st, () => !st().busy && !comp('dup_app@second').queued, 20000, 'dup_app@second removed').then(() => err));
+        })
+        .then((err) => {
+            ok('pending: another source\'s row of a queued install removes it, under the id it is queued as',
+                err === null && deployed().join() === 'uninstall dup_app --yes' && comp('dup_app@second').error === null,
+                JSON.stringify([err, deployed(), comp('dup_app@second')]));
+            delete process.env.FAKE_PENDING;
+            return u.refresh().then(() => ask(sock, { op: 'install', id: 'dup_app' })).then(() => installed('dup_app'));
         })
         .then(() => {
             ok('collision: only the source that installed an id updates it; another source\'s newer one is beside it, not installable',
@@ -2451,6 +2470,10 @@ function testUnitServices(certs, pubDir) {
     const priv = (req) => ask(sock, Object.assign({ secret: u.secret }, req));
     const settled = () => until(st, (s) => !s.busy && !s.components.some((c) => c.queued) && !s.sources.some((x) => x.status === 'checking'), 60000, 'settled');
     const cached = (sha) => path.join(state, 'index', 'idx', `${sha}.tgz`);
+    // the deploy tool's last_apply: both_app's install (or removal) at, ok or not
+    const apply = (at, ok, action) => JSON.stringify({ at, results: [{ id: 'both_app', action: action || 'install', version: '1.0.0', ok,
+        error: ok ? undefined : 'package checksum mismatch at /x', log: [] }, { id: 'oap-cardash', action: 'remove', ok: true, log: [] }] });
+    const seenFile = path.join(state, 'apply-seen.json');
     return u.serve()
         .then(() => u.check())
         .then(() => {
@@ -2476,6 +2499,125 @@ function testUnitServices(certs, pubDir) {
                 JSON.stringify(comp('oap-cardash').mguHmi) === '["ID8"]' && comp('oap-cardash').compat === 'no' && comp('both_app').compat === 'yes',
                 JSON.stringify([comp('oap-cardash'), comp('both_app')]));
             fs.unlinkSync(path.join(pubDir, 'mgu-renderd@1.1.0.tgz'));
+            // the last start's apply (iDrive 8 last_apply): a failed install shows on its row
+            process.env.FAKE_LAST_APPLY = apply('2026-10-28T08:00:00.000Z', false);
+            return u.refresh();
+        })
+        .then(() => {
+            ok('apply: a change the last start failed to apply shows its reason on the row',
+                comp('both_app').error === 'the install at the start of the head unit failed: package checksum mismatch at /x' &&
+                comp('both_app').applyFailed === 'install' && comp('oap-cardash').error === null && comp('oap-cardash').applyFailed === null,
+                JSON.stringify(comp('both_app')));
+            return priv({ op: 'uninstall', id: 'both_app' });
+        })
+        .then((err) => {
+            ok('apply: removing an app whose first install failed at the start puts the failure aside, the deploy tool not asked',
+                err === null && !comp('both_app').busy && comp('both_app').error === null && comp('both_app').applyFailed === null &&
+                !comp('both_app').queued && !deployed().length, JSON.stringify([err, comp('both_app'), deployed()]));
+            const again = new Updater(conf);
+            return again.refresh().then(() => again);
+        })
+        .then((again) => {
+            ok('apply: a failure put aside stays aside after a restart of the updater',
+                again.applyError('both_app') === null && JSON.parse(fs.readFileSync(seenFile, 'utf8')).both_app === '2026-10-28T08:00:00.000Z',
+                fs.existsSync(seenFile) && fs.readFileSync(seenFile, 'utf8'));
+            process.env.FAKE_LAST_APPLY = apply('2026-10-28T09:00:00.000Z', false, 'remove');
+            return u.refresh();
+        })
+        .then(() => {
+            ok('apply: a failed removal shows as such', comp('both_app').applyFailed === 'remove' &&
+                /^the removal at the start of the head unit failed/.test(comp('both_app').error || ''), JSON.stringify(comp('both_app')));
+            // an install the deploy tool queued for the next start: pending before it is installed, and can be dropped
+            process.env.FAKE_PENDING = 'both_app=installs at the next start';
+            return u.refresh();
+        })
+        .then(() => {
+            ok('pending: an app the deploy tool reports pending is pendingReboot before it is installed',
+                comp('both_app').status === 'available' && !comp('both_app').installed && comp('both_app').pendingReboot === true &&
+                comp('both_app').nextStart === 'install' && comp('mgu-renderd').pendingReboot === false && comp('mgu-renderd').nextStart === null,
+                JSON.stringify(comp('both_app')));
+            return priv({ op: 'uninstall', id: 'both_app' });
+        })
+        .then((err) => {
+            ok('pending: a queued install can be removed: the deploy tool drops it', err === null, err);
+            return settled();
+        })
+        .then(() => {
+            ok('pending: removed through the deploy tool; the asked removal puts the failed apply aside',
+                deployed().indexOf('uninstall both_app --yes') >= 0 && comp('both_app').error === null, JSON.stringify([deployed(), comp('both_app')]));
+            fs.writeFileSync(deployLog, '');
+            process.env.FAKE_PENDING = 'both_app=removed at the next start';
+            return u.refresh();
+        })
+        .then(() => {
+            ok('pending: a removal queued for the next start', comp('both_app').nextStart === 'remove' && comp('both_app').pendingReboot === true);
+            // a newer start's apply that failed shows again
+            delete process.env.FAKE_PENDING;
+            process.env.FAKE_LAST_APPLY = apply('2026-10-29T08:00:00.000Z', false);
+            return u.refresh();
+        })
+        .then(() => {
+            ok('apply: a newer start\'s failure shows', /^the install at the start of the head unit failed/.test(comp('both_app').error || ''));
+            // this start (began 2 min ago) put both_app in place a minute ago
+            u.bootAt = () => Date.now() - 120000;
+            process.env.FAKE_LAST_APPLY = apply(new Date(Date.now() - 60000).toISOString(), true);
+            return u.refresh();
+        })
+        .then(() => {
+            ok('apply: an app this start put in place stays pending until MainApp lists it', comp('both_app').pendingReboot === true &&
+                comp('both_app').nextStart === 'install' && comp('both_app').status === 'available' && comp('both_app').error === null,
+                JSON.stringify(comp('both_app')));
+            return priv({ op: 'uninstall', id: 'both_app' }).then((err) => settled().then(() => err));
+        })
+        .then((err) => {
+            ok('apply: an app put in place can be removed through the deploy tool', err === null && deployed().join() === 'uninstall both_app --yes',
+                JSON.stringify([err, deployed()]));
+            fs.writeFileSync(deployLog, '');
+            // MainApp lists it: the state goes out again, installed
+            let sent = 0;
+            const changed = u.changed;
+            u.changed = () => { sent += 1; changed.call(u); };
+            u.watchPlaced();
+            sent = 0;
+            const reg = path.join(oap, 'oap_12201', 'data', 'apps', 'both_app.json');
+            mkdirp(path.dirname(reg));
+            fs.writeFileSync(reg, JSON.stringify({ userId: 13077 }));
+            mkdirp(path.join(oap, 'oap_13077', 'source'));
+            fs.writeFileSync(path.join(oap, 'oap_13077', 'source', 'package.json'), JSON.stringify({ name: 'both_app', version: '1.0.0' }));
+            u.watchPlaced();
+            ok('apply: the state goes out again once MainApp lists an app put in place', sent === 1 && comp('both_app').installed === '1.0.0' &&
+                comp('both_app').pendingReboot === false, JSON.stringify([sent, comp('both_app')]));
+            u.changed = changed;
+            fs.unlinkSync(reg);
+            // put in place 10 min ago and still not listed: a failed install, with Try again and Remove
+            u.bootAt = () => Date.now() - 11 * 60000;
+            process.env.FAKE_LAST_APPLY = apply(new Date(Date.now() - 10 * 60000).toISOString(), true);
+            return u.refresh();
+        })
+        .then(() => {
+            ok('apply: an app put in place but not listed within the grace is a failed install', comp('both_app').pendingReboot === false &&
+                comp('both_app').nextStart === null && comp('both_app').applyFailed === 'install' &&
+                comp('both_app').error === 'put in place at the last start but not registered', JSON.stringify(comp('both_app')));
+            // one an earlier start put in place: the same
+            u.bootAt = () => Date.now() - 60000;
+            process.env.FAKE_LAST_APPLY = apply(new Date(Date.now() - 120000).toISOString(), true);
+            return u.refresh();
+        })
+        .then(() => {
+            ok('apply: an app an earlier start put in place, not listed, is a failed install', comp('both_app').pendingReboot === false &&
+                comp('both_app').applyFailed === 'install', JSON.stringify(comp('both_app')));
+            return priv({ op: 'uninstall', id: 'both_app' }).then((err) => settled().then(() => err));
+        })
+        .then((err) => {
+            ok('apply: its Remove goes to the deploy tool, which takes the package out', err === null && deployed().join() === 'uninstall both_app --yes' &&
+                comp('both_app').error === null, JSON.stringify([err, deployed(), comp('both_app')]));
+            fs.writeFileSync(deployLog, '');
+            delete process.env.FAKE_LAST_APPLY;
+            return u.refresh();
+        })
+        .then(() => {
+            ok('pending, apply: neither once the deploy tool reports none', comp('both_app').pendingReboot === false &&
+                comp('both_app').nextStart === null && comp('both_app').error === null, JSON.stringify(comp('both_app')));
             return ask(sock, { op: 'install', id: 'oap-cardash' });
         })
         .then((err) => {

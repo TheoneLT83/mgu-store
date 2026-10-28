@@ -1619,8 +1619,9 @@ function testSelf() {
     check('self: deploy/hu artifact deploy builds mgu-deploy@<version>.tgz', builds.every((b) => b.r.status === 0 && fs.existsSync(b.file)),
         builds.map((b) => b.r.stderr).join('\n'));
     check('self: two builds are byte-identical', sha256(fs.readFileSync(builds[0].file)) === sha256(fs.readFileSync(builds[1].file)));
-    check('self: the artifact holds its seven files and its manifest', JSON.stringify(tarList(builds[0].file)) === JSON.stringify([
-        'component.json', 'files/fallback_build.js', 'files/mgu-app-fallback.service', 'files/mgu-deploy-apply.service',
+    check('self: the artifact holds its eight files and its manifest', JSON.stringify(tarList(builds[0].file)) === JSON.stringify([
+        'component.json', 'files/fallback_build.js', 'files/mgu-app-fallback-id8.service', 'files/mgu-app-fallback.service',
+        'files/mgu-deploy-apply.service',
         'files/mgu-deploy.js', 'files/mgu-deploy.sh',
         'files/oap_link.js', 'files/oap_pack.js']),
     tarList(builds[0].file).join(' '));
@@ -1649,7 +1650,7 @@ function testSelf() {
 
     // the kit layout: component.json beside the script
     const kit = fs.mkdtempSync(path.join(T, 'kit-'));
-    ['mgu-deploy.js', 'mgu-deploy.sh', 'fallback_build.js', 'mgu-app-fallback.service', 'mgu-deploy-apply.service'].forEach((n) =>
+    ['mgu-deploy.js', 'mgu-deploy.sh', 'fallback_build.js', 'mgu-app-fallback.service', 'mgu-deploy-apply.service', 'mgu-app-fallback-id8.service'].forEach((n) =>
         fs.copyFileSync(path.join(DEPLOY, 'unit', n), path.join(kit, n)));
     LINK_FILES.forEach((n) => fs.copyFileSync(path.join(TOOLS, n), path.join(kit, n)));
     fs.copyFileSync(path.join(DEPLOY, 'component.json'), path.join(kit, 'component.json'));
@@ -2268,7 +2269,7 @@ function testHuToken() {
         x.stdin(1).toString() === `${TOKEN}\n`, `${x.r.stderr}\n${x.calls.join('\n')}`);
     const staged = Object.keys(untarBuf(x.stdin(0))).sort().join(' ');
     check('hu: the staging upload carries the deploy tool with its linker and packer', staged ===
-        'component.json fallback_build.js mgu-app-fallback.service mgu-deploy-apply.service mgu-deploy.js mgu-deploy.sh oap_link.js oap_pack.js', staged);
+        'component.json fallback_build.js mgu-app-fallback-id8.service mgu-app-fallback.service mgu-deploy-apply.service mgu-deploy.js mgu-deploy.sh oap_link.js oap_pack.js', staged);
     check('hu token: not in any ssh argument, the staging upload or the output',
         x.calls.every((c) => !c.includes(TOKEN)) && !zlib.gunzipSync(x.stdin(0)).includes(TOKEN) &&
         !`${x.r.stdout}${x.r.stderr}`.includes(TOKEN));
@@ -3677,7 +3678,7 @@ function dasText(n) {
 /* A fake iDrive 8: MainApp-21's folder instead of MainApp's, the six das
  * files (opts.prov: a folder of real ones), no recmgr list with opts.noRecmgr. */
 function id8Root(opts) {
-    opts = opts || {};
+    opts = Object.assign({ main: fs.readFileSync(path.join(HERE, 'fixtures', 'main21.js'), 'utf8') }, opts);
     const root = fakeRoot(opts);
     fs.renameSync(root.p('usr/lib/oap-mainapp'), root.p('usr/lib/oap-mainapp21'));
     for (let i = 0; i < 6; i += 1) {
@@ -4115,6 +4116,263 @@ function testKeepRunning() {
 
 const ACL = { masterAccessTable: [], masterRegistrationTable: [] };
 
+/* ---- iDrive 8: app changes in place ---------------------------------------------------- */
+
+const ID8_COPY = 'var/opt/mgu-deploy/main.js';
+const id8Das = (root) => [0, 1, 2, 3, 4, 5].map((i) => fs.readFileSync(root.p(`usr/share/tm/prov/das_00${i}.xml`), 'utf8'));
+const id8Custom = (root) => readJsonOrNull(root.p(`var/opt/public/oap/oap_${MGR}/data/custom_apps.json`)) || {};
+const dasLine = (id) => `<app supportedECUs="HU" initialPreferPreinstalled="true">${id}</app>`;
+/* A fake iDrive 8 whose first app install turned the fallback on (that
+ * install queued), and MainApp-21 started on the copy: fake_inplace.js with
+ * its guard counting earlier loads as up a minute. */
+function id8LiveRoot(mode, env) {
+    const root = id8Root();
+    const first = root.run(['install', '--artifact', rhmiApp('first8', '1.0.0', ['ID8'], { npm: true, acl: ACL, marked: true }), '--yes']);
+    if (first.status !== 0) throw new Error(`first install failed: ${first.out}`);
+    const mgr = startInplace(root, mode, env);
+    return { root, first, mgr };
+}
+
+function testId8Inplace() {
+    const { root, first, mgr } = id8LiveRoot();
+    const copy = fs.existsSync(root.p(ID8_COPY)) ? fs.readFileSync(root.p(ID8_COPY), 'utf8') : '';
+    check('id8 in place: the first install turns the fallback on and is queued, MainApp-21 not restarted', first.status === 0 &&
+        first.out.includes('provisioning fallback turned on') && first.out.includes('is not installed in place') &&
+        first.out.includes('first8 1.0.0 installs at the next start') && root.kills().length === 0 &&
+        fs.existsSync(root.p('var/opt/mgu-deploy/id8/queue/first8@1.0.0.tgz')), first.out);
+    check('id8 boot unit: it builds the copy after the queued changes are applied (their check for MainApp-21 must not see the build)',
+        /^After=mgu-deploy-apply\.service$/m.test(fs.readFileSync(path.join(HERE, '..', 'unit', 'mgu-app-fallback-id8.service'), 'utf8')));
+    check('id8 in place: the boot unit is iDrive 8\'s, the copy has MainApp-21\'s fallback, guard and hook',
+        fs.readFileSync(root.p('etc/systemd/system/mgu-app-fallback.service'), 'utf8') ===
+        fs.readFileSync(path.join(HERE, '..', 'unit', 'mgu-app-fallback-id8.service'), 'utf8') &&
+        copy.includes('__mguDeployGuard') && copy.split('/* mgu-deploy in-place install */').length === 3 &&
+        copy.includes('requestSource:"PREINSTALLED"') && !copy.includes('__mguDeployFallbackApps'));
+    const dasBefore = id8Das(root);
+    const art = rhmiApp('live8', '1.0.0', ['ID8'], { npm: true, acl: ACL, marked: true });
+    const r = root.run(['install', '--artifact', art, '--yes']);
+    check('id8 in place: an install is MainApp-21\'s own, now: registered, no restart, nothing queued for it', r.status === 0 &&
+        r.out.includes(`installed in place by the app manager (pid ${mgr.pid})`) && root.kills().length === 0 &&
+        root.managerLog().includes('install live8 1.0.0 uid 13001 in place') && !r.out.includes('next start') &&
+        !fs.existsSync(root.p('var/opt/mgu-deploy/id8/queue/live8@1.0.0.tgz')) &&
+        !root.status().pending_reboot.some((p) => p.id === 'live8'), `${r.out}\n${root.managerLog().join('\n')}`);
+    check('id8 in place: its package, das lines and custom_apps.json entry are there for every later start',
+        fs.existsSync(root.pre21('live8', '1.0.0')) && id8Das(root).every((t) => t.includes(dasLine('live8'))) &&
+        id8Custom(root).live8['-appStartType'] === 'autostart' && id8Custom(root).live8['-enabled'] === 'true');
+    check('id8 in place: the queued first install stays queued', fs.existsSync(root.p('var/opt/mgu-deploy/id8/queue/first8@1.0.0.tgz')));
+    const up = root.run(['install', '--artifact', rhmiApp('live8', '1.1.0', ['ID8'], { npm: true, acl: ACL, marked: true }), '--yes']);
+    check('id8 in place: an update is MainApp-21\'s own, uid kept, the older package gone', up.status === 0 &&
+        up.out.includes('updated in place') && root.kills().length === 0 && readJson(root.entry('live8')).userId === 13001 &&
+        root.managerLog().includes('update live8 1.1.0 uid 13001 in place') &&
+        fs.existsSync(root.pre21('live8', '1.1.0')) && !fs.existsSync(root.pre21('live8', '1.0.0')), up.out);
+    const un = root.run(['uninstall', 'live8', '--yes']);
+    check('id8 in place: an uninstall is MainApp-21\'s own; package, das lines and listing go, nothing queued, the id kept from the backend', un.status === 0 &&
+        un.out.includes('live8 uninstalled in place') && root.kills().length === 0 && !fs.existsSync(root.entry('live8')) &&
+        !fs.existsSync(root.pre21('live8', '1.1.0')) && JSON.stringify(id8Das(root)) === JSON.stringify(dasBefore) &&
+        !('live8' in id8Custom(root)) && !root.status().pending_reboot.some((p) => p.id === 'live8') &&
+        (readJsonOrNull(root.p(`var/opt/public/oap/oap_${MGR}/data/local-only-apps.json`)) || []).indexOf('live8') >= 0, un.out);
+    check('id8 in place: MainApp-21 kept running throughout', root.managerPid() === mgr.pid && mgr.exitCode === null);
+
+    // not taken: queued as without the hook, with what was placed put back
+    [['a refused install', 'refuse', {}, 'refused the in-place install'],
+        ['a request not taken', 'deaf', { MGU_DEPLOY_INPLACE_ACK_MS: '500' }, 'did not take the request']].forEach(([what, mode, extra, why]) => {
+        const c = id8LiveRoot(mode, extra);
+        const before = id8Das(c.root);
+        const q = c.root.run(['install', '--artifact', rhmiApp('live8', '1.0.0', ['ID8'], { npm: true, acl: ACL, marked: true }), '--yes'], extra);
+        check(`id8 in place: ${what} is queued for the next start, what was placed put back, no restart`, q.status === 0 &&
+            q.out.includes(why) && q.out.includes('live8 1.0.0 installs at the next start') && c.root.kills().length === 0 &&
+            !fs.existsSync(c.root.pre21('live8', '1.0.0')) && JSON.stringify(id8Das(c.root)) === JSON.stringify(before) &&
+            !('live8' in id8Custom(c.root)) && fs.existsSync(c.root.p('var/opt/mgu-deploy/id8/queue/live8@1.0.0.tgz')), q.out);
+    });
+
+    // an update not taken: the installed version's package and listing back
+    const u = id8LiveRoot('deaf', { MGU_DEPLOY_INPLACE_ACK_MS: '500' });
+    u.root.run(['install', '--artifact', rhmiApp('live8', '1.0.0', ['ID8'], { npm: true, acl: ACL, marked: true }), '--yes']);
+    write(u.root.pre21('live8', '1.0.0'), fs.readFileSync(rhmiApp('live8', '1.0.0', ['ID8'], { npm: true, acl: ACL, marked: true })));
+    write(u.root.entry('live8'), JSON.stringify({ userId: 13006, installationSource: 'PREINSTALLED' }));
+    write(u.root.p('var/opt/public/oap/oap_13006/source/package.json'), JSON.stringify({ name: 'live8', version: '1.0.0' }));
+    write(u.root.p('var/opt/public/oap/oap_13006/security/joynrKeyChain.json'), '{}');
+    const preBefore = fs.readFileSync(u.root.pre21('live8', '1.0.0'));
+    const ur = u.root.run(['install', '--artifact', rhmiApp('live8', '1.1.0', ['ID8'], { npm: true, acl: ACL, marked: true }), '--yes'],
+        { MGU_DEPLOY_INPLACE_ACK_MS: '500' });
+    check('id8 in place: an update not taken is queued, the installed version\'s package put back', ur.status === 0 &&
+        ur.out.includes('live8 1.1.0 installs at the next start') && fs.existsSync(u.root.pre21('live8', '1.0.0')) &&
+        fs.readFileSync(u.root.pre21('live8', '1.0.0')).equals(preBefore) && !fs.existsSync(u.root.pre21('live8', '1.1.0')), ur.out);
+
+    // a MainApp-21 the copy does not fit: queued, not refused, no copy bound
+    const nf = id8Root({ main: fs.readFileSync(path.join(HERE, 'fixtures', 'main21.js'), 'utf8').replace('Promise.all([mainApp.init()])', 'Promise.all([mainApp.init(1)])') });
+    const nr = nf.run(['install', '--artifact', rhmiApp('live8', '1.0.0', ['ID8'], { npm: true, acl: ACL, marked: true }), '--yes']);
+    check('id8 in place: on a MainApp-21 the copy does not fit, an install is queued as before, no fallback turned on', nr.status === 0 &&
+        nr.out.includes('is not installed in place: fallback build refused') && nr.out.includes('live8 1.0.0 installs at the next start') &&
+        !fs.existsSync(nf.p(ID8_COPY)) && !fs.existsSync(nf.p('etc/systemd/system/mgu-app-fallback.service')), nr.out);
+
+    // MainApp-21's installer failed it: fails, rolled back, no restart
+    const f = id8LiveRoot('fail', { FAKE_INPLACE_REASON: 'APP_INSTALLATION_FAILED' });
+    const fb = id8Das(f.root);
+    const fr = f.root.run(['install', '--artifact', rhmiApp('live8', '1.0.0', ['ID8'], { npm: true, acl: ACL, marked: true }), '--yes']);
+    check('id8 in place: an install MainApp-21\'s installer failed fails with its reason, rolled back, not queued, no restart',
+        fr.status === 1 && fr.out.includes('MainApp-21 could not install live8 1.0.0: APP_INSTALLATION_FAILED') &&
+        f.root.kills().length === 0 && !fs.existsSync(f.root.pre21('live8', '1.0.0')) &&
+        JSON.stringify(id8Das(f.root)) === JSON.stringify(fb) && !('live8' in id8Custom(f.root)) &&
+        !fs.existsSync(f.root.p('var/opt/mgu-deploy/id8/queue/live8@1.0.0.tgz')), fr.out);
+
+    // an uninstall the hook does not take is queued
+    const d = id8LiveRoot('fail', { FAKE_INPLACE_REASON: 'APP_NOT_INSTALLED' });
+    write(d.root.entry('first8'), JSON.stringify({ userId: 13005, installationSource: 'PREINSTALLED' }));
+    write(d.root.p(`var/opt/public/oap/oap_${MGR}/data/custom_apps.json`), JSON.stringify({ first8: {} }));
+    write(d.root.p('var/opt/public/oap/oap_13005/source/package.json'), JSON.stringify({ name: 'first8', version: '1.0.0' }));
+    const du = d.root.run(['uninstall', 'first8', '--yes']);
+    check('id8 in place: an uninstall MainApp-21 failed is queued for the next start', du.status === 0 &&
+        du.out.includes('first8 is not uninstalled in place') && du.out.includes('first8 is removed at the next start') &&
+        d.root.kills().length === 0 && !('first8' in id8Custom(d.root)), du.out);
+
+    // the guard turned the hook off for this boot: queued, saying why
+    const g = id8Root();
+    g.run(['install', '--artifact', rhmiApp('first8', '1.0.0', ['ID8'], { npm: true, acl: ACL, marked: true }), '--yes']);
+    write(g.p(`var/opt/public/oap/oap_${MGR}/data/mgu-deploy-guard.json`), JSON.stringify({ boot: fs.readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim(),
+        loads: 1, ready: 0 }));
+    startInplace(g);
+    const gr = g.run(['install', '--artifact', rhmiApp('live8', '1.0.0', ['ID8'], { npm: true, acl: ACL, marked: true }), '--yes']);
+    check('id8 in place: with the hook off after a restart within a minute of a start, the install is queued, saying why', gr.status === 0 &&
+        gr.out.includes('its in-place hook is off until the next start: MainApp-21 restarted within a minute of its start') &&
+        gr.out.includes('live8 1.0.0 installs at the next start') && g.kills().length === 0, gr.out);
+
+    // at boot the queue applies while the copy is built: that build is not MainApp-21
+    const ap = id8Root();
+    ap.run(['install', '--artifact', rhmiApp('first8', '1.0.0', ['ID8'], { npm: true, acl: ACL, marked: true }), '--yes']);
+    ap.noManager();
+    const build = '  474 root      217m S    /bin/sh -c /usr/bin/node /var/opt/mgu-deploy/current/fallback_build.js ' +
+        '/usr/lib/oap-mainapp21/src/main.js /var/opt/mgu-deploy/main.js\n  475 root      217m S    /usr/bin/node ' +
+        '/var/opt/mgu-deploy/current/fallback_build.js /usr/lib/oap-mainapp21/src/main.js /var/opt/mgu-deploy/main.js';
+    const apr = ap.run(['apply-pending'], { FAKE_PS_EXTRA: build });
+    check('id8: apply-pending runs while the copy of MainApp-21\'s main.js is being built', apr.status === 0 &&
+        fs.existsSync(ap.pre21('first8', '1.0.0')), apr.out);
+    const mgrLine = '  476 12201    1875m S    /usr/bin/node -r /usr/local/libexec/x.js --expose-gc /usr/lib/oap-mainapp21/src/main.js';
+    write(ap.p('var/opt/mgu-deploy/id8/pending.json'), JSON.stringify({ changes: [{ action: 'remove', id: 'zz' }] }));
+    const busy = ap.run(['apply-pending'], { FAKE_PS_EXTRA: mgrLine });
+    check('id8: apply-pending is refused while node runs MainApp-21\'s main.js after its options', busy.status === 2 &&
+        busy.out.includes('the app manager is running'), busy.out);
+
+    // the boot unit: its paths in a fake root, mount logged
+    const boot = id8Root();
+    boot.run(['install', '--artifact', rhmiApp('first8', '1.0.0', ['ID8'], { npm: true, acl: ACL, marked: true }), '--yes']);
+    const mounts = boot.p('mounts.log');
+    const command = fs.readFileSync(path.join(HERE, '..', 'unit', 'mgu-app-fallback-id8.service'), 'utf8')
+        .match(/^ExecStart=\/bin\/sh -c '(.*)'$/m)[1]
+        .split('/usr/bin/node').join(UNIT_NODE).split('/var/opt/').join(boot.p('var/opt/'))
+        .split('/usr/lib/').join(boot.p('usr/lib/'));
+    const bootRun = () => cp.spawnSync('sh', ['-c', `mount() { echo "$*" >> '${mounts}'; }; ${command}`], { encoding: 'utf8' });
+    let b = bootRun();
+    check('id8 boot unit: the copy is built and bound over MainApp-21\'s main.js', b.status === 0 &&
+        fs.readFileSync(mounts, 'utf8').trim() === `--bind ${boot.p(ID8_COPY)} ${boot.p('usr/lib/oap-mainapp21/src/main.js')}`, `${b.stdout}${b.stderr}`);
+    const stock = fs.readFileSync(boot.p('usr/lib/oap-mainapp21/src/main.js'), 'utf8');
+    [['a missing hook anchor', stock.replace('Promise.all([mainApp.init()])', 'Promise.all([mainApp.init(1)])')],
+        ['a duplicated provisioning anchor', `${stock}\n(function(){this.isMainapp&&section===this.mainappSection&&(newProvisioning.x=1)})`],
+        ['iDrive 7\'s anchors as well', `${stock}\nisMainapp&&section===mainAppSection&&(newProvisioning.x=1)`]].forEach(([what, text]) => {
+        fs.writeFileSync(boot.p('usr/lib/oap-mainapp21/src/main.js'), text);
+        fs.rmSync(mounts, { force: true });
+        b = bootRun();
+        check(`id8 boot unit: with ${what} nothing is bound, the unit succeeds`, b.status === 0 && !fs.existsSync(mounts) &&
+            b.stderr.includes('refusing to build'), `${b.stdout}${b.stderr}`);
+    });
+}
+
+/* After a deploy tool update the updater's status check turns live app
+ * changes on: the boot unit only, the copy bound at the next start. */
+function testId8LiveOn() {
+    const live = (root) => { const r = root.run(['status', '--json']); try { return JSON.parse(r.stdout).live_installs; } catch (e) { return r.out; } };
+    const root = id8Root();
+    const unit = root.p('etc/systemd/system/mgu-app-fallback.service');
+    const l1 = live(root);
+    check('id8 live on: status turns live changes on from the next start: the boot unit installed and enabled, the copy built, no restart',
+        l1 && l1.state === 'changed' && fs.readFileSync(unit, 'utf8') ===
+        fs.readFileSync(path.join(HERE, '..', 'unit', 'mgu-app-fallback-id8.service'), 'utf8') &&
+        fs.readlinkSync(root.p('etc/systemd/system/multi-user.target.wants/mgu-app-fallback.service')) === '../mgu-app-fallback.service' &&
+        fs.readFileSync(root.p(ID8_COPY), 'utf8').includes('__mguDeployGuard') && root.kills().length === 0, JSON.stringify(l1));
+    const st = root.status();
+    check('id8 live on: nothing pending for it, and the next status says it is on', st.pending_reboot.length === 0 &&
+        JSON.stringify(st.live_installs) === JSON.stringify({ state: 'ok', reason: 'on' }), JSON.stringify(st));
+    const r = root.run(['install', '--artifact', rhmiApp('first8', '1.0.0', ['ID8'], { npm: true, acl: ACL, marked: true }), '--yes']);
+    check('id8 live on: until the next start an install is queued, as without it', r.status === 0 &&
+        r.out.includes('first8 1.0.0 installs at the next start') && !r.out.includes('provisioning fallback turned on') &&
+        root.kills().length === 0, r.out);
+
+    const off = root.run(['fallback', 'off', '--yes']);
+    const l2 = live(root);
+    check('id8 live on: once turned off, status leaves it off', off.status === 0 && l2 && l2.state === 'ok' &&
+        l2.reason === 'turned off since it was turned on' && !fs.existsSync(unit), JSON.stringify(l2));
+
+    // recmgr, where the unit has the list
+    const rm = id8Root();
+    write(rm.p('etc/recmgr-restartlist.conf'), '[Whitelist]\nstockd\n\n[WhitelistExitSuccess]\nstockd\n');
+    live(rm);
+    check('id8 live on: where the unit has a recmgr list, the boot unit is listed in it',
+        /\[Whitelist\][^[]*mgu-app-fallback/.test(fs.readFileSync(rm.p('etc/recmgr-restartlist.conf'), 'utf8')));
+
+    const nf = id8Root({ main: fs.readFileSync(path.join(HERE, 'fixtures', 'main21.js'), 'utf8').replace('Promise.all([mainApp.init()])', 'Promise.all([mainApp.init(1)])') });
+    const n1 = live(nf);
+    check('id8 live on: on a MainApp-21 the copy does not fit it stays off, saying why, nothing written but its record',
+        n1 && n1.state === 'ok' && /^off: fallback build refused/.test(n1.reason) &&
+        !fs.existsSync(nf.p('etc/systemd/system/mgu-app-fallback.service')) && fs.existsSync(nf.p('var/opt/mgu-deploy/id8-live.json')), JSON.stringify(n1));
+    const rec = fs.statSync(nf.p('var/opt/mgu-deploy/id8-live.json')).mtimeMs;
+    const n2 = live(nf);
+    check('id8 live on: that MainApp-21 is not built again at the next status', n2 && n2.state === 'ok' &&
+        fs.statSync(nf.p('var/opt/mgu-deploy/id8-live.json')).mtimeMs === rec, JSON.stringify(n2));
+    const r0 = readJson(nf.p('var/opt/mgu-deploy/id8-live.json'));
+    write(nf.p('var/opt/mgu-deploy/id8-live.json'), JSON.stringify({ key: r0.key.replace(VERSION, '0.0.1'), why: r0.why }));
+    write(nf.p('usr/lib/oap-mainapp21/src/main.js'), fs.readFileSync(path.join(HERE, 'fixtures', 'main21.js'), 'utf8'));
+    const n3 = live(nf);
+    check('id8 live on: a record from another deploy tool version is tried again', n3 && n3.state === 'changed', JSON.stringify(n3));
+
+    const busy = id8Root();
+    fs.writeFileSync(busy.p('proc/mounts'), 'rootfs / ext4 rw,relatime 0 0\n');
+    const b1 = live(busy);
+    check('id8 live on: with / read-write it waits for a later status', b1 && b1.state === 'pending' &&
+        !fs.existsSync(busy.p('etc/systemd/system/mgu-app-fallback.service')), JSON.stringify(b1));
+    check('id8 live on: not on iDrive 7', !('live_installs' in fakeRoot().status()));
+}
+
+/* The guard in a copy of the MainApp-21 fixture, loaded as MainApp-21
+ * loads it, one process per start. */
+function testId8Guard() {
+    const dir = fs.mkdtempSync(path.join(T, 'guard-'));
+    const list = path.join(dir, 'custom_apps.json');
+    write(list, JSON.stringify({ our_app: { '-appStartType': 'autostart' } }));
+    const r = cp.spawnSync(UNIT_NODE, [path.join(DEPLOY, 'unit', 'fallback_build.js'), path.join(HERE, 'fixtures', 'main21.js'),
+        path.join(dir, 'built.js'), list], { encoding: 'utf8' });
+    check('id8 guard: builds from the MainApp-21 fixture', r.status === 0, r.stderr);
+    const load = () => JSON.parse(cp.spawnSync(UNIT_NODE, ['-e', `const P=require(${JSON.stringify(path.join(dir, 'built.js'))});` +
+        'console.log(JSON.stringify({on:global.__mguDeployGuard.on,why:global.__mguDeployGuard.why,' +
+        'section:new P().handle("our_app",undefined)||null,other:new P().handle("x",undefined)||null}))'], { encoding: 'utf8' }).stdout);
+    const guard = path.join(dir, 'mgu-deploy-guard.json');
+    const boot = fs.readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim();
+    let l = load();
+    check('id8 guard: the first load of a boot is on and gives a listed app with no section its flags',
+        l.on && l.section && l.section['-enabled'] === 'true' && l.section['-appStartType'] === 'autostart' && l.other === null &&
+        JSON.stringify(readJson(guard)) === JSON.stringify({ boot, loads: 1, ready: 0 }), JSON.stringify(l));
+    l = load();
+    check('id8 guard: a load after one that ended within a minute is off for the boot, the fallback with it',
+        !l.on && l.why === 'MainApp-21 restarted within a minute of its start' && l.section === null && readJson(guard).off === l.why, JSON.stringify(l));
+    const traced = JSON.parse(cp.spawnSync(UNIT_NODE, ['-e', `const P=require(${JSON.stringify(path.join(dir, 'built.js'))});` +
+        'const cm=function(){},stub={callMethod:cm,install(){}};' +
+        'P.start({appManager:stub},{getById:()=>null},{info(){}}).then(()=>{console.log(JSON.stringify(' +
+        '{callMethod:stub.callMethod===cm,status:JSON.parse(require("fs").readFileSync(' +
+        JSON.stringify(path.join(dir, 'mgu-deploy-inplace.json')) + ',"utf8")).state}));process.exit(0)})'], { encoding: 'utf8' }).stdout || 'null');
+    check('id8 guard: off, the hook leaves MainApp-21\'s installer as it is and says so', traced && traced.callMethod === true &&
+        traced.status === 'off', JSON.stringify(traced));
+    write(guard, JSON.stringify({ boot, loads: 2, ready: 2 }));
+    l = load();
+    check('id8 guard: after loads that were up a minute it is on', l.on && readJson(guard).loads === 3, JSON.stringify(l));
+    write(guard, JSON.stringify({ boot, loads: 3, ready: 3 }));
+    write(path.join(dir, 'mgu-deploy-inplace.json'), JSON.stringify({ pid: 1, start: 0, at: Date.now(), state: 'running', app: 'our_app', action: 'install' }));
+    l = load();
+    check('id8 guard: a load after a MainApp-21 that ended during an in-place change is off',
+        !l.on && l.why === 'MainApp-21 restarted during the in-place install of our_app', JSON.stringify(l));
+    write(guard, JSON.stringify({ boot: 'an-earlier-boot', loads: 5, ready: 0, off: 'x' }));
+    write(path.join(dir, 'mgu-deploy-inplace.json'), JSON.stringify({ pid: 1, start: 0, at: 0, state: 'running', app: 'our_app', action: 'install' }));
+    l = load();
+    check('id8 guard: a new boot starts it over', l.on && readJson(guard).loads === 1 && readJson(guard).boot === boot, JSON.stringify(l));
+}
+
 function testId8Apps() {
     const prov = process.env.MGU_TEST_ID8_PROV;
     [null].concat(prov ? [prov] : []).forEach((provDir) => {
@@ -4191,8 +4449,8 @@ function testId8Apps() {
         root.status().pending_reboot.length === 0 && !fs.existsSync(q), drop.out);
     const seven = root.run(['install', '--artifact', rhmiApp('robertn_x', '1.0.0', ['ID7'], { marked: true }), '--yes']);
     check('id8: an iDrive 7 app is refused', seven.status === 2 && seven.out.includes('is for iDrive 7 (its rhmiData); this head unit is iDrive 8'), seven.out);
-    const fb = root.run(['fallback', 'on', '--yes']);
-    check('id8: the provisioning fallback is refused', fb.status === 2 && fb.out.includes('the provisioning fallback is for iDrive 7'), fb.out);
+    const fb = root.run(['fallback', 'migrate', '--yes']);
+    check('id8: fallback migrate is refused', fb.status === 2 && fb.out.includes('fallback migrate is for iDrive 7'), fb.out);
     const sys = root.run(['uninstall', 'x_call', '--yes']);
     check('id8: a system app is not removed', sys.status === 2, sys.out);
     const seven7 = fakeRoot().run(['apply-pending']);
@@ -4636,6 +4894,9 @@ const SUITES = [
     testKeepRunning,
     testPostInstall,
     testId8Apps,
+    testId8Inplace,
+    testId8Guard,
+    testId8LiveOn,
     testAppManager,
     testId8Complete
 ];
