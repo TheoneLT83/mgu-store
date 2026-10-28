@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.20
+
+The tile keeps the name and icon the app manager gave it at install: the Store no longer sets its text at start, which the HMI at times showed as no name at all.
+
 ## 0.9.19
 
 While mgu-render's stats-log (`/run/mgu-render/stats-log`) exists, the
