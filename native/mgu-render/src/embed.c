@@ -5,6 +5,10 @@
  * may be busy or idle for a while, and the layer apps must not wait with it (only the first apps after
  * the renderer starts wait, up to 3 s, for its first answer: main.c). Setup, surface changes
  * and buffer reuse after a surface is gone all complete on wl_callback.done in the event loop.
+ *
+ * Setup takes up to three round trips: the globals; wl_drm's device, formats and capabilities (when it is
+ * offered); the GPU buffers accepted (the compositor imports a dmabuf as it is wrapped, and refuses one it cannot
+ * import with a protocol error on wl_drm, which ends the connection: the next one reads back, at once).
  */
 #define _GNU_SOURCE
 #include "embed.h"
@@ -21,16 +25,21 @@
 
 #include <wayland-client.h>
 
+#include "embed_gl.h"
 #include "ivi-application-client-protocol.h"
 #include "log.h"
+#include "wayland-drm-client-protocol.h"
 
-#define NBUF 4                    /* one shown, one the compositor has not released yet, one committed, one drawn */
+#define NSHM 4                    /* one shown, one the compositor has not released yet, one committed, one drawn */
+#define NGPU 3                    /* one shown, one committed, one drawn */
+#define NB (NSHM + NGPU)          /* buffers 0..NSHM-1 shared memory, then the GPU ones */
 #define SETUP_MS 5000
 
 enum { OFF, CONNECTING, READY };
+enum { SYNC_GLOBALS, SYNC_DRM, SYNC_BUFFERS };
 
 static struct {
-    int state;
+    int state, stage;
     int64_t since;
     struct wl_display *dpy;
     struct wl_registry *reg;
@@ -38,29 +47,62 @@ static struct {
     struct wl_compositor *comp;
     struct wl_shm *shm;
     struct ivi_application *iapp;
+    struct wl_drm *drm;
+    char drm_device[64];
+    int drm_caps, drm_xrgb;
     struct wl_surface *surface;
     struct ivi_surface *isurf;
     struct wl_callback *frame_cb;
-    struct wl_buffer *buf[NBUF];
-    int held[NBUF];               /* committed, not released yet */
+    struct wl_buffer *buf[NB];
+    int held[NB];                 /* committed, not released yet */
+    int ngpu;                     /* GPU buffers on this connection */
     int reclaiming;               /* the surface is gone; buffers are ours once the compositor confirms */
     uint8_t *map;
     size_t map_size;
     int w, h, cur, ready, reading;   /* cur: being drawn; ready: drawn, not committed yet (-1: none) */
     int failed;                   /* set inside a callback: disconnect once dispatch has returned */
     uint32_t id;
+    int zero_copy;                /* asked for */
+    char display[64];
+    char globals[1024];
+    char path[200];               /* "zero-copy" or "readback (<why>)" */
+    char why[160];                /* why readback */
+    char refused[160];            /* the compositor refused our GPU buffers: why (later connections read back) */
 } E = { .cur = -1, .ready = -1 };
+
+static void drm_device(void *d, struct wl_drm *drm, const char *name)
+{
+    (void)d, (void)drm;
+    snprintf(E.drm_device, sizeof E.drm_device, "%s", name);
+}
+static void drm_format(void *d, struct wl_drm *drm, uint32_t f)
+{
+    (void)d, (void)drm;
+    if (f == WL_DRM_FORMAT_XRGB8888) E.drm_xrgb = 1;
+}
+static void drm_authenticated(void *d, struct wl_drm *drm) { (void)d, (void)drm; }
+static void drm_capabilities(void *d, struct wl_drm *drm, uint32_t v)
+{
+    (void)d, (void)drm;
+    E.drm_caps = (int)v;
+}
+static const struct wl_drm_listener drm_listener = { drm_device, drm_format, drm_authenticated, drm_capabilities };
 
 static void reg_global(void *d, struct wl_registry *r, uint32_t name, const char *iface, uint32_t ver)
 {
     (void)d;
-    log_debug("embed: global %s v%u", iface, ver);
+    size_t n = strlen(E.globals);
+    snprintf(E.globals + n, sizeof E.globals - n, "%s%s v%u", n ? ", " : "", iface, ver);
     if (!strcmp(iface, wl_compositor_interface.name))
         E.comp = wl_registry_bind(r, name, &wl_compositor_interface, ver < 4 ? ver : 4);
     else if (!strcmp(iface, wl_shm_interface.name))
         E.shm = wl_registry_bind(r, name, &wl_shm_interface, 1);
     else if (!strcmp(iface, ivi_application_interface.name))
         E.iapp = wl_registry_bind(r, name, &ivi_application_interface, 1);
+    else if (!strcmp(iface, wl_drm_interface.name) && !E.drm) {
+        E.drm = wl_registry_bind(r, name, &wl_drm_interface, ver < 2 ? ver : 2);
+        wl_drm_add_listener(E.drm, &drm_listener, NULL);
+    }
 }
 static void reg_remove(void *d, struct wl_registry *r, uint32_t n) { (void)d, (void)r, (void)n; }
 static const struct wl_registry_listener reg_listener = { reg_global, reg_remove };
@@ -74,22 +116,42 @@ static const struct wl_buffer_listener buf_listener = { release };
 
 static void lost(const char *what)
 {
-    int err = E.dpy ? wl_display_get_error(E.dpy) : 0;
+    int err = E.dpy ? wl_display_get_error(E.dpy) : 0, retry = 0;
     if (err == EPROTO) {
         const struct wl_interface *iface = NULL;
         uint32_t oid = 0, code = wl_display_get_protocol_error(E.dpy, &iface, &oid);
-        log_error("embed: %s: protocol error %u on %s@%u (surface id %#x held by another producer?)", what, code,
-                  iface ? iface->name : "?", oid, E.id);
+        if (iface == &wl_drm_interface) {
+            snprintf(E.refused, sizeof E.refused, "the compositor refused the GPU buffers: wl_drm error %u", code);
+            log_warn("embed: %s; reading back from now on", E.refused);
+            retry = 1;
+        } else {
+            log_error("embed: %s: protocol error %u on %s@%u (surface id %#x held by another producer?)", what, code,
+                      iface ? iface->name : "?", oid, E.id);
+        }
     } else {
         log_error("embed: %s: %s", what, strerror(err ? err : errno));
     }
+    char display[sizeof E.display];
+    snprintf(display, sizeof display, "%s", E.display);
     embed_disconnect();
+    if (retry)
+        embed_connect(display, E.id, E.w, E.h, E.zero_copy);
 }
 
-static int buffers(void)
+void embed_readback(const char *why)
+{
+    char display[sizeof E.display];
+    snprintf(display, sizeof display, "%s", E.display);
+    snprintf(E.refused, sizeof E.refused, "%s", why);
+    log_warn("embed: %s; reading back from now on", why);
+    embed_disconnect();
+    embed_connect(display, E.id, E.w, E.h, E.zero_copy);
+}
+
+static int shm_buffers(void)
 {
     size_t one = (size_t)E.w * E.h * 4;
-    E.map_size = one * NBUF;
+    E.map_size = one * NSHM;
     int fd = (int)syscall(SYS_memfd_create, "mgu-render-embed", 1u /* MFD_CLOEXEC */);
     if (fd < 0 || ftruncate(fd, (off_t)E.map_size) < 0 ||
         (E.map = mmap(NULL, E.map_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0)) == MAP_FAILED) {
@@ -99,7 +161,7 @@ static int buffers(void)
         return -1;
     }
     struct wl_shm_pool *pool = wl_shm_create_pool(E.shm, fd, (int32_t)E.map_size);
-    for (int i = 0; i < NBUF; i++) {
+    for (int i = 0; i < NSHM; i++) {
         E.buf[i] = wl_shm_pool_create_buffer(pool, (int32_t)(one * i), E.w, E.h, E.w * 4, WL_SHM_FORMAT_XRGB8888);
         wl_buffer_add_listener(E.buf[i], &buf_listener, (void *)(intptr_t)i);
         E.held[i] = 0;
@@ -109,26 +171,77 @@ static int buffers(void)
     return 0;
 }
 
+/* GPU buffers, when everything for them is there: 1 (wrapped, the compositor's answer pending), else 0 with the
+   reason in E.path */
+static int gpu_buffers(void)
+{
+    char why[160];
+    int fd[NGPU];
+    uint32_t stride[NGPU];
+    if (!E.zero_copy) snprintf(why, sizeof why, "embed_zero_copy = 0");
+    else if (E.refused[0]) snprintf(why, sizeof why, "%s", E.refused);
+    else if (!E.drm) snprintf(why, sizeof why, "the compositor offers no wl_drm");
+    else if (wl_proxy_get_version((struct wl_proxy *)E.drm) < 2 || !(E.drm_caps & WL_DRM_CAPABILITY_PRIME))
+        snprintf(why, sizeof why, "the compositor's wl_drm takes no dmabufs (no PRIME)");
+    else if (!E.drm_xrgb) snprintf(why, sizeof why, "the compositor's wl_drm lacks XRGB8888");
+    else if (embed_gl_buffers(NGPU, E.w, E.h, fd, stride, why, sizeof why) == 0) {
+        for (int i = 0; i < NGPU; i++) {
+            E.buf[NSHM + i] = wl_drm_create_prime_buffer(E.drm, fd[i], E.w, E.h, WL_DRM_FORMAT_XRGB8888,
+                                                         0, (int32_t)stride[i], 0, 0, 0, 0);
+            wl_buffer_add_listener(E.buf[NSHM + i], &buf_listener, (void *)(intptr_t)(NSHM + i));
+            E.held[NSHM + i] = 0;
+        }
+        E.ngpu = NGPU;
+        snprintf(E.path, sizeof E.path, "zero-copy");
+        log_info("embed: %d dmabufs %dx%d XRGB8888 (stride %u) through wl_drm (%s)", NGPU, E.w, E.h, stride[0],
+                 E.drm_device[0] ? E.drm_device : "?");
+        return 1;
+    }
+    snprintf(E.why, sizeof E.why, "%s", why);
+    snprintf(E.path, sizeof E.path, "readback (%s)", why);
+    return 0;
+}
+
+static void sync_start(void);
+
+static void setup_done(void)
+{
+    E.state = READY;
+    if (E.ngpu) log_info("embed: zero-copy, surface %#x %dx%d while shown", E.id, E.w, E.h);
+    else log_info("embed: readback fallback (%s), by %s, surface %#x %dx%d while shown", E.why, embed_gl_readback_mode(),
+                  E.id, E.w, E.h);
+    embed_changed();
+}
+
 static void synced(void *d, struct wl_callback *cb, uint32_t t)
 {
     (void)d, (void)t;
     wl_callback_destroy(cb);
     E.sync = NULL;
     if (E.state == CONNECTING) {
-        if (!E.comp || !E.shm || !E.iapp) {
-            log_warn("embed: the HMI's compositor lacks wl_compositor / wl_shm / ivi_application");
-            E.failed = 1;
+        switch (E.stage) {
+        case SYNC_GLOBALS:
+            log_info("embed: %s offers %s", E.display, E.globals);
+            if (!E.comp || !E.shm || !E.iapp) {
+                log_warn("embed: the HMI's compositor lacks wl_compositor / wl_shm / ivi_application");
+                E.failed = 1;
+                return;
+            }
+            if (E.drm && E.zero_copy && !E.refused[0]) { E.stage = SYNC_DRM; sync_start(); return; }
+            /* fall through */
+        case SYNC_DRM:
+            if (shm_buffers() < 0) { E.failed = 1; return; }
+            if (gpu_buffers()) { E.stage = SYNC_BUFFERS; sync_start(); return; }
+            setup_done();
+            return;
+        case SYNC_BUFFERS:
+            setup_done();
             return;
         }
-        if (buffers() < 0) { E.failed = 1; return; }
-        E.state = READY;
-        log_info("embed: ready, surface %#x %dx%d while shown", E.id, E.w, E.h);
-        embed_changed();
-        return;
     }
     if (E.reclaiming) {           /* what the compositor held of the gone surface is released */
         E.reclaiming = 0;
-        for (int i = 0; i < NBUF; i++) E.held[i] = 0;
+        for (int i = 0; i < NB; i++) E.held[i] = 0;
     }
 }
 static const struct wl_callback_listener sync_listener = { synced };
@@ -140,7 +253,7 @@ static void sync_start(void)
     wl_callback_add_listener(E.sync, &sync_listener, NULL);
 }
 
-int embed_connect(const char *display, uint32_t id, int w, int h)
+int embed_connect(const char *display, uint32_t id, int w, int h, int zero_copy)
 {
     if (E.dpy)
         return 0;
@@ -149,8 +262,12 @@ int embed_connect(const char *display, uint32_t id, int w, int h)
         log_debug("embed: cannot connect to %s: %s", display, strerror(errno));
         return -1;
     }
-    E.id = id; E.w = w; E.h = h;
+    E.id = id; E.w = w; E.h = h; E.zero_copy = zero_copy;
+    snprintf(E.display, sizeof E.display, "%s", display);
+    E.globals[0] = 0; E.path[0] = 0; E.drm_device[0] = 0;
+    E.drm_caps = 0; E.drm_xrgb = 0;
     E.state = CONNECTING;
+    E.stage = SYNC_GLOBALS;
     E.since = now_ms();
     E.reg = wl_display_get_registry(E.dpy);
     wl_registry_add_listener(E.reg, &reg_listener, NULL);
@@ -162,6 +279,8 @@ int embed_connect(const char *display, uint32_t id, int w, int h)
 
 int embed_connected(void) { return E.state == READY; }
 int embed_connecting(void) { return E.state == CONNECTING; }
+int embed_zero_copy(void) { return E.state == READY && E.ngpu > 0; }
+const char *embed_path(void) { return E.state == READY ? E.path : ""; }
 int embed_visible(void) { return E.surface != NULL; }
 
 static void destroy_surface(void)
@@ -179,16 +298,18 @@ void embed_disconnect(void)
     int was = E.state == READY;
     destroy_surface();
     if (E.sync) { wl_callback_destroy(E.sync); E.sync = NULL; }
-    for (int i = 0; i < NBUF; i++)
+    for (int i = 0; i < NB; i++)
         if (E.buf[i]) { wl_buffer_destroy(E.buf[i]); E.buf[i] = NULL; }
     if (E.map) { munmap(E.map, E.map_size); E.map = NULL; }
+    if (E.drm) wl_drm_destroy(E.drm);
     if (E.iapp) ivi_application_destroy(E.iapp);
     if (E.shm) wl_shm_destroy(E.shm);
     if (E.comp) wl_compositor_destroy(E.comp);
     if (E.reg) wl_registry_destroy(E.reg);
-    E.iapp = NULL; E.shm = NULL; E.comp = NULL; E.reg = NULL;
+    E.drm = NULL; E.iapp = NULL; E.shm = NULL; E.comp = NULL; E.reg = NULL;
     wl_display_disconnect(E.dpy);
     E.dpy = NULL;
+    E.ngpu = 0;
     E.cur = -1;
     E.ready = -1;
     E.reclaiming = 0;
@@ -218,16 +339,20 @@ void embed_show(int on)
     log_info("embed: surface %#x %s", E.id, on ? "created" : "destroyed");
 }
 
-uint8_t *embed_buffer(void)
+int embed_buffer(int gpu)
 {
-    if (!E.surface || E.reclaiming)
-        return NULL;
-    E.cur = E.ready;                                   /* a frame not committed yet is drawn over */
-    for (int i = 0; E.cur < 0 && i < NBUF; i++)
+    if (!E.surface || E.reclaiming || (gpu && !E.ngpu))
+        return -1;
+    int lo = gpu ? NSHM : 0, hi = gpu ? NSHM + E.ngpu : NSHM;
+    E.cur = E.ready >= lo && E.ready < hi ? E.ready : -1;  /* a frame not committed yet is drawn over */
+    for (int i = lo; E.cur < 0 && i < hi; i++)
         if (!E.held[i])
             E.cur = i;
-    return E.cur < 0 ? NULL : E.map + (size_t)E.w * E.h * 4 * E.cur;
+    return E.cur;
 }
+
+uint8_t *embed_pixels(int b) { return b >= 0 && b < NSHM && E.map ? E.map + (size_t)E.w * E.h * 4 * b : NULL; }
+int embed_gpu_index(int b) { return b >= NSHM && b < NSHM + E.ngpu ? b - NSHM : -1; }
 
 void embed_filled(void)
 {
@@ -236,6 +361,7 @@ void embed_filled(void)
 }
 
 int embed_can_commit(void) { return E.surface && E.ready >= 0 && !E.frame_cb; }
+int embed_ready(void) { return E.ready; }
 
 void embed_discard(void) { E.ready = -1; }
 
@@ -302,8 +428,8 @@ int embed_dispatch(const struct pollfd *pfd)
             wl_display_cancel_read(E.dpy);
         }
     }
+    if (wl_display_dispatch_pending(E.dpy) < 0) { lost("dispatch"); return -1; }   /* a protocol error comes before the hangup */
     if (pfd->revents & (POLLERR | POLLHUP)) { lost("connection closed"); return -1; }
-    if (wl_display_dispatch_pending(E.dpy) < 0) { lost("dispatch"); return -1; }
     if (E.failed) { embed_disconnect(); return -1; }
     return 0;
 }

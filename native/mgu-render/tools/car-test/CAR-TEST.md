@@ -1,0 +1,230 @@
+# Car test: mgu-render's zero-copy embed path
+
+Measures the Store's scrolling on the car with the published mgu-render, then
+with this branch's (zero-copy, and the readback fallback for comparison), and
+puts the published versions back. About 20 minutes over ENET, two head-unit restarts included. The agent runs
+every command; the owner only opens and closes the Store and drags its list.
+
+| File | What |
+|---|---|
+| `install-test.sh` | runs on the Mac: status, the test install and restore, test settings, renderer and head-unit restarts, measurements |
+| `probe.js` | runs on the unit (Node 8): Wayland globals, GPU, CPU per second; read-only |
+| `kit.js` | `install-test.sh`'s version checks, on the Mac |
+| `test_probe.js` | `node test_probe.js`: the probe against a fake compositor |
+
+## Before the car
+
+- The branch is committed: `install` builds HEAD (`release/release.js
+  build`) and refuses uncommitted changes in `native/mgu-render` or
+  `apps/robertn_store`.
+- Docker is running (the mgu-render build), the Mac has internet (`install`
+  copies the published release first), and `node test_probe.js` passes.
+- Rehearse once in your own emulator (`./emu.py up --preset store` in your
+  own emulator checkout), with the options `up` prints as the target:
+
+  ```sh
+  H=(--host 127.0.0.1 --port <ssh> --identity <key> --ssh-opt StrictHostKeyChecking=no
+     --ssh-opt UserKnownHostsFile=/dev/null --ssh-opt LogLevel=ERROR --ssh-opt IdentitiesOnly=yes)
+  k() { native/mgu-render/tools/car-test/install-test.sh "$@" -- "${H[@]}"; }
+  ```
+
+  Keep the options in an array: a string of them is one word in zsh,
+  `--host` is then not seen, and the command refuses (the same string
+  given to deploy/hu itself would make it look for the car).
+- At the car: parked, on stable power (engine running or a charger), ENET
+  cable in, the SSH key in `~/.config/mgu-store/assets` (deploy/README.md,
+  "Connecting").
+
+Run everything from the root of the mgu-store checkout. The target is
+always named after `--`; nothing connects without it. At the car:
+
+```sh
+k() { native/mgu-render/tools/car-test/install-test.sh "$@" -- --car; }
+k status
+```
+
+`--car` finds the car as deploy/hu does (ENET, relay on local port 2224;
+else the hotspot; add `--wifi` or `--hu-ip <addr>` after it to choose).
+Each command connects by itself. `status` prints the installed versions, what the
+running mgu-render runs, the test settings and stats-log state. Results go to
+`~/.cache/mgu-store/car-test/results/`.
+
+## a) Baseline: the published versions
+
+1. `k status`: note the versions (the published ones: mgu-render, Store,
+   deploy tool).
+2. `k probe all`: the Wayland globals of `wayland-0` and `wayland-1` (with
+   `wl_drm`'s device and PRIME capability, `zwp_linux_dmabuf_v1`'s formats and
+   modifiers) and the GPU: DRM devices, i915 frequencies, the GL libraries
+   HmiMain3D and mgu-render have loaded, `/dev/dri`.
+3. Its frame rate: with the Store closed, `k ab verbose=1`, then
+   `k restart --off-screen` (the published mgu-render logs each second's
+   `<app>: N fps, render avg ... us max ... us` in verbose mode).
+4. Owner: open the Store on its list.
+5. `k drag baseline`, and tell the owner to drag the list up and down
+   without stopping until the command ends (about 15 s).
+
+## b) Install the branch
+
+The branch's zero-copy path must first show on a freshly started HMI: once
+the HMI's page surface has shown a pixel (shm) buffer, as the published
+renderer's did in a), it can show the zero-copy buffers with red and blue
+swapped until the HMI restarts. So the install ends with a head-unit
+restart, not a renderer restart.
+
+1. Owner: close the Store (HOME).
+2. `k install`. It records the installed versions, copies the published
+   release (every artifact checked against the catalog), builds HEAD's
+   mgu-render (and the Store, when the branch has a newer version) and
+   installs them with the unit's own deploy tool (the deploy tool itself
+   is not changed). A few minutes; a Store install waits for the app
+   manager. It refuses, changing nothing, when it cannot record the
+   versions, when the unit's versions are not the published ones, or when
+   a requirement is missing.
+3. With the owner at the car and nothing on screen: `k reboot --off-screen`.
+   It asks the head unit for the restart the Store's Restart head unit
+   makes (the Node State Manager's) and waits until the unit is back,
+   about 2 minutes. When it cannot, the owner uses the Store's Restart
+   head unit instead, and `k status` answers once the unit is back. The
+   restart also clears a)'s `verbose=1`.
+4. `k stats on` (stats-log is gone with the restart).
+5. Owner: open the Store. `k status` must show `embed: zero-copy (...)`;
+   `embed: readback fallback (<why>)` gives the reason it is not.
+6. `k sh 'journalctl -u mgu-render -b -o cat | grep -E "embed:|wayland|wl_"'`:
+   the renderer's view of `wayland-1`'s globals.
+
+## c) Measure
+
+Each run: the owner has the Store open on its list and drags it while the
+command runs. The journal's `stats robertn_store: ... fps, render avg ... us
+max ... us, path ...` lines of that window land in `<name>.stats`.
+
+Zero-copy runs come first: a readback run puts a pixel buffer on the HMI's
+page surface, and zero-copy is right again only after a head-unit restart.
+Readback can follow with a renderer restart.
+
+1. `k drag zerocopy` (the branch's defaults). Then the owner opens the
+   Store's Installed page and says whether the tool icons look right
+   (below); write it in the table.
+2. Each further setting, in this order:
+   1. Owner: close the Store.
+   2. `k ab <settings>`: they apply from mgu-render's next start, without
+      touching the installed files, and are gone at the next head-unit start.
+   3. `k restart --off-screen`.
+   4. Owner: open the Store. `k drag <name>`.
+
+   | Name | Settings |
+   |---|---|
+   | `zerocopy-notick` | `tick_early=0` |
+   | `readback-pbo` | `embed_zero_copy=0 readback_pbo=1` |
+   | `readback-nopbo` | `embed_zero_copy=0 readback_pbo=0` |
+
+3. Colour check, zero-copy after readback: owner closes the Store; `k ab`
+   (back to the defaults); `k restart --off-screen`; owner opens the
+   Store's Installed page and says how the tool icons look; `k status`
+   shows the path (`embed: zero-copy`). Write it in the table.
+
+   | Icon | Right | Red and blue swapped |
+   |---|---|---|
+   | App privacy | purple | pinkish red |
+   | Deploy tool | red | blue |
+   | Python | green | teal green |
+   | Renderer | blue | orange |
+
+4. `k sh 'journalctl -u mgu-render -b -o short-monotonic' > ~/.cache/mgu-store/car-test/results/mgu-render-journal.txt`
+
+## d) Restore
+
+1. Owner: close the Store.
+2. `k restore`. It clears the test settings and stats-log, installs the
+   published versions again from the copy made in b), and checks that the
+   deploy tool, mgu-render and the Store have the versions recorded before
+   and that mgu-render's installed manifest (every file's sha256) is the
+   one recorded before. Anything else is an error: run `restore` again.
+   When the test installed a Store, an app cannot go back a version, so
+   the test Store is uninstalled and the published one installed fresh:
+   its tile goes and comes back, it may get another uid, and its data
+   folder starts empty. That folder holds only what is made again by
+   itself (the updater writes `updater-secret` again within 15 s, the
+   bundle cache is rebuilt); sources, tokens and settings are the
+   updater's and stay. The deploy tool's snapshots do not cover app homes,
+   so nothing else would bring them back.
+3. With nothing on screen: `k reboot --off-screen`, so the published
+   renderer starts on a freshly started HMI, as the car runs it every day.
+4. `k status`: the versions of a), `runs /var/opt/mgu-render/versions/<published>/mgu-render`
+   (once the Store has been opened), test settings none, stats-log off, no
+   test install recorded.
+5. Owner: open the Store and check it draws, scrolls, and its icons have
+   their right colours.
+
+The test build stays on the unit as mgu-render's other kept version (the
+deploy tool keeps two). The next published update replaces it; do not run
+`rollback mgu-render` before then.
+
+## e) What to send back
+
+The whole `~/.cache/mgu-store/car-test/results/` folder (`*.txt`, `*.json`,
+`*.stats`, `mgu-render-journal.txt`), the output of `install` and `restore`,
+and this table:
+
+| Run | Path (`embed:` line / stats) | Colours | fps mean | render avg / max µs | mgu-render CPU % mean / max | HmiMain3D CPU % mean / max | Store CPU % | system CPU % | GPU MHz mean / max |
+|---|---|---|---|---|---|---|---|---|---|
+| baseline (published) | readback | | | | | | | | |
+| zerocopy (fresh HMI) | | right / swapped | | | | | | | |
+| zerocopy-notick | | | | | | | | | |
+| readback-pbo | | | | | | | | | |
+| readback-nopbo | | | | | | | | | |
+| colour check (zero-copy after readback) | | right / swapped | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+
+`wayland-1` globals: `wl_drm` v__ device ______ PRIME yes/no;
+`zwp_linux_dmabuf_v1` v__, XR24/AR24 modifiers ______. GPU driver ______,
+DRI driver HmiMain3D has loaded ______.
+
+## What can go wrong
+
+- **Never stop or restart mgu-render with an app on screen.** Stopping a
+  renderer while an app's surface is up can restart the head unit. Use
+  `k restart --off-screen` only, after the owner has closed the Store; it
+  also refuses while mgu-render's journal shows its embed surface up, when
+  an app has drawn over the HMI since mgu-render started (its closing is not
+  logged), when the journal cannot be read, or when mgu-render is not in
+  recmgr's restart list. Then `k reboot --off-screen` instead, and `k ab
+  <settings>` and `k stats on` again (a head-unit restart clears them).
+- **The head unit restarts by itself** (black screen, boot logo): wait until
+  it is back (about 2 minutes). Test settings and stats-log are gone; the
+  installed mgu-render runs. `k status`, then go on, or `k restore`.
+- **Icons with red and blue swapped:** the zero-copy buffers on a page
+  surface that showed a pixel buffer earlier in this HMI run. Only a
+  head-unit restart clears it (`k reboot --off-screen`); a renderer
+  restart does not.
+- **`k reboot` refused or not taken:** it refuses while the deploy tool
+  runs; otherwise the owner uses the Store's Restart head unit.
+- **The Store does not draw after a restart, or mgu-render does not stay
+  up:** `k ab` (clears the settings), `k restart --off-screen`, `k
+  status`. If it still fails: `k restore`.
+- **`install` refused (exit 2):** when the message is the kit's own
+  (versions, requirements, a test install already recorded), nothing
+  changed. When the unit's deploy tool refused a component, the test
+  record exists: `k status`, then `k restore`.
+- **`install` failed (exit 1):** the deploy tool undid that component. `k
+  status`, then `k restore`.
+- **The connection drops mid-command:** run the command again. `install`
+  refuses once its record exists: run `restore`, which can always run again.
+- **The Store's tile goes away during `restore`:** expected while the
+  published Store reinstalls; it comes back when the install ends.
+
+## Not verified off the car
+
+- The whole round trip (status, probe, install of mgu-render and a newer
+  Store, restart guard and restart, the runtime settings, drag with stats
+  lines, restore with the Store reinstalled, the checks, `k reboot`) ran in
+  the emulator. The car's own connection (`--car`) is deploy/hu's. `k
+  reboot` sends the request the updater's `reboot` sends (`nsm_control
+  --requestRestart 7 --normal`) and waits for a new boot id or a new start
+  of the HMI.
+- How HmiMain3D's compositor answers a client that binds
+  `zwp_linux_dmabuf_v1` and leaves: mgu-render binds `wl_drm` there, the
+  probe also `zwp_linux_dmabuf_v1` (for its formats and modifiers), which
+  mgu-render never does.
+- Whether the car's i915 exposes `gt_act_freq_mhz` under
+  `/sys/class/drm/card0`; without it `drag` reports no GPU column.

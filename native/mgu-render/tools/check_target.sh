@@ -10,7 +10,7 @@ interp=$(readelf -l "$B" | sed -n 's/.*Requesting program interpreter: \(.*\)]/\
 needed=$(readelf -d "$B" | sed -n 's/.*Shared library: \[\(.*\)\]/\1/p' | sort | tr '\n' ' ')
 for n in $needed; do
     case $n in
-    libwayland-client.so.0|libwayland-egl.so.1|libEGL.so.1|libGLESv2.so.2|libm.so.6|libc.so.6|libpthread.so.0) ;;
+    libwayland-client.so.0|libwayland-egl.so.1|libEGL.so.1|libGLESv2.so.2|libm.so.6|libdl.so.2|libc.so.6|libpthread.so.0) ;;
     *) echo "FAIL  needs $n"; fail=1 ;;
     esac
 done

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.13
+
+From robertnisipeanu/mgu-store's 0.9.9. Dragging a list builds the drawn frame only when the renderer asks for the
+next one (its TICK), not on every finger move while the renderer still has
+the frame before.
+
 ## 0.9.12
 
 From robertnisipeanu/mgu-store's 0.9.8.

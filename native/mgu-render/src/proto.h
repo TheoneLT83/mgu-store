@@ -96,8 +96,11 @@ enum {
     E_READY = 101,    /* u32 version, u32 screen w, u32 screen h, u32 touch routing on */
     E_TICK = 102,     /* u32 frame number, u32 ms since start: the compositor took the last frame, send the next */
     E_ERROR = 103,    /* utf8 text */
-    E_STATS = 104,    /* u32 frames shown in the last second, u32 avg render us, u32 max render us */
+    E_STATS = 104,    /* u32 frames shown in the last second, u32 avg render us, u32 max render us; native: u32 STATS_* */
 };
+enum { STATS_ZERO_COPY = 1 };   /* the frames were drawn straight into the HMI compositor's GPU buffer (embed) */
+/* while this file exists, each shown app's stats are logged once a second (info) */
+#define STATS_LOG_FILE "/run/mgu-render/stats-log"
 
 /* daemon -> client, upstream */
 enum {
@@ -126,6 +129,7 @@ enum {
     CAP_FRONT_GATE = 4,     /* surfaces show only while the app's screen is in front */
     CAP_PIXMAP = 8,         /* X_PIXMAP / X_PIXELS / X_PALETTE */
     CAP_VIDEO = 16,         /* MI_VIDEO / MI_DROP_VIDEO / OP_VIDEO */
+    CAP_EMBED_ZERO_COPY = 32, /* embed frames are drawn straight into the HMI compositor's GPU buffers (no readback) */
 };
 
 /* draw opcodes, all dialects */

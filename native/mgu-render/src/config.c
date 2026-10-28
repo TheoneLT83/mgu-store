@@ -19,6 +19,9 @@ void cfg_defaults(struct cfg *c)
     c->n_shared_yield = 3;
     snprintf(c->wayland_display, sizeof c->wayland_display, "wayland-0");
     c->embed = 1;
+    c->embed_zero_copy = 1;
+    c->tick_early = 1;
+    c->readback_pbo = 1;
     snprintf(c->hmi_display, sizeof c->hmi_display, "wayland-1");
     c->embed_surface_id = 0x500;
     c->embed_area[0] = 104; c->embed_area[1] = 88; c->embed_area[2] = 1796; c->embed_area[3] = 632;
@@ -138,6 +141,9 @@ int cfg_set(struct cfg *c, const char *key, const char *value)
     if (!strcmp(key, "screen_id")) c->screen_id = (uint32_t)n;
     else if (!strcmp(key, "embed")) c->embed = n != 0;
     else if (!strcmp(key, "embed_surface_id")) c->embed_surface_id = (uint32_t)n;
+    else if (!strcmp(key, "embed_zero_copy")) c->embed_zero_copy = n != 0;
+    else if (!strcmp(key, "tick_early")) c->tick_early = n != 0;
+    else if (!strcmp(key, "readback_pbo")) c->readback_pbo = n != 0;
     else if (!strcmp(key, "gate_legacy")) c->gate_legacy = n != 0;
     else if (!strcmp(key, "touch")) c->touch = n != 0;
     else if (!strcmp(key, "verbose")) c->verbose = n != 0;

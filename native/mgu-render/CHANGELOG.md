@@ -1,5 +1,14 @@
 # mgu-render changelog
 
+## 0.5.0
+
+- Embed frames are drawn straight into GPU buffers the HMI's compositor shows (zero-copy): three linear XRGB8888 dmabufs from GBM (`libgbm.so.1`, loaded when needed), each the texture of an FBO, given to the compositor with `wl_drm`'s `create_prime_buffer`. Used when the compositor offers `wl_drm` v2 with PRIME and XRGB8888 and the renderer's EGL imports dmabufs; otherwise frames are read back into its shared memory as before, and so until mgu-render restarts once the compositor refused the buffers (a `wl_drm` protocol error; mgu-render reconnects at once) or they could not be made. The journal says `embed: zero-copy` or `embed: readback fallback (<why>)`, and lists the compositor's globals. `embed_zero_copy = 0` reads back always.
+- With zero-copy, display-bridge's apps' pixels go into the GPU buffers too (drawn by GL as a picture): the HMI's compositor shows a GPU buffer with red and blue swapped once the surface id has shown a shared-memory buffer in that HMI run.
+- Embed frames are drawn top-down, so a readback is one copy (no rows turned); anti-aliased edges can differ from 0.4.0's by a few levels.
+- `tick_early` (on): an embed app gets its TICK once its last frame is drawn and no drawn frame waits, so it builds frame N+1 while the HMI shows frame N; that frame is drawn while the compositor still has the one before and committed at its frame callback.
+- `readback_pbo` (on): the readback goes through a pixel buffer (GLES 3) and is copied into the compositor's buffer just before that frame is committed.
+- STATS has a fourth word for native apps (1: the frames were drawn zero-copy), X_READY's caps have 32 (embed zero-copy), and while `/run/mgu-render/stats-log` exists each shown app's frames a second, render time and frame path are logged once a second.
+
 ## 0.4.1
 
 - The HMI page template is made when mgu-render is installed or updated (`mgu-render-hmi.sh --build`, the deploy tool's `postInstall`; needs mgu-deploy 0.6.1), at low priority for at most 120 s, never before the HMI: `mgu-render-hmi.service` only mounts a template made for the installed HmiMain3D, the generator and the surface id, else leaves the stock widgets, so the HMI and the cluster's map start without waiting for it. An install whose boot-time build never finished gets its template with this update; embed is offered from the next start of the head unit.

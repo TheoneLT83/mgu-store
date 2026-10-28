@@ -44,9 +44,11 @@ kit renderd.js / record.js  ---> dialect.c: upstream | iterio | native per conne
 mgu_render_client.js             gfx.c: GLES2, one shader, analytic AA, cached layers,  layer: EGL window on
   FRAME (draw ops), IMAGE,         glyph atlases, ramps, pictures, pixmaps                Winston (wayland-0), own
   pixmap regions, CLAIM, GRAB    layer  -> eglSwapBuffers on the app's ivi surface       ivi layer per app
-                           <---  TICK when the compositor took the frame               embed: FBO -> readback ->
-                           <---  TOUCH / CLOSED (touch.c, nft divert of UDP 30567)        wl_shm on HmiMain3D's
-                           <---  X_STATE, CCU                                              compositor (wayland-1)
+                           <---  TICK when the compositor took the frame               embed: GBM dmabuf FBO ->
+                           <---  TOUCH / CLOSED (touch.c, nft divert of UDP 30567)        wl_drm buffer (else FBO ->
+                           <---  X_STATE, CCU                                              readback -> wl_shm) on
+                                                                                           HmiMain3D's compositor
+                                                                                           (wayland-1)
 foreground_gate.js (child, root:root) -> which uids are in front
 mgu-render-hmi.sh --build (install) -> page template; mgu-render-hmi.sh (before hmi.service) -> mounted into the HMI's widgets
 ```
@@ -92,7 +94,9 @@ from the installed HmiMain3D.
   head-unit start. `umount /mnt/dataro/data/hmi/bmw/widget` undoes it.
 - Drop-ins `/etc/systemd/system/display-bridge{.socket,.service,-hmi.service}.d/mgu-render.conf`:
   display-bridge's units stand down while mgu-render is installed ("display-bridge's apps").
-- Logs: `journalctl -u mgu-render -u mgu-render-hmi`.
+- Logs: `journalctl -u mgu-render -u mgu-render-hmi`. `embed:` lines name the HMI compositor's globals and the
+  embed path (`zero-copy`, or `readback fallback (<why>)`). While `/run/mgu-render/stats-log` exists, each shown
+  app's frames a second, render time and path are logged once a second (`stats <app>: ...`).
 
 An update does not stop a running mgu-render (`keepRunning` in
 `component.json`): the files and units are replaced, the running daemon goes
@@ -103,6 +107,26 @@ socket unit restarts: at once when the daemon is not running (the deploy
 tool restarts a changed socket whose service is stopped), else at the next
 head-unit start; meanwhile apps reach it through the community socket, which
 the client tries next.
+
+## Embed buffers
+
+An embed app's frames reach the HMI's compositor one of two ways, decided when mgu-render connects to it:
+
+- **zero-copy**: drawn straight into one of three GPU buffers the compositor shows. They are linear XRGB8888
+  dmabufs from GBM (`/dev/dri/renderD128`, else `card0`), each the texture of an FBO, given to the compositor with
+  `wl_drm`'s `create_prime_buffer`. A frame is finished (`glFinish`) before it is committed. Needs `wl_drm` v2 with
+  PRIME and XRGB8888 on the compositor and dmabuf import (`EGL_EXT_image_dma_buf_import`) in mgu-render's own EGL.
+- **readback**: drawn into an offscreen FBO and read into the compositor's shared memory (`wl_shm`), through a pixel
+  buffer when the context is GLES 3. Used when anything zero-copy needs is missing, with `embed_zero_copy = 0`, and
+  once the compositor refused the GPU buffers (a protocol error on `wl_drm`) or they could not be made: from then on
+  until mgu-render restarts, reconnecting at once after a refusal.
+
+Both draw top-down and give the same bytes (`test/test_embed.c`). display-bridge's apps' pixels go into whichever
+kind is in use (with zero-copy, drawn into the GPU buffer by GL as a picture): the HMI's compositor shows a GPU buffer
+with red and blue swapped once the same surface id has shown a shared-memory buffer in that HMI run (seen in the
+emulator and on the car), so a connection never mixes the two. Once reading back, mgu-render stays so until it restarts, and
+zero-copy after a readback shows right only on a freshly started HMI. The journal names the path (`embed: zero-copy` or `embed: readback fallback (<why>)`);
+apps see it in X_READY's caps (32) and STATS' fourth word.
 
 ## display-bridge's apps
 
@@ -130,9 +154,10 @@ and serves those apps, unchanged.
   display-bridge)
   is kept as FRAME and RECTS write it, and shown in the HMI page's box,
   fitted and centred with black around it as display-bridge places it, with
-  READY's `hmi` flag and that rectangle: written straight into the
-  compositor's buffer on the CPU (palette lookup, nearest-pixel scaling,
-  about 0.5 ms a frame), so a pixel app puts no GPU work beside the HMI's.
+  READY's `hmi` flag and that rectangle: made on the CPU (palette lookup,
+  nearest-pixel scaling, about 0.5 ms a frame) and written straight into
+  the compositor's shared memory, or, with zero-copy, drawn into its GPU
+  buffer by GL as a picture ("Embed buffers").
   Without the page template (the first start after an install) it goes on
   the app's own layer as a pixmap, fitted into the app area. SHOW and HIDE are
   the app's wish; it shows only while the foreground gate reports it in front.
@@ -223,6 +248,7 @@ The unit-specific ones:
 | `touch_iface`, `touch_saddr` | `vlan73`, `160.48.199.115` (`auto`: `lo` when there is no vlan73, as in the emulator) | same |
 | `touch_area` | 84,0,1836,720 (`auto` by screen size) | 0,76,2880,764 |
 | `embed`, `embed_area` | 1, 104,88,1796,632 | never offered: no HmiMain3D, so no template is loaded |
+| `embed_zero_copy`, `tick_early`, `readback_pbo` | 1, 1, 1 (embed: "Embed buffers") | same |
 | `foreground_gate`, `hmi_process` | node + `foreground_gate.js`, `HmiMain3D` | the gate reads `RemoteHmiApplication2` from `oap-mainapp21` |
 
 ## Apps
@@ -279,8 +305,8 @@ HMI only where the HMI's controller gate is loaded (`info.controller`).
 | Command | What |
 |---|---|
 | `make target` | `build/target/mgu-render`: x86-64, glibc 2.27, loader `/lib/ld-linux-x86-64.so.2`, built in Ubuntu 18.04 (Docker, linux/amd64) |
-| `make check-target` | the binary's architecture, loader, libraries (`libwayland-client`, `libwayland-egl`, `libEGL`, `libGLESv2`, libc, libm) and glibc versions |
-| `make test` | in Ubuntu 24.04 with Mesa's llvmpipe (Docker): `test/test_dialect.c`, `test/test_touch.c` (routing; our table and ports only, in while claimed, out when not and when the renderer dies), `test/test_share.c` (the community socket beside a fake second renderer: handover, restart, take-back, the drop race, foreign sockets kept), `test/test_video.c` (a frame file shorter than its header, the frame file's owner, the video limits), `test/test_hmi.sh` (the page-template script: built at install, only mounted at boot, a refused build not retried, a timeout or signal retried), and `test/replay.sh`: every session in `test/sessions/` (recorded from upstream's and IterioDev's kits, `test/sessions/README.md`) and the synthetic ones (`test/gen_sessions.js`) replayed through the original daemons (`test/reference/`) and mgu-render, every frame compared byte for byte; native pixmaps compared with the same pictures sent as IterioDev pictures; video sessions read frame files in `/dev/shm` and their last frame is checked for the videos' colours; a frame file of another uid is refused |
+| `make check-target` | the binary's architecture, loader, libraries (`libwayland-client`, `libwayland-egl`, `libEGL`, `libGLESv2`, libc, libm, libdl) and glibc versions |
+| `make test` | in Ubuntu 24.04 with Mesa's llvmpipe (Docker): `test/test_embed.c` (embed's buffer paths against a mock HMI compositor, `test/mock_hmi.c`: zero-copy through `wl_drm` with memfds standing in for dmabufs, readback with and without a pixel buffer, no `wl_drm`, no PRIME, buffers refused; every committed frame's CRC equal to the frame GL drew), `test/test_dialect.c`, `test/test_touch.c` (routing; our table and ports only, in while claimed, out when not and when the renderer dies), `test/test_share.c` (the community socket beside a fake second renderer: handover, restart, take-back, the drop race, foreign sockets kept), `test/test_video.c` (a frame file shorter than its header, the frame file's owner, the video limits), `test/test_hmi.sh` (the page-template script: built at install, only mounted at boot, a refused build not retried, a timeout or signal retried), and `test/replay.sh`: every session in `test/sessions/` (recorded from upstream's and IterioDev's kits, `test/sessions/README.md`) and the synthetic ones (`test/gen_sessions.js`) replayed through the original daemons (`test/reference/`) and mgu-render, every frame compared byte for byte; native pixmaps compared with the same pictures sent as IterioDev pictures; video sessions read frame files in `/dev/shm` and their last frame is checked for the videos' colours; a frame file of another uid is refused |
 | `deploy/hu install mgu-render` | build and install on a unit or the emulator (deploy/README.md) |
 
 `mgu-render --replay FILE --out F.pam [--raw F.rgba]` draws a recorded
@@ -297,7 +323,7 @@ the car can show:
 - [ ] Layer: an upstream app (car_vitals) draws at 60 fps under our unit (upstream measured 56-61 fps with its own); our layer's z-order over HMI popups and the camera, and the yield surface ids of the reversing camera.
 - [ ] Embed: DOOM-style pixmap frames inside the page: presented rate (`fps` in `test/pixel_client.js`), and the readback cost at 1796×632 (STATS avg µs) on the HD 505.
 - [ ] display-bridge's apps: after the update and a head-unit restart, display-bridge's units inactive (condition), DOOM, draw_gallery and display_bridge_demo drawn in their pages, DOOM's presented rate (`doom fps` in `/tmp/doom.log`) and touch on display_bridge_demo.
-- [ ] Embed: whether HmiMain3D's compositor offers `wl_drm`/`zwp_linux_dmabuf_v1` (`verbose = 1` logs its globals): an EGL surface there would skip the readback.
+- [ ] Embed: HmiMain3D's compositor offers `wl_drm` v2 with PRIME (`embed:` lines in the journal), takes the GPU buffers and shows them (`embed: zero-copy`), and the Store's drawn screens' frame rate while dragging (`tools/car-test/CAR-TEST.md`).
 - [ ] Touch: finger PDUs on UDP 30567 from 160.48.199.115 on vlan73, finger PDUs told by their finger count (payload byte 37) whatever their word type; the claim area 84,0,1836,720.
 - [ ] Touch in embed mode: a claimed area inside the page reaches the app and the HMI's hidden components under it do not react.
 - [ ] The foreground gate as root:root (gid 0) under the unit's SOME/IP credentials.

@@ -366,7 +366,11 @@ class Drawn extends EventEmitter {
             if (t.drag) {
                 this.scroll[t.region.key] = Math.max(0, Math.min(t.region.max, t.from + (t.y - y) / t.region.step));
                 this.focus = -1;
-                this.render();
+                if (this.on_ && this.gpu.waiting) {
+                    this.dirty = true;          // built on the renderer's TICK
+                } else {
+                    this.render();
+                }
             }
         } else if (this.touch && phase === 'up') {
             const t = this.touch;

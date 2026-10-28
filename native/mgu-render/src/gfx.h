@@ -94,8 +94,11 @@ int gfx_pixmap_write(gfx_client *c, uint32_t id, int x, int y, int w, int h, con
 int gfx_video_def(gfx_client *c, uint32_t id, const char *path, uint32_t uid);
 void gfx_video_drop(gfx_client *c, uint32_t id);
 int gfx_video_pending(gfx_client *c);     /* a video has a newer frame than the one drawn: draw the app's frame again */
-/* draw a command list into the bound framebuffer (size fbw x fbh, y down) */
-void gfx_draw(gfx_client *c, const gfx_xf *xf, int fbw, int fbh, const uint32_t *cmd, size_t nwords, int clear_transparent);
+/* draw a command list into the bound framebuffer (size fbw x fbh, y down). flags: GFX_CLEAR clears it transparent
+   first; GFX_TOP_DOWN draws it upside down in GL terms, so its rows lie top-down in memory (a buffer another process
+   shows as it is, or reads back without turning it) */
+enum { GFX_CLEAR = 1, GFX_TOP_DOWN = 2 };
+void gfx_draw(gfx_client *c, const gfx_xf *xf, int fbw, int fbh, const uint32_t *cmd, size_t nwords, int flags);
 const char *gfx_error(void);
 
 #endif

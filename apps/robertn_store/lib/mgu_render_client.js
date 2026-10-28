@@ -51,7 +51,7 @@ const E = { READY: 101, TICK: 102, ERROR: 103, STATS: 104, TOUCH: 105, CLOSED: 1
 const MODES = { layer: 1, embed: 2 };
 const MODE_NAMES = [null, 'layer', 'embed'];
 const FORMATS = { rgba: 1, rgbx: 2, index8: 3 };
-const CAPS = { touch: 1, controller: 2, frontGate: 4, pixmap: 8, video: 16 };
+const CAPS = { touch: 1, controller: 2, frontGate: 4, pixmap: 8, video: 16, zeroCopy: 32 };
 const PHASES = [null, 'down', 'move', 'up'];
 const IMG_MAX = 64, IMG_BYTES = 32 << 20;
 const OP_IMAGE = 18, OP_VIDEO = 19;
@@ -196,6 +196,7 @@ class RenderClient extends EventEmitter {
                 pixmapSide: p.readUInt32LE(44), refreshMhz: p.readUInt32LE(48),
                 touch: !!(caps & CAPS.touch), controller: !!(caps & CAPS.controller),
                 frontGate: !!(caps & CAPS.frontGate), pixmap: !!(caps & CAPS.pixmap), video: !!(caps & CAPS.video),
+                zeroCopy: !!(caps & CAPS.zeroCopy),
             };
         } else if (type === E.READY) {
             this.ready = true; this.errLogged = false;
@@ -227,7 +228,8 @@ class RenderClient extends EventEmitter {
             this.waiting = false;
             this.emit('tick', p.readUInt32LE(0), p.readUInt32LE(4));
         } else if (type === E.STATS) {
-            this.stats = { fps: p.readUInt32LE(0), avgUs: p.readUInt32LE(4), maxUs: p.readUInt32LE(8) };
+            this.stats = { fps: p.readUInt32LE(0), avgUs: p.readUInt32LE(4), maxUs: p.readUInt32LE(8),
+                zeroCopy: p.length >= 16 && !!(p.readUInt32LE(12) & 1) };
             this.emit('stats', this.stats);
         } else if (type === E.ERROR) {
             this.log.warn('mgu-render error: ' + p.toString());

@@ -51,9 +51,9 @@ Daemon to client:
 | Type | Name | Payload |
 |---|---|---|
 | 101 | READY | u32 version (4), screen w, screen h, touch routing on |
-| 102 | TICK | u32 frame number, ms since start: the compositor took the last frame, send the next |
+| 102 | TICK | u32 frame number, ms since start: the compositor took the last frame, send the next (embed with `tick_early`: the last frame is drawn and none waits to be shown) |
 | 103 | ERROR | utf8 text |
-| 104 | STATS | u32 frames shown in the last second, avg render µs, max render µs |
+| 104 | STATS | u32 frames shown in the last second, avg render µs, max render µs; native only: u32 flags (1: drawn zero-copy into the HMI compositor's buffer) |
 
 READY carries four words to every client. Upstream's kit reads words 1 and 2;
 IterioDev's reads the version (3: pictures supported, 4: video) and the touch word.
@@ -130,7 +130,7 @@ Daemon to client:
 
 | Type | Name | Payload |
 |---|---|---|
-| 0x4d520101 | X_READY | u32 version (1), modes (bit 0 layer, bit 1 embed: offered now), caps (1 touch routing, 2 controller gate loaded in the HMI and its event socket ours or free, 4 front gate, 8 pixmaps, 16 video), i32 embed box x, y, w, h (0 when no embed), i32 app area x, y, w, h, u32 largest pixmap side, refresh mHz |
+| 0x4d520101 | X_READY | u32 version (1), modes (bit 0 layer, bit 1 embed: offered now), caps (1 touch routing, 2 controller gate loaded in the HMI and its event socket ours or free, 4 front gate, 8 pixmaps, 16 video, 32 embed frames drawn zero-copy), i32 embed box x, y, w, h (0 when no embed), i32 app area x, y, w, h, u32 largest pixmap side, refresh mHz |
 | 0x4d520102 | X_STATE | u32 mode, on screen, in front (the HMI shows the app's screen); sent whenever one changes |
 | 0x4d520103 | X_CCU | as upstream's CCU |
 
@@ -198,8 +198,9 @@ taken for hung and hidden until it talks again, as IterioDev's kit does.
   template `LT_State_A4A_WelcomeApp` as its state's widget; the HMI draws the
   ivi surface `embed_surface_id` from its own compositor (`wayland-1`) in the
   template's box (`embed_area`), under its title bar and its popups. PLACE's x
-  and y are the box's; frames are drawn at the box's size and read back into
-  the HMI compositor's shared memory. One app at a time holds the box: the
+  and y are the box's; frames are drawn at the box's size straight into the
+  HMI compositor's GPU buffers, or read back into its shared memory (README.md,
+  "Embed buffers"). One app at a time holds the box: the
   newest shown one in front. X_READY offers embed only when the template is
   loaded in the running HMI (`mgu-render-hmi.service` ran before it started),
   and X_MODE 2 is refused with an ERROR otherwise.

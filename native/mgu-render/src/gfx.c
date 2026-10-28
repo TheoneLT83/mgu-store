@@ -45,17 +45,18 @@ static vert *vb; static size_t nv, cap;                  /* current batch */
 static GLuint cur_tex;                                   /* layer texture bound for K_TEX quads */
 static GLuint cur_tex2, cur_tex3;                        /* a video's U and V planes (K_YUV; cur_tex = Y) */
 static int fb_w, fb_h;
+static int fb_top_down;                                  /* the framebuffer's rows in memory top-down (GFX_TOP_DOWN) */
 static float g_alpha = 1;
 
 const char *gfx_error(void) { return err; }
 
 static const char *VS =
     "attribute vec4 a_pos; attribute vec4 a_a; attribute vec4 a_b; attribute vec4 a_c; attribute vec4 a_d; attribute vec4 a_col;\n"
-    "uniform vec2 u_view;\n"
+    "uniform vec3 u_view;\n"
     "varying vec2 v_p; varying float v_kind; varying vec4 v_a; varying vec4 v_b; varying vec4 v_c; varying vec4 v_d; varying vec4 v_col;\n"
     "void main() {\n"
     "  v_p = a_pos.xy; v_kind = a_pos.z; v_a = a_a; v_b = a_b; v_c = a_c; v_d = a_d; v_col = a_col;\n"
-    "  gl_Position = vec4(a_pos.x / u_view.x * 2.0 - 1.0, 1.0 - a_pos.y / u_view.y * 2.0, 0.0, 1.0);\n"
+    "  gl_Position = vec4(a_pos.x / u_view.x * 2.0 - 1.0, u_view.z * (1.0 - a_pos.y / u_view.y * 2.0), 0.0, 1.0);\n"
     "}\n";
 
 static const char *FS =
@@ -594,7 +595,7 @@ static void flush(void) {
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, idx_q * 6 * sizeof(GLushort), idx, GL_STATIC_DRAW);
     }
     glUseProgram(prog);
-    glUniform2f(u_view, (float)fb_w, (float)fb_h);
+    glUniform3f(u_view, (float)fb_w, (float)fb_h, fb_top_down ? -1.0f : 1.0f);
     glUniform1i(u_atlas, 0); glUniform1i(u_ramp, 1); glUniform1i(u_tex, 2); glUniform1i(u_tex2, 3); glUniform1i(u_tex3, 4);
     glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, atlas_tex);
     glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, ramp_tex);
@@ -988,7 +989,7 @@ static void run(gfx_client *c, const gfx_xf *xf0, const uint32_t *cmd, size_t n,
             glEnable(GL_SCISSOR_TEST);
             int sx = (int)floorf(x), sy = (int)floorf(y), sw = (int)ceilf(x + w) - sx, sh = (int)ceilf(y + h) - sy;
             if (sw < 0) sw = 0; if (sh < 0) sh = 0;
-            glScissor(sx, fb_h - (sy + sh), sw, sh);           /* GL: origin bottom-left */
+            glScissor(sx, fb_top_down ? sy : fb_h - (sy + sh), sw, sh);   /* GL: origin bottom-left */
             break;
         }
         case OP_NOCLIP: flush(); glDisable(GL_SCISSOR_TEST); break;
@@ -1012,14 +1013,14 @@ static void run(gfx_client *c, const gfx_xf *xf0, const uint32_t *cmd, size_t n,
 #undef NEED
 }
 
-void gfx_draw(gfx_client *c, const gfx_xf *xf, int fbw, int fbh, const uint32_t *cmd, size_t n, int clear_transparent) {
-    fb_w = fbw; fb_h = fbh; g_alpha = 1;
+void gfx_draw(gfx_client *c, const gfx_xf *xf, int fbw, int fbh, const uint32_t *cmd, size_t n, int flags) {
+    fb_w = fbw; fb_h = fbh; fb_top_down = (flags & GFX_TOP_DOWN) != 0; g_alpha = 1;
     glViewport(0, 0, fbw, fbh);
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-    if (clear_transparent) { glClearColor(0, 0, 0, 0); glClear(GL_COLOR_BUFFER_BIT); }
+    if (flags & GFX_CLEAR) { glClearColor(0, 0, 0, 0); glClear(GL_COLOR_BUFFER_BIT); }
     nv = 0;
     for (gfx_video *v = c->videos; v; v = v->next) video_update(c, v);
     run(c, xf, cmd, n, 0);
@@ -1052,8 +1053,8 @@ int gfx_layer_def(gfx_client *c, uint32_t id, float w, float h, float scale, con
     }
     /* drawn the right way up in GL terms; draw_layer flips it back */
     gfx_xf lx = { scale, 0, 0 };
-    int save_w = fb_w, save_h = fb_h;
-    fb_w = pw; fb_h = ph; g_alpha = 1;
+    int save_w = fb_w, save_h = fb_h, save_td = fb_top_down;
+    fb_w = pw; fb_h = ph; fb_top_down = 0; g_alpha = 1;
     glViewport(0, 0, pw, ph);
     glDisable(GL_SCISSOR_TEST);
     glEnable(GL_BLEND);
@@ -1062,7 +1063,7 @@ int gfx_layer_def(gfx_client *c, uint32_t id, float w, float h, float scale, con
     nv = 0;
     run(c, &lx, cmd, n, 1);
     flush();
-    fb_w = save_w; fb_h = save_h;
+    fb_w = save_w; fb_h = save_h; fb_top_down = save_td;
     glBindFramebuffer(GL_FRAMEBUFFER, prev);
     l->next = c->layers; c->layers = l;
     return 0;

@@ -54,6 +54,7 @@
 #include "dbr.h"
 #include "dialect.h"
 #include "embed.h"
+#include "embed_gl.h"
 #include "gate.h"
 #include "gfx.h"
 #include "log.h"
@@ -91,7 +92,6 @@ static EGLConfig ecfg;
 static EGLContext ectx;
 static EGLSurface init_es = EGL_NO_SURFACE;
 static int screen_w = 1920, screen_h = 720, refresh_mhz;
-static int read_bgra;                /* GL_EXT_read_format_bgra */
 
 /* yield surfaces (camera, video): layer mode hides while one is visible */
 static struct { uint32_t id; struct ivi_controller_surface *s; int visible; } yield[CFG_MAX_YIELD];
@@ -138,7 +138,8 @@ typedef struct client {
     FILE *rec;
     int started;            /* a message has come: a DBR1 session is told by its first four bytes */
     /* a display-bridge app (DIALECT_DBR): shown in img (logical px); in the HMI's box its picture px (and lut for
-       INDEX8) is written straight into the compositor's buffer, on a layer it is pixmap 1. Of its frames one waits to
+       INDEX8) is made on the CPU into the compositor's buffer (with GPU buffers: drawn into one by GL), on a layer it is
+       pixmap 1. Of its frames one waits to
        be drawn (pending), one drawn waits to be committed (embed: prepared), one committed waits for the
        compositor (committed); each is answered PRESENTED or DROPPED */
     struct {
@@ -348,6 +349,7 @@ static void embed_update(void) {
     if (!embed_connected()) best = NULL;
     if (best != embed_owner) {
         embed_discard();                                    /* what was drawn for the app before */
+        embed_gl_cancel();
         if (embed_owner) log_info("%s: leaves the HMI's box", embed_owner->app);
         embed_owner = best;
         if (best) {
@@ -471,14 +473,27 @@ static void frame_done(void *data, struct wl_callback *cb, uint32_t t) {
 }
 static const struct wl_callback_listener frame_listener = { frame_done };
 
+/* how the app's frames reach the screen: "layer", "zero-copy" (drawn into the HMI compositor's GPU buffer), "readback"
+   (drawn, then read into its shared memory), "pixels" (a display-bridge app's pixels written into it) */
+static const char *frame_path(const client *c) {
+    if (c->mode != MODE_EMBED) return "layer";
+    if (c->dialect == DIALECT_DBR) return "pixels";
+    return embed_zero_copy() ? "zero-copy" : "readback";
+}
+
 static void stats(client *c, uint64_t dt) {
     c->stat_frames++; c->stat_sum += dt; if (dt > c->stat_max) c->stat_max = dt;
     uint64_t now = now_us();
     if (!c->stat_t0) c->stat_t0 = now;
     if (now - c->stat_t0 >= 1000000) {
-        uint32_t p[3] = { c->stat_frames, (uint32_t)(c->stat_sum / (c->stat_frames ? c->stat_frames : 1)), (uint32_t)c->stat_max };
-        send_msg(c, E_STATS, p, sizeof p);
-        log_debug("%s: %u fps, render avg %u us max %u us", c->app, p[0], p[1], p[2]);
+        const char *path = frame_path(c);
+        uint32_t p[4] = { c->stat_frames, (uint32_t)(c->stat_sum / (c->stat_frames ? c->stat_frames : 1)), (uint32_t)c->stat_max,
+                          !strcmp(path, "zero-copy") ? STATS_ZERO_COPY : 0 };
+        send_msg(c, E_STATS, p, c->dialect == DIALECT_NATIVE ? sizeof p : 3 * 4);
+        if (access(STATS_LOG_FILE, F_OK) == 0)
+            log_info("stats %s: %u fps, render avg %u us max %u us, path %s", c->app, p[0], p[1], p[2], path);
+        else
+            log_debug("%s: %u fps, render avg %u us max %u us, path %s", c->app, p[0], p[1], p[2], path);
         c->stat_t0 = now; c->stat_frames = 0; c->stat_sum = 0; c->stat_max = 0;
     }
 }
@@ -505,56 +520,41 @@ static void render_layer(client *c) {
     stats(c, now_us() - t0);
 }
 
-/* ---------------- embed: drawn offscreen, read back into the HMI compositor's buffer ---------------- */
-static GLuint embed_tex, embed_fbo;
-static uint8_t *embed_px;
+/* ---------------- embed: drawn into the HMI compositor's buffer (embed.h, embed_gl.h) ---------------- */
 
-static int embed_target(void) {
-    int w = cfg.embed_area[2], h = cfg.embed_area[3];
-    if (embed_fbo) { glBindFramebuffer(GL_FRAMEBUFFER, embed_fbo); return 0; }
-    embed_px = malloc((size_t)w * h * 4);
-    if (!embed_px) return -1;
-    glGenTextures(1, &embed_tex); glBindTexture(GL_TEXTURE_2D, embed_tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    glGenFramebuffers(1, &embed_fbo); glBindFramebuffer(GL_FRAMEBUFFER, embed_fbo);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, embed_tex, 0);
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) { log_error("embed: framebuffer incomplete"); return -1; }
-    return 0;
-}
-
-/* the FBO's rows bottom-up as RGBA (or BGRA) -> top-down XRGB8888 (bytes B G R X) */
-static void readback(uint8_t *dst, int w, int h) {
-    glReadPixels(0, 0, w, h, read_bgra ? GL_BGRA_EXT : GL_RGBA, GL_UNSIGNED_BYTE, embed_px);
-    size_t row = (size_t)w * 4;
-    for (int y = 0; y < h; y++) {
-        const uint8_t *s = embed_px + (size_t)(h - 1 - y) * row;
-        uint8_t *d = dst + (size_t)y * row;
-        if (read_bgra) { memcpy(d, s, row); continue; }
-        for (int x = 0; x < w; x++) { d[x * 4] = s[x * 4 + 2]; d[x * 4 + 1] = s[x * 4 + 1]; d[x * 4 + 2] = s[x * 4]; d[x * 4 + 3] = 255; }
-    }
-}
-
-/* a display-bridge app's frame is drawn as soon as it comes (over the one drawn but not committed yet, if there is
-   one) and committed at the compositor's next frame callback, so it is ready the moment the compositor is; other
-   apps' frames, a GL draw and a readback each, are drawn once that callback has come (they send a frame per TICK) */
+/* With GPU buffers every frame goes into them, a display-bridge app's pixels too (made on the CPU, drawn into the
+   dmabuf by GL): the HMI's compositor shows a GPU buffer with red and blue swapped once the same surface id has shown
+   a shared-memory one in that HMI run, so the two are not mixed; when that fails, the connection goes over to
+   shared memory for good (embed_readback).
+   A frame is drawn as soon as the buffers allow and committed at the compositor's next frame callback. A display-bridge
+   app's frame is drawn over the one drawn but not committed yet, if there is one. Another app's frame (a GL draw)
+   waits for the compositor's frame callback; with tick_early it is drawn while the compositor still has the one
+   before, when no drawn frame waits, and the app is asked for its next frame (TICK) once its last one is drawn and
+   nothing drawn waits: it builds frame N+1 while the compositor shows frame N. */
 static void render_embed(void) {
     client *c = embed_owner;
     if (!c) return;
     uint64_t t0 = now_us();
-    int draw = c->dirty && !cap_wait(c, t0) && (c->dialect == DIALECT_DBR || !embed_waiting());
-    uint8_t *buf = draw ? embed_buffer() : NULL;
-    if (buf) {
+    int dbr = c->dialect == DIALECT_DBR;
+    int draw = c->dirty && !cap_wait(c, t0) &&
+               (dbr || !embed_waiting() || (cfg.tick_early && embed_ready() < 0));
+    int b = draw ? embed_buffer(embed_zero_copy()) : -1;
+    if (b >= 0) {
         c->last_draw = t0;
         int w = cfg.embed_area[2], h = cfg.embed_area[3];
-        if (c->dialect == DIALECT_DBR) {                   /* pixels only: no GPU work beside the HMI's */
+        if (dbr) {                                         /* made on the CPU (shared memory: written straight in) */
+            static uint8_t *scratch;
             int img[4] = { (int)c->dbr.img[0], (int)c->dbr.img[1], (int)c->dbr.img[2], (int)c->dbr.img[3] };
-            dbr_blit(buf, w, h, img, c->dbr.px, (int)c->dbr.w, (int)c->dbr.h, c->dbr.format, c->dbr.lut);
+            int gpu = embed_gpu_index(b);
+            embed_gl_cancel();
+            if (gpu >= 0 && !scratch && !(scratch = malloc((size_t)w * h * 4))) return;
+            dbr_blit(gpu >= 0 ? scratch : embed_pixels(b), w, h, img, c->dbr.px, (int)c->dbr.w, (int)c->dbr.h, c->dbr.format, c->dbr.lut);
+            if (gpu >= 0 && embed_gl_write(gpu, scratch, w, h) < 0) { embed_readback("pixels could not be drawn into a GPU buffer"); return; }
         } else {
-            eglMakeCurrent(edpy, init_es, init_es, ectx);
-            if (embed_target() < 0) return;
-            gfx_draw(&c->g, &c->xf, w, h, c->frame, c->frame_words, 1);
-            readback(buf, w, h);
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            int gpu = embed_gpu_index(b), flags = embed_gl_begin(gpu, w, h);
+            if (flags < 0) return;
+            gfx_draw(&c->g, &c->xf, w, h, c->frame, c->frame_words, flags);
+            embed_gl_end(gpu, embed_pixels(b), w, h);
         }
         embed_filled();
         c->dirty = 0;
@@ -562,16 +562,19 @@ static void render_embed(void) {
         stats(c, now_us() - t0);
     }
     if (embed_can_commit()) {
+        embed_gl_resolve();
         embed_commit();
         dbr_committed(c);
         if (c->frames_shown++ == 0) send_state(c);
     }
+    /* tick_early: the next frame is asked for as soon as the app's last one is drawn and no drawn frame waits */
+    if (cfg.tick_early && !dbr && c->want_tick && !c->dirty && embed_ready() < 0) send_tick(c);
 }
 
 void embed_frame_done(void) {
     client *c = embed_owner;
     if (c) dbr_presented(c);
-    if (c && c->want_tick) send_tick(c);
+    if (c && c->want_tick && !cfg.tick_early) send_tick(c);
 }
 
 void embed_changed(void) { update_all(); }
@@ -780,7 +783,7 @@ static void hello(client *c, const uint8_t *p, uint32_t len) {
         int emb = embed_available(), area[4];
         app_area(area);
         uint32_t caps = CAP_PIXMAP | CAP_VIDEO | (touch_on ? CAP_TOUCH_ROUTE : 0) | (cfg.foreground_gate[0] ? CAP_FRONT_GATE : 0) |
-                        (ctl_gate_loaded() && ccu_free() ? CAP_CONTROLLER : 0);
+                        (ctl_gate_loaded() && ccu_free() ? CAP_CONTROLLER : 0) | (emb && embed_zero_copy() ? CAP_EMBED_ZERO_COPY : 0);
         uint32_t x[15] = { MGU_NATIVE_VERSION, (1u << (MODE_LAYER - 1)) | (emb ? 1u << (MODE_EMBED - 1) : 0), caps };
         for (int k = 0; k < 4; k++) { x[3 + k] = emb ? (uint32_t)cfg.embed_area[k] : 0; x[7 + k] = (uint32_t)area[k]; }
         x[11] = GFX_PIXMAP_SIDE; x[12] = (uint32_t)refresh_mhz;
@@ -1436,14 +1439,13 @@ int main(int argc, char **argv) {
     init_es = eglCreateWindowSurface(edpy, ecfg, (EGLNativeWindowType)tw, NULL);
     eglMakeCurrent(edpy, init_es, init_es, ectx);
     if (gfx_init() < 0) { log_error("gfx_init: %s", gfx_error()); return 1; }
-    const char *ext = (const char *)glGetString(GL_EXTENSIONS);
-    read_bgra = ext && strstr(ext, "GL_EXT_read_format_bgra") != NULL;
+    embed_gl_init(edpy, init_es, ectx, cfg.readback_pbo);
     log_info("GL: %s / %s", (const char *)glGetString(GL_RENDERER), (const char *)glGetString(GL_VERSION));
 
     if (cfg.foreground_gate[0] && gate_start(cfg.foreground_gate) < 0) return 1;
     if ((listen_fd = open_listener()) < 0) return 1;
     t_listen = now_us();
-    if (cfg.embed) embed_connect(cfg.hmi_display, cfg.embed_surface_id, cfg.embed_area[2], cfg.embed_area[3]);
+    if (cfg.embed) embed_connect(cfg.hmi_display, cfg.embed_surface_id, cfg.embed_area[2], cfg.embed_area[3], cfg.embed_zero_copy);
     share_tick();
 
     uint64_t gate_retry = 0, embed_retry = 0, share_next = 0;
@@ -1474,7 +1476,7 @@ int main(int argc, char **argv) {
         }
         if (cfg.embed && tnow > embed_retry) {               /* (no-op while connected or connecting) */
             embed_retry = tnow + 5000000;
-            embed_connect(cfg.hmi_display, cfg.embed_surface_id, cfg.embed_area[2], cfg.embed_area[3]);
+            embed_connect(cfg.hmi_display, cfg.embed_surface_id, cfg.embed_area[2], cfg.embed_area[3], cfg.embed_zero_copy);
         }
         while (wl_display_prepare_read(dpy) != 0) wl_display_dispatch_pending(dpy);
         wl_display_flush(dpy);

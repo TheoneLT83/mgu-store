@@ -20,6 +20,9 @@ struct cfg {
     char hmi_display[64];       /* the HMI's embedded compositor */
     uint32_t embed_surface_id;  /* the ivi id the page template samples */
     int embed_area[4];          /* the template's box on the screen */
+    int embed_zero_copy;        /* draw embed frames into the compositor's GPU buffers when it takes dmabufs */
+    int tick_early;             /* embed: TICK once the app's frame is drawn, not when the compositor shows it */
+    int readback_pbo;           /* embed readback through a pixel buffer (GLES 3) */
     char embed_marker[128];     /* written by mgu-render-hmi.sh once the template is mounted */
     char hmi_process[32];       /* the HMI's process name: the template is loaded if it started after the marker */
     char foreground_gate[256];  /* command reporting "foreground [uid ...]" on fd 3; empty: none */
