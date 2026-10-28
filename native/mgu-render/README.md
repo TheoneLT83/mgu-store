@@ -96,7 +96,10 @@ from the installed HmiMain3D.
   display-bridge's units stand down while mgu-render is installed ("display-bridge's apps").
 - Logs: `journalctl -u mgu-render -u mgu-render-hmi`. `embed:` lines name the HMI compositor's globals and the
   embed path (`zero-copy`, or `readback fallback (<why>)`). While `/run/mgu-render/stats-log` exists, each shown
-  app's frames a second, render time and path are logged once a second (`stats <app>: ...`).
+  app's frames a second, render time and path are logged once a second (`stats <app>: ...`); an embed app's line
+  adds the HMI's frame callbacks in that second and the time from each commit to its callback. The Store then
+  appends its own line to `/dev/shm/robertn_store-stats.log` (`stats store: ...`: builds, frames sent, touch
+  events, CPU).
 
 An update does not stop a running mgu-render (`keepRunning` in
 `component.json`): the files and units are replaced, the running daemon goes
@@ -114,7 +117,7 @@ An embed app's frames reach the HMI's compositor one of two ways, decided when m
 
 - **zero-copy**: drawn straight into one of three GPU buffers the compositor shows. They are linear XRGB8888
   dmabufs from GBM (`/dev/dri/renderD128`, else `card0`), each the texture of an FBO, given to the compositor with
-  `wl_drm`'s `create_prime_buffer`. A frame is finished (`glFinish`) before it is committed. Needs `wl_drm` v2 with
+  `wl_drm`'s `create_prime_buffer`. A frame's GL commands are flushed (`glFlush`) before it is committed; the GPU driver's implicit sync orders the compositor's reads after them (`embed_finish = 1`: it waits for the GPU, `glFinish`). Needs `wl_drm` v2 with
   PRIME and XRGB8888 on the compositor and dmabuf import (`EGL_EXT_image_dma_buf_import`) in mgu-render's own EGL.
 - **readback**: drawn into an offscreen FBO and read into the compositor's shared memory (`wl_shm`), through a pixel
   buffer when the context is GLES 3. Used when anything zero-copy needs is missing, with `embed_zero_copy = 0`, and
@@ -122,7 +125,7 @@ An embed app's frames reach the HMI's compositor one of two ways, decided when m
   until mgu-render restarts, reconnecting at once after a refusal.
 
 Both draw top-down and give the same bytes (`test/test_embed.c`). display-bridge's apps' pixels go into whichever
-kind is in use (with zero-copy, drawn into the GPU buffer by GL as a picture): the HMI's compositor shows a GPU buffer
+kind is in use (with zero-copy, uploaded at the app's own size and scaled into the GPU buffer by GL): the HMI's compositor shows a GPU buffer
 with red and blue swapped once the same surface id has shown a shared-memory buffer in that HMI run (seen in the
 emulator and on the car), so a connection never mixes the two. Once reading back, mgu-render stays so until it restarts, and
 zero-copy after a readback shows right only on a freshly started HMI. The journal names the path (`embed: zero-copy` or `embed: readback fallback (<why>)`);
@@ -156,8 +159,8 @@ and serves those apps, unchanged.
   fitted and centred with black around it as display-bridge places it, with
   READY's `hmi` flag and that rectangle: made on the CPU (palette lookup,
   nearest-pixel scaling, about 0.5 ms a frame) and written straight into
-  the compositor's shared memory, or, with zero-copy, drawn into its GPU
-  buffer by GL as a picture ("Embed buffers").
+  the compositor's shared memory, or, with zero-copy, uploaded at the app's
+  own size and scaled into its GPU buffer by GL ("Embed buffers").
   Without the page template (the first start after an install) it goes on
   the app's own layer as a pixmap, fitted into the app area. SHOW and HIDE are
   the app's wish; it shows only while the foreground gate reports it in front.
@@ -248,7 +251,7 @@ The unit-specific ones:
 | `touch_iface`, `touch_saddr` | `vlan73`, `160.48.199.115` (`auto`: `lo` when there is no vlan73, as in the emulator) | same |
 | `touch_area` | 84,0,1836,720 (`auto` by screen size) | 0,76,2880,764 |
 | `embed`, `embed_area` | 1, 104,88,1796,632 | never offered: no HmiMain3D, so no template is loaded |
-| `embed_zero_copy`, `tick_early`, `readback_pbo` | 1, 1, 1 (embed: "Embed buffers") | same |
+| `embed_zero_copy`, `tick_early`, `readback_pbo`, `embed_finish` | 1, 1, 1, 0 (embed: "Embed buffers") | same |
 | `foreground_gate`, `hmi_process` | node + `foreground_gate.js`, `HmiMain3D` | the gate reads `RemoteHmiApplication2` from `oap-mainapp21` |
 
 ## Apps

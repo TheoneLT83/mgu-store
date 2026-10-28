@@ -53,6 +53,8 @@ static struct {
     struct wl_surface *surface;
     struct ivi_surface *isurf;
     struct wl_callback *frame_cb;
+    uint64_t commit_us, cb_sum, cb_max;   /* the last commit; commit-to-callback times since embed_callbacks */
+    unsigned cb_n;
     struct wl_buffer *buf[NB];
     int held[NB];                 /* committed, not released yet */
     int ngpu;                     /* GPU buffers on this connection */
@@ -367,12 +369,30 @@ void embed_discard(void) { E.ready = -1; }
 
 int embed_waiting(void) { return E.frame_cb != NULL; }
 
+static uint64_t mono_us(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000 + (uint64_t)ts.tv_nsec / 1000;
+}
+
+void embed_callbacks(unsigned *n, unsigned *avg_us, unsigned *max_us)
+{
+    *n = E.cb_n;
+    *avg_us = E.cb_n ? (unsigned)(E.cb_sum / E.cb_n) : 0;
+    *max_us = (unsigned)E.cb_max;
+    E.cb_n = 0; E.cb_sum = 0; E.cb_max = 0;
+}
+
 static void frame_done(void *d, struct wl_callback *cb, uint32_t t)
 {
     (void)d, (void)t;
     wl_callback_destroy(cb);
-    if (cb == E.frame_cb)
+    if (cb == E.frame_cb) {
         E.frame_cb = NULL;
+        uint64_t dt = mono_us() - E.commit_us;
+        E.cb_n++; E.cb_sum += dt; if (dt > E.cb_max) E.cb_max = dt;
+    }
     embed_frame_done();
 }
 static const struct wl_callback_listener frame_listener = { frame_done };
@@ -389,6 +409,7 @@ void embed_commit(void)
     E.frame_cb = wl_surface_frame(E.surface);
     wl_callback_add_listener(E.frame_cb, &frame_listener, NULL);
     wl_surface_commit(E.surface);
+    E.commit_us = mono_us();
     E.held[E.ready] = 1;
     E.ready = -1;
 }

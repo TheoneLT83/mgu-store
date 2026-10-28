@@ -1,9 +1,21 @@
-# Car test: mgu-render's zero-copy embed path
+# Car test: mgu-render's embed pacing
 
-Measures the Store's scrolling on the car with the published mgu-render, then
-with this branch's (zero-copy, and the readback fallback for comparison), and
-puts the published versions back. About 20 minutes over ENET, two head-unit restarts included. The agent runs
-every command; the owner only opens and closes the Store and drags its list.
+Measures the Store's scrolling and DOOM on the car with the published
+mgu-render and Store, then with this branch's, and puts the published versions
+back. It answers three questions:
+
+1. How often the HMI takes a frame: `hmi callbacks` a second and `commit to
+   callback` time in mgu-render's stats line.
+2. Whether flushing a zero-copy frame (`glFlush`, the default) shows it whole:
+   the owner's look at the Store while dragging and at DOOM, and the fps and
+   render times against `embed_finish=1` (`glFinish`).
+3. Where the Store's CPU goes: its own line (`stats store: ...`: builds,
+   frames sent, touch events and their times, its CPU), beside the probe's
+   per-process CPU.
+
+About 20 minutes over ENET, two head-unit restarts included. The agent runs
+every command; the owner opens and closes the Store and DOOM, drags the list,
+plays, and says what they see.
 
 | File | What |
 |---|---|
@@ -57,12 +69,13 @@ running mgu-render runs, the test settings and stats-log state. Results go to
    `wl_drm`'s device and PRIME capability, `zwp_linux_dmabuf_v1`'s formats and
    modifiers) and the GPU: DRM devices, i915 frequencies, the GL libraries
    HmiMain3D and mgu-render have loaded, `/dev/dri`.
-3. Its frame rate: with the Store closed, `k ab verbose=1`, then
-   `k restart --off-screen` (the published mgu-render logs each second's
-   `<app>: N fps, render avg ... us max ... us` in verbose mode).
+3. `k stats on` (the published mgu-render logs each second's `stats <app>:
+   N fps, render avg ... us max ... us, path ...` while it is on).
 4. Owner: open the Store on its list.
 5. `k drag baseline`, and tell the owner to drag the list up and down
    without stopping until the command ends (about 15 s).
+6. Owner: close the Store, open DOOM and play. `k drag doom-baseline`. Owner:
+   close DOOM.
 
 ## b) Install the branch
 
@@ -96,33 +109,19 @@ restart, not a renderer restart.
 ## c) Measure
 
 Each run: the owner has the Store open on its list and drags it while the
-command runs. The journal's `stats robertn_store: ... fps, render avg ... us
-max ... us, path ...` lines of that window land in `<name>.stats`.
+command runs (or plays DOOM). `<name>.stats` gets mgu-render's lines of that
+window (`stats <app>: N fps, render avg ... us max ... us, path ..., hmi
+callbacks N, commit to callback avg ... us max ... us`) and the Store's
+(`stats store: ...`).
 
-Zero-copy runs come first: a readback run puts a pixel buffer on the HMI's
-page surface, and zero-copy is right again only after a head-unit restart.
-Readback can follow with a renderer restart.
-
-1. `k drag zerocopy` (the branch's defaults). Then the owner opens the
-   Store's Installed page and says whether the tool icons look right
-   (below); write it in the table.
-2. Each further setting, in this order:
-   1. Owner: close the Store.
-   2. `k ab <settings>`: they apply from mgu-render's next start, without
-      touching the installed files, and are gone at the next head-unit start.
-   3. `k restart --off-screen`.
-   4. Owner: open the Store. `k drag <name>`.
-
-   | Name | Settings |
-   |---|---|
-   | `zerocopy-notick` | `tick_early=0` |
-   | `readback-pbo` | `embed_zero_copy=0 readback_pbo=1` |
-   | `readback-nopbo` | `embed_zero_copy=0 readback_pbo=0` |
-
-3. Colour check, zero-copy after readback: owner closes the Store; `k ab`
-   (back to the defaults); `k restart --off-screen`; owner opens the
-   Store's Installed page and says how the tool icons look; `k status`
-   shows the path (`embed: zero-copy`). Write it in the table.
+1. `k drag flush` (the branch's defaults). The owner says whether the list
+   moves whole while dragging (no half-drawn rows, no flicker), then opens the
+   Store's Installed page and says how the tool icons look (below).
+2. Owner: close the Store. `k ab embed_finish=1`, `k restart --off-screen`.
+   Owner: open the Store. `k drag finish`.
+3. Owner: close the Store. `k ab` (the defaults), `k restart --off-screen`.
+   Owner: open DOOM and play. `k drag doom`. The owner says whether DOOM looks
+   right (the whole picture, its colours). Owner: close DOOM.
 
    | Icon | Right | Red and blue swapped |
    |---|---|---|
@@ -167,14 +166,13 @@ The whole `~/.cache/mgu-store/car-test/results/` folder (`*.txt`, `*.json`,
 `*.stats`, `mgu-render-journal.txt`), the output of `install` and `restore`,
 and this table:
 
-| Run | Path (`embed:` line / stats) | Colours | fps mean | render avg / max µs | mgu-render CPU % mean / max | HmiMain3D CPU % mean / max | Store CPU % | system CPU % | GPU MHz mean / max |
-|---|---|---|---|---|---|---|---|---|---|
-| baseline (published) | readback | | | | | | | | |
-| zerocopy (fresh HMI) | | right / swapped | | | | | | | |
-| zerocopy-notick | | | | | | | | | |
-| readback-pbo | | | | | | | | | |
-| readback-nopbo | | | | | | | | | |
-| colour check (zero-copy after readback) | | right / swapped | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| Run | Looks right | fps mean | render avg / max µs | HMI callbacks a second | commit to callback avg / max µs | Store builds avg ms, CPU % (its line) | mgu-render / HmiMain3D / Store CPU % (probe) | GPU MHz mean / max |
+|---|---|---|---|---|---|---|---|---|
+| baseline (published) | | | | | | | | |
+| doom-baseline | | | | | | n/a | | |
+| flush | yes / no, colours | | | | | | | |
+| finish | | | | | | | | |
+| doom | yes / no | | | | | n/a | | |
 
 `wayland-1` globals: `wl_drm` v__ device ______ PRIME yes/no;
 `zwp_linux_dmabuf_v1` v__, XR24/AR24 modifiers ______. GPU driver ______,

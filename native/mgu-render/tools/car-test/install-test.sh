@@ -34,7 +34,8 @@ UNIT_PROBE=/tmp/mgu-car-test-probe.js
 DROPIN_DIR=/run/systemd/system/mgu-render.service.d
 DROPIN=$DROPIN_DIR/car-test.conf
 STATS_FILE=/run/mgu-render/stats-log
-AB_KEYS="embed_zero_copy tick_early readback_pbo verbose"
+STORE_STATS=/dev/shm/robertn_store-stats.log    # the Store's own per-second line while stats-log is on
+AB_KEYS="embed_zero_copy tick_early readback_pbo embed_finish verbose"
 # on the unit: what a pid runs (its binary, else its command line)
 # shellcheck disable=SC2016
 RUNS_FN='runs() { e=$(readlink /proc/$1/exe 2>/dev/null); case "$e" in *mgu-render*) printf "%s" "$e" ;; *) tr "\0" " " </proc/$1/cmdline ;; esac; }'
@@ -220,7 +221,7 @@ cmd_restore() {
 	open_link
 	say "== clearing the test settings"
 	ab_clear
-	on_unit "rm -f $STATS_FILE"
+	on_unit "rm -f $STATS_FILE $STORE_STATS"
 
 	say "== uploading the published versions"
 	on_unit "rm -rf $UNIT_TMP && mkdir -p $UNIT_TMP"
@@ -368,7 +369,7 @@ cmd_stats() {
 	open_link
 	case "$(arg 0)" in
 		on) on_unit "[ -d /run/mgu-render ] && touch $STATS_FILE" || die "/run/mgu-render is not there (mgu-render.socket not running)"; say "stats-log on" ;;
-		off) on_unit "rm -f $STATS_FILE"; say "stats-log off" ;;
+		off) on_unit "rm -f $STATS_FILE $STORE_STATS"; say "stats-log off" ;;
 		*) die "usage: $0 stats on|off" 2 ;;
 	esac
 }
@@ -397,8 +398,10 @@ cmd_drag() {
 	upload "$KIT/probe.js" "$UNIT_PROBE"
 	say "measuring $secs s from the next line: the owner drags the Store's list now, without stopping"
 	on_unit "t0=\$(date '+%Y-%m-%d %H:%M:%S')
+		if [ -f $STORE_STATS ]; then : > $STORE_STATS; fi
 		node $UNIT_PROBE cpu $secs --gpu-freq --json /tmp/mgu-probe-$name.json
 		journalctl -u mgu-render --since \"\$t0\" -o cat 2>/dev/null | grep -E ' stats | fps, render |embed: ' > /tmp/mgu-probe-$name.stats
+		cat $STORE_STATS >> /tmp/mgu-probe-$name.stats 2>/dev/null
 		true" | tee "$RESULTS/$name.txt"
 	on_unit "cat /tmp/mgu-probe-$name.json; rm -f /tmp/mgu-probe-$name.json" >"$RESULTS/$name.json"
 	on_unit "cat /tmp/mgu-probe-$name.stats; rm -f /tmp/mgu-probe-$name.stats" >"$RESULTS/$name.stats"

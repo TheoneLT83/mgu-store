@@ -159,7 +159,7 @@ static int run(const struct scenario *sc, const char *mock)
     define_layer();
     uint32_t ref[FRAMES];
     reference(ref, sc->check);
-    embed_gl_init(d, pb, ctx, sc->pbo);
+    embed_gl_init(d, pb, ctx, sc->pbo, 0);
 
     embed_connect("hmi", 0x500, W, H, sc->zero_copy);
     for (int t = 0; t < 100 && !ready_seen; t++) pump(50);
@@ -182,15 +182,25 @@ static int run(const struct scenario *sc, const char *mock)
         drawn++;
         pump(0);
     }
-    /* zero-copy: a frame written on the CPU (a display-bridge app's pixels) goes into a GPU buffer too */
+    /* zero-copy: a picture made on the CPU (a display-bridge app's pixels) goes into a GPU buffer too, scaled by GL
+       to the nearest pixel into its place (twice its size here), black around it */
     uint32_t pix_crc = 0;
     if (embed_zero_copy()) {
-        uint8_t *px = malloc((size_t)W * H * 4);
-        for (size_t i = 0; i < (size_t)W * H; i++) { px[i * 4] = (uint8_t)i; px[i * 4 + 1] = (uint8_t)(i >> 8); px[i * 4 + 2] = (uint8_t)(i / W); px[i * 4 + 3] = 255; }
+        enum { PW = W / 4, PH = H / 4 };
+        int img[4] = { (W - 2 * PW) / 2, (H - 2 * PH) / 2, 2 * PW, 2 * PH };
+        uint8_t *pic = malloc((size_t)PW * PH * 4), *px = calloc((size_t)W * H, 4);
+        for (size_t i = 0; i < (size_t)PW * PH; i++) { pic[i * 4] = (uint8_t)i; pic[i * 4 + 1] = (uint8_t)(i >> 8); pic[i * 4 + 2] = (uint8_t)(i / PW); pic[i * 4 + 3] = 255; }
+        for (int y = 0; y < img[3]; y++)                 /* the frame expected, as the compositor reads it: b, g, r, x */
+            for (int x = 0; x < img[2]; x++) {
+                const uint8_t *s = pic + ((size_t)(y / 2) * PW + x / 2) * 4;
+                uint8_t *d = px + ((size_t)(img[1] + y) * W + img[0] + x) * 4;
+                d[0] = s[2]; d[1] = s[1]; d[2] = s[0]; d[3] = 255;
+            }
         pix_crc = crc32_rgb(px, W, H);
         int b = -1;
         for (int t = 0; t < 100 && (b = embed_buffer(1)) < 0; t++) pump(20);
-        CHECK(b >= 0 && embed_gl_write(embed_gpu_index(b), px, W, H) == 0, "%s: pixels written into a GPU buffer", sc->name);
+        CHECK(b >= 0 && embed_gl_picture(embed_gpu_index(b), pic, PW, PH, img, W, H) == 0, "%s: a picture drawn into a GPU buffer", sc->name);
+        free(pic);
         embed_filled();
         for (int t = 0; t < 100 && !embed_can_commit(); t++) pump(20);
         embed_commit();

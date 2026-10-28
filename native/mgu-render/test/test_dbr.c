@@ -137,6 +137,14 @@ int main(void)
     CHECK(o2[0] == 0xff010203u && o2[1] == 0xff010203u, "xrgb blit %08x", o2[0]);
     dbr_blit((uint8_t *)o2, 2, 1, one, rgba, 1, 1, DBR_FMT_RGBA8888, lut);
     CHECK(o2[0] == 0xff010203u, "rgba blit %08x", o2[0]);
+    /* the picture at its own size as opaque RGBA bytes: each format, INDEX8 through the palette */
+    uint8_t q[4];
+    dbr_rgba(q, xrgb, 1, 1, DBR_FMT_XRGB8888, lut);
+    CHECK(q[0] == 1 && q[1] == 2 && q[2] == 3 && q[3] == 255, "xrgb picture");
+    dbr_rgba(q, rgba, 1, 1, DBR_FMT_RGBA8888, lut);
+    CHECK(q[0] == 1 && q[1] == 2 && q[2] == 3 && q[3] == 255, "rgba picture");
+    dbr_rgba(q, idx + 3, 1, 1, DBR_FMT_INDEX8, lut);
+    CHECK(q[0] == 30 && q[1] == 1 && q[2] == 2 && q[3] == 255, "index8 picture");
 
     printf("test_dbr: %d checks, %d failed\n", checks, fails);
     return fails != 0;

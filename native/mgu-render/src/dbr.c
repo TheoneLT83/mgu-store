@@ -128,6 +128,22 @@ void dbr_to_rgba(uint8_t *dst, const uint8_t *src, size_t n, unsigned format)
     }
 }
 
+void dbr_rgba(uint8_t *dst, const uint8_t *src, int w, int h, unsigned format, const uint32_t lut[256])
+{
+    size_t n = (size_t)w * h;
+    for (size_t i = 0; i < n; i++, dst += 4) {
+        uint32_t v;
+        if (format == DBR_FMT_INDEX8) {
+            v = lut[src[i]];
+        } else {
+            const uint8_t *p = src + i * 4;
+            v = format == DBR_FMT_RGBA8888 ? (uint32_t)p[0] << 16 | (uint32_t)p[1] << 8 | p[2]
+                                           : (uint32_t)p[2] << 16 | (uint32_t)p[1] << 8 | p[0];
+        }
+        dst[0] = (uint8_t)(v >> 16); dst[1] = (uint8_t)(v >> 8); dst[2] = (uint8_t)v; dst[3] = 255;
+    }
+}
+
 void dbr_palette_lut(const uint8_t rgb[DBR_PALETTE_SIZE], uint32_t lut[256])
 {
     for (int i = 0; i < 256; i++)

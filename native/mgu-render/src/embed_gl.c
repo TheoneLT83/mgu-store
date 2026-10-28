@@ -4,8 +4,9 @@
  * Zero-copy buffers are GBM buffer objects (libgbm, loaded when first needed: without it, or without a DRM device,
  * embed reads back), linear XRGB8888, so the compositor imports them by fd, stride and format alone (wl_drm's
  * create_prime_buffer has no modifiers). Each is imported into our own EGL display as an EGLImage, the texture of an
- * FBO. A frame is finished with glFinish before it is committed: the compositor then samples a complete frame
- * also where buffers carry no implicit fence (a software driver).
+ * FBO. A frame's GL commands are flushed before it is committed; the GPU driver's implicit sync orders the
+ * compositor's reads after them. With embed_finish the frame waits for the GPU (glFinish) instead, for a driver
+ * whose buffers carry no implicit fence.
  *
  * Built with -DMGU_FAKE_DMABUF (test/test_embed.c), a "dmabuf" is a memfd that the frame is read into unturned, so
  * a mock compositor sees the bytes a GPU would have written there.
@@ -42,7 +43,7 @@
 static EGLDisplay dpy;
 static EGLSurface surf;
 static EGLContext ctx;
-static int want_pbo, read_bgra, inited;
+static int want_pbo, want_finish, read_bgra, inited;
 
 /* readback */
 static GLuint rb_tex, rb_fbo, pbo;
@@ -72,9 +73,9 @@ static void setup(void)
     }
 }
 
-void embed_gl_init(EGLDisplay d, EGLSurface s, EGLContext c, int use_pbo)
+void embed_gl_init(EGLDisplay d, EGLSurface s, EGLContext c, int use_pbo, int finish)
 {
-    dpy = d; surf = s; ctx = c; want_pbo = use_pbo;
+    dpy = d; surf = s; ctx = c; want_pbo = use_pbo; want_finish = finish;
     current();
     setup();
 }
@@ -240,7 +241,8 @@ void embed_gl_end(int gpu, uint8_t *px, int w, int h)
         glReadPixels(0, 0, w, h, read_bgra ? GL_BGRA_EXT : GL_RGBA, GL_UNSIGNED_BYTE, B[gpu].map);
         if (!read_bgra) convert(B[gpu].map, B[gpu].map, w, h, 0);
 #else
-        glFinish();
+        if (want_finish) glFinish();
+        else glFlush();
 #endif
     } else if (pbo) {
         glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
@@ -254,28 +256,23 @@ void embed_gl_end(int gpu, uint8_t *px, int w, int h)
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-/* the frame becomes an opaque picture of a private client, drawn 1:1 (nearest) into the dmabuf: the GL driver writes
-   it, so the dmabuf need not be mappable, and the compositor gets a finished frame as from a GL draw */
-int embed_gl_write(int gpu, const uint8_t *px, int w, int h)
+/* the picture is an image of a private client, drawn to the nearest pixel over opaque black: the GL driver writes
+   the dmabuf, so it need not be mappable, and the compositor gets a finished frame as from a GL draw */
+int embed_gl_picture(int gpu, const uint8_t *rgba, int pw, int ph, const int img[4], int w, int h)
 {
     static gfx_client pc;
-    static uint8_t *rgba;
     if (gpu < 0 || gpu >= nbuf) return -1;
-    if (!rgba && !(rgba = malloc((size_t)w * h * 4))) return -1;
-    for (size_t i = 0; i < (size_t)w * h; i++) {
-        rgba[i * 4] = px[i * 4 + 2]; rgba[i * 4 + 1] = px[i * 4 + 1]; rgba[i * 4 + 2] = px[i * 4]; rgba[i * 4 + 3] = 255;
-    }
     current();
     setup();
-    while (glGetError() != GL_NO_ERROR) {}             /* only this write's errors count below */
+    for (int k = 0; k < 8 && glGetError() != GL_NO_ERROR; k++) {}   /* only this picture's errors count below */
     pc.upstream_ops = 1;
-    if (gfx_image_upstream(&pc, 1, w, h, rgba) < 0) { log_warn("embed: %s", gfx_error()); return -1; }
-    float f[4] = { 0, 0, (float)w, (float)h };
-    uint32_t ops[7] = { OP_IMAGE, 1, 0 };
-    memcpy(&ops[3], f, sizeof f);
+    if (gfx_image_upstream(&pc, 1, pw, ph, rgba) < 0) { log_warn("embed: %s", gfx_error()); return -1; }
+    float f[4] = { (float)img[0], (float)img[1], (float)img[2], (float)img[3] };
+    uint32_t ops[9] = { OP_CLEAR, 0x000000ffu, OP_IMAGE, 1, 0 };
+    memcpy(&ops[5], f, sizeof f);
     glBindFramebuffer(GL_FRAMEBUFFER, B[gpu].fbo);
     gfx_xf xf = { 1, 0, 0 };
-    gfx_draw(&pc, &xf, w, h, ops, 7, GFX_CLEAR | GFX_TOP_DOWN);
+    gfx_draw(&pc, &xf, w, h, ops, 9, GFX_TOP_DOWN);
     embed_gl_end(gpu, NULL, w, h);
     GLenum e = glGetError();
     if (e != GL_NO_ERROR) log_warn("embed: drawing pixels into a GPU buffer: GL error 0x%x", e);

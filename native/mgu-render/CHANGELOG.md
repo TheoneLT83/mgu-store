@@ -1,5 +1,11 @@
 # mgu-render changelog
 
+## 0.5.2
+
+- A zero-copy frame is committed once its GL commands are flushed (`glFlush`), relying on the GPU driver's implicit sync, so the renderer's loop is not held while the GPU draws; `embed_finish = 1` waits for the GPU (`glFinish`).
+- A display-bridge app's frame (DOOM) on zero-copy is uploaded at its own size and scaled into the GPU buffer by GL, to the nearest pixel, black around it.
+- While `/run/mgu-render/stats-log` exists, an embed app's stats line has the HMI's frame callbacks in that second and the time from commit to callback.
+
 ## 0.5.1
 
 - iDrive 7 HmiMain3D builds whose page stays black with the template in place (MGU P18_23w44.2, MainApp 8.3.2 on a G20/G01) get no template and no marker: the Store and the apps draw in their own layer there. The list is NO_EMBED in mgu-render-hmi.sh.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.19
+
+While mgu-render's stats-log (`/run/mgu-render/stats-log`) exists, the
+Store logs once a second the frames it built and sent, their times, the
+touch events and its CPU (robertnisipeanu/mgu-store 0.9.10).
+
 ## 0.9.18
 
 - The tile's name is in every language the head unit may use (the English texts, as the idrive7-apps apps ship them): with only en_GB the name was sometimes missing from the app list.

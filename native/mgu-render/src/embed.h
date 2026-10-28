@@ -43,6 +43,8 @@ int embed_ready(void);               /* the drawn buffer not committed yet, or -
 void embed_commit(void);
 void embed_discard(void);            /* the drawn frame is not to be shown (another app has the box) */
 int embed_waiting(void);             /* a frame callback is outstanding */
+/* the compositor's frame callbacks since the last call: their count and the time from commit to callback (us) */
+void embed_callbacks(unsigned *n, unsigned *avg_us, unsigned *max_us);
 /* event loop: prepare fills one pollfd (fd -1 when not connected); dispatch returns -1 when lost */
 void embed_prepare(struct pollfd *pfd);
 int embed_dispatch(const struct pollfd *pfd);

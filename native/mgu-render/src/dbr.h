@@ -74,6 +74,8 @@ int dbr_rects(const uint8_t *p, size_t len, int w, int h, size_t bpp, int rects[
 void dbr_fit(const int area[4], int w, int h, int out[4]);
 /* n pixels of an XRGB8888 / ARGB8888 frame (bytes b, g, r, x|a) as RGBA bytes; XRGB opaque */
 void dbr_to_rgba(uint8_t *dst, const uint8_t *src, size_t n, unsigned format);
+/* a w x h frame src in its format as opaque RGBA bytes (INDEX8 through lut); premultiplied ARGB shows over black */
+void dbr_rgba(uint8_t *dst, const uint8_t *src, int w, int h, unsigned format, const uint32_t lut[256]);
 /* the 256 colours of a PALETTE (r, g, b) as XRGB8888 words, X 0xff */
 void dbr_palette_lut(const uint8_t rgb[DBR_PALETTE_SIZE], uint32_t lut[256]);
 /* the whole picture into an XRGB8888 buffer dw x dh (stride dw * 4): the sw x sh frame src in its format,

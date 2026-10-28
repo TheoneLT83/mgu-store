@@ -1437,7 +1437,39 @@ function cleanUp() {
     }
 }
 
-run().then(runWidgetsExtra).then(runDrawn).then(() => {
+/* the Store's timing line: only while mgu-render's stats-log exists, and only from the second after it appeared */
+function runTiming() {
+    const { Timing } = require(path.join(SRC, 'store_drawn.js'));
+    const file = path.join(ROOT, 'stats-log');
+    const out = path.join(ROOT, 'store-stats.log');
+    const lines = [];
+    const t = new Timing(file, out);
+    const read = () => { lines.length = 0; try { lines.push(...fs.readFileSync(out, 'utf8').split('\n').filter(Boolean)); } catch (e) { /* none yet */ } };
+    const second = () => new Promise((r) => { t._second(); setTimeout(() => { read(); r(); }, 50); });
+    const busy = () => { t.builds = 2; t.build = 3; t.buildMax = 2; t.frames = 2; t.send = 0.4; t.touches = 5; t.touchMs = 4; };
+    busy();
+    return second().then(() => {
+        eq([t.on, lines.length], [false, 0], 'no stats-log: off, nothing logged');
+        fs.writeFileSync(file, '');
+        busy();
+        return second();
+    }).then(() => {
+        eq([t.on, lines.length], [true, 0], 'stats-log appeared: on from the next second');
+        busy();
+        return second();
+    }).then(() => {
+        eq(lines.length, 1);
+        eq(/^\d{4}-\d\d-\d\dT[\d:.]+Z stats store: 2 builds avg 1\.5 ms max 2\.0 ms, 2 frames sent avg 0\.2 ms, 5 touch events 4 ms, cpu \d+ %$/.test(lines[0]), true, lines[0]);
+        fs.unlinkSync(file);
+        busy();
+        return second();
+    }).then(() => {
+        eq([t.on, lines.length], [false, 1], 'stats-log gone: off');
+        t.close();
+    });
+}
+
+run().then(runWidgetsExtra).then(runDrawn).then(runTiming).then(() => {
     cleanUp();
     console.log(`store: ${checks} checks pass`);
     process.exit(0);

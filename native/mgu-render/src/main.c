@@ -490,10 +490,15 @@ static void stats(client *c, uint64_t dt) {
         uint32_t p[4] = { c->stat_frames, (uint32_t)(c->stat_sum / (c->stat_frames ? c->stat_frames : 1)), (uint32_t)c->stat_max,
                           !strcmp(path, "zero-copy") ? STATS_ZERO_COPY : 0 };
         send_msg(c, E_STATS, p, c->dialect == DIALECT_NATIVE ? sizeof p : 3 * 4);
-        if (access(STATS_LOG_FILE, F_OK) == 0)
-            log_info("stats %s: %u fps, render avg %u us max %u us, path %s", c->app, p[0], p[1], p[2], path);
-        else
+        unsigned n = 0, avg = 0, max = 0;
+        if (c->mode == MODE_EMBED) embed_callbacks(&n, &avg, &max);
+        if (access(STATS_LOG_FILE, F_OK) != 0)
             log_debug("%s: %u fps, render avg %u us max %u us, path %s", c->app, p[0], p[1], p[2], path);
+        else if (c->mode == MODE_EMBED)
+            log_info("stats %s: %u fps, render avg %u us max %u us, path %s, hmi callbacks %u, commit to callback avg %u us max %u us",
+                     c->app, p[0], p[1], p[2], path, n, avg, max);
+        else
+            log_info("stats %s: %u fps, render avg %u us max %u us, path %s", c->app, p[0], p[1], p[2], path);
         c->stat_t0 = now; c->stat_frames = 0; c->stat_sum = 0; c->stat_max = 0;
     }
 }
@@ -542,14 +547,21 @@ static void render_embed(void) {
     if (b >= 0) {
         c->last_draw = t0;
         int w = cfg.embed_area[2], h = cfg.embed_area[3];
-        if (dbr) {                                         /* made on the CPU (shared memory: written straight in) */
-            static uint8_t *scratch;
+        if (dbr) {
             int img[4] = { (int)c->dbr.img[0], (int)c->dbr.img[1], (int)c->dbr.img[2], (int)c->dbr.img[3] };
-            int gpu = embed_gpu_index(b);
+            int gpu = embed_gpu_index(b), pw = (int)c->dbr.w, ph = (int)c->dbr.h;
             embed_gl_cancel();
-            if (gpu >= 0 && !scratch && !(scratch = malloc((size_t)w * h * 4))) return;
-            dbr_blit(gpu >= 0 ? scratch : embed_pixels(b), w, h, img, c->dbr.px, (int)c->dbr.w, (int)c->dbr.h, c->dbr.format, c->dbr.lut);
-            if (gpu >= 0 && embed_gl_write(gpu, scratch, w, h) < 0) { embed_readback("pixels could not be drawn into a GPU buffer"); return; }
+            if (gpu >= 0) {
+                static uint8_t *rgba;
+                static size_t cap;
+                size_t need = (size_t)pw * ph * 4;
+                if (need > cap) { free(rgba); cap = (rgba = malloc(need)) ? need : 0; }
+                if (!rgba) return;
+                dbr_rgba(rgba, c->dbr.px, pw, ph, c->dbr.format, c->dbr.lut);
+                if (embed_gl_picture(gpu, rgba, pw, ph, img, w, h) < 0) { embed_readback("pixels could not be drawn into a GPU buffer"); return; }
+            } else {
+                dbr_blit(embed_pixels(b), w, h, img, c->dbr.px, pw, ph, c->dbr.format, c->dbr.lut);
+            }
         } else {
             int gpu = embed_gpu_index(b), flags = embed_gl_begin(gpu, w, h);
             if (flags < 0) return;
@@ -1439,7 +1451,7 @@ int main(int argc, char **argv) {
     init_es = eglCreateWindowSurface(edpy, ecfg, (EGLNativeWindowType)tw, NULL);
     eglMakeCurrent(edpy, init_es, init_es, ectx);
     if (gfx_init() < 0) { log_error("gfx_init: %s", gfx_error()); return 1; }
-    embed_gl_init(edpy, init_es, ectx, cfg.readback_pbo);
+    embed_gl_init(edpy, init_es, ectx, cfg.readback_pbo, cfg.embed_finish);
     log_info("GL: %s / %s", (const char *)glGetString(GL_RENDERER), (const char *)glGetString(GL_VERSION));
 
     if (cfg.foreground_gate[0] && gate_start(cfg.foreground_gate) < 0) return 1;
