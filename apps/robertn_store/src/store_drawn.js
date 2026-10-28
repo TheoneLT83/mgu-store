@@ -40,6 +40,7 @@ const ICONS_KEPT = 48;                  // decoded pictures kept, the most recen
 const FPS = 30;                         // frames a second at most: the screens move little
 const KEEPALIVE_MS = 1000;              // the renderer hides an app silent for 3 s
 const CLOSED_RESHOW_MS = 700;           // a touch outside that left the page where it was
+const STUCK_MS = 6000;                  // shown this long and never on screen: the widget screens instead
 const DRAG_PX = 14;
 // FrontCCU frontRotaryEncoderPushButton pushed (short, long): by name or ordinal
 const PUSHED = ['DREHGEBER_KURZ_GEDRUECKT', 'DREHGEBER_LANG_GEDRUECKT', 1, 2];
@@ -57,6 +58,7 @@ class Drawn extends EventEmitter {
         super();
         this.host = host;
         this.log = host.log;
+        this.stuckMs = opts && opts.stuckMs;
         this.gpu = (opts && opts.client) || new RenderClient('robertn_store', this.log, { kit, mode: 'layer' });
         this.gpu.fps(FPS);
         this.mode = null;
@@ -76,6 +78,9 @@ class Drawn extends EventEmitter {
         this.suspended = false;             // the HMI's speller is up
         this.closedHide = false;
         this.on_ = false;
+        this.onScreen = false;              // the renderer says the picture is on screen
+        this.stuck = false;                 // it never was: widget screens from then on
+        this.stuckTimer = null;
         this.dirty = false;
         this.sentAt = 0;
         this.keepalive = null;
@@ -102,6 +107,13 @@ class Drawn extends EventEmitter {
             }, CLOSED_RESHOW_MS);
         });
         this.gpu.on('ccu', (e) => this._ccu(e));
+        // the renderer's word that the picture is on screen (X_STATE)
+        this.gpu.on('state', (st) => {
+            this.onScreen = !!(st && st.onScreen);
+            if (this.onScreen) {
+                clearTimeout(this.stuckTimer);
+            }
+        });
     }
 
     connect() {
@@ -117,7 +129,7 @@ class Drawn extends EventEmitter {
 
     _ready(info) {
         let mode = null;
-        if (info) {
+        if (info && !this.stuck) {
             if (info.modes.indexOf('embed') >= 0 && this.host.modes.indexOf('embed') >= 0) {
                 mode = 'embed';
             } else if (info.modes.indexOf('layer') >= 0 && this.host.modes.indexOf('layer') >= 0) {
@@ -308,6 +320,19 @@ class Drawn extends EventEmitter {
             this.render();
         }
         this.gpu.show(on);
+        // a renderer that never puts the picture on screen (seen on some HMI builds) would leave the
+        // host state's empty page up: after STUCK_MS the Store goes on with its widget screens
+        clearTimeout(this.stuckTimer);
+        if (on && !this.onScreen) {
+            const ms = this.stuckMs || STUCK_MS;
+            this.stuckTimer = setTimeout(() => {
+                if (this.on_ && !this.onScreen && this.mode) {
+                    this.log.warn(`renderer: ${this.mode} shown for ${ms / 1000} s but never on screen; widget screens`);
+                    this.stuck = true;
+                    this._setMode(null);
+                }
+            }, ms);
+        }
         clearInterval(this.keepalive);
         this.keepalive = on ? setInterval(() => this.render(), KEEPALIVE_MS) : null;
     }

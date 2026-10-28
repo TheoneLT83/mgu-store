@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.15
+
+When the renderer has been asked to show the Store for 6 s and never says its picture is on screen (an HMI build where it stays hidden), the Store goes on with its widget screens until it restarts, instead of leaving the empty host page up.
+
 ## 0.9.14
 
 The drawn screens' HMI host states carry no labels: when the Store opens or closes, the HMI shows that state for a moment before the renderer's picture is over it (layer mode) and after it has gone, and it showed the page's names (Store, Installed, USB, Settings, All, Apps) as a list.

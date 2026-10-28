@@ -159,7 +159,8 @@ class RenderClient extends EventEmitter {
     close() { gpuLog.push('close'); this.emit('close'); }
     mode(m) { if (m) { gpuLog.push(`mode ${m}`); this.wantMode = m; } return this.wantMode; }
     place(p) { gpuLog.push(`place ${p.x},${p.y} ${p.w}x${p.h} ${p.scale.toFixed(3)}`); this.placement = p; }
-    show(on) { this.visible = on; gpuLog.push(`show ${on}`); }
+    // as mgu-render: X_STATE once the picture is (or is no longer) on screen
+    show(on) { this.visible = on; gpuLog.push(`show ${on}`); setImmediate(() => this.emit('state', { mode: this.wantMode, onScreen: on, front: on })); }
     claim(r) { this.claims = r; }
     fps(n) { fpsAsked = n; }
     grab(on) { this.grabbing = on; }
