@@ -29,6 +29,23 @@ func status(c config) {
 				line += ": " + *st.Error
 			}
 			fmt.Println(line)
+			if st.Preferred != "" {
+				fmt.Printf("preferred: %s\n", st.Preferred)
+			}
+			if w := st.WiFi; w != nil {
+				line = fmt.Sprintf("wifi: %s", w.Link)
+				if w.SSID != "" {
+					line += fmt.Sprintf(" %q", w.SSID)
+				}
+				if w.Signal != nil {
+					line += fmt.Sprintf(" %d dBm", *w.Signal)
+				}
+				line += fmt.Sprintf(", %d saved, %d seen", len(w.Saved), len(w.Networks))
+				if w.Error != nil {
+					line += ": " + *w.Error
+				}
+				fmt.Println(line)
+			}
 		}
 	} else {
 		fmt.Println("uplink: service not running")

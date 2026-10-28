@@ -19,7 +19,13 @@
  * leaves in this app's data folder: "uninstall" (a removable installed
  * component, once confirmed), "source-add", "source-probe", "source-remove", "token-add",
  * "token-remove" (an account, once confirmed), "login-start" / "login-cancel" (GitHub
- * sign-in, which adds an account) and "web" (Phone access on or off).
+ * sign-in, which adds an account), "web" (Phone access on or off), and the
+ * ones the updater relays to mgu-uplink: "wifi-enable", "wifi-scan",
+ * "wifi-connect" (with the password typed for a secured network not saved
+ * yet), "wifi-forget" (once confirmed) and "uplink-prefer" (the preferred
+ * connection). On the drawn screens, Settings has Wi-Fi while the uplink
+ * reports it (state.uplink.wifi): the networks, Use Wi-Fi, Scan and the
+ * preferred connection; the widget screens have none of it.
  *
  * The start screen has the status line, Check for updates, the progress of
  * the running install, the rows Apps and Head-unit tools, which open their
@@ -34,7 +40,8 @@
  * Sources has a status line (a source typed wrong, the updater's refusal to
  * add or remove one), lists each source with its status or the account that
  * reads it and opens its page (Channel, Account, Components, Remove). Add
- * source opens the HMI's speller (src/speller.js) for owner/repo, a
+ * source opens the HMI's speller (src/speller.js; on iDrive 8's drawn
+ * screens the drawn keyboard's page, _type) for owner/repo, a
  * github.com address of a repo (.../tree/<branch>: that branch) or another
  * https address (a catalog), and adds it. A repo without a branch is first
  * asked about ("source-probe"): it is added on the one thing it has, else
@@ -62,7 +69,8 @@ const someipBuilders = require('oap-sdk/src/someip/someipBuilders');
 const { UpdaterClient } = require('./client.js');
 const { qrPng } = require('./qr.js');
 const { spell } = require('./speller.js');
-const { Drawn } = require('./store_drawn.js');
+const { Drawn, DEPTHS } = require('./store_drawn.js');
+const { typeKey, wifiOf } = require('./store_ui.js');
 const { PHASE, percent, rowState, rowAction, groupState, statusLine, sourceLabel, sourceState,
     sourcesState, sourceActions, sourceChannel, sourceAccount, tokenLabel, tokenState, tokenSources, accountsState,
     loginStatus, loginCode, phoneState, phoneAddress, parseSource, pickOptions, probeStatus, sourcesMessage, tokenMessage,
@@ -103,6 +111,7 @@ const TOKEN_ADD_MS = 30000;             // how long Add token says "Checking tok
 const FOCUS_BACK_MS = 2000;             // how long a page waits for the HMI to give the focus back from the speller
 const PROBE_MS = 30000;                 // how long a repo being added waits for the updater's answer
 const IF_FRONTCCU = 'de.bmw.infotainment.controlelements.FrontCCU';
+const UPLINK_OPS = ['uplink-prefer', 'wifi-enable', 'wifi-scan', 'wifi-connect', 'wifi-forget'];
 
 /* The drawn screens' host states and their proxies (tools/gen_rhmi.js). */
 const PROXIES = [48, 24, 12];
@@ -234,6 +243,8 @@ class Store extends OnlineApp {
          * token's status shows there until the next answer) }. */
         this._pick = null;
         this._spelling = false;         // the HMI's speller is up
+        this._typing = null;            // the drawn keyboard's page up: { page, resolve, under (the page it took the place of) }
+        this._uplinkNote = null;        // the refusal of the last Wi-Fi or preferred-connection request
         this._qr = { login: { key: null, file: null, chain: Promise.resolve() },
             phone: { key: null, file: null, chain: Promise.resolve() }, app: { key: null, file: null, chain: Promise.resolve() } };
         this._hmi = 'ID7';
@@ -294,6 +305,9 @@ class Store extends OnlineApp {
                 this._sendSource({ type: 'github', repo });
             } else if (forOp === 'source-probe' && this._pick && !this._pick.probe) {
                 this._probed({ type: 'probe', repo: this._pick.repo, status: 'refused', error: String(msg) });
+            } else if (UPLINK_OPS.indexOf(forOp) >= 0) {
+                this._uplinkNote = String(msg);
+                this._render();
             } else if (forOp === 'token-add' && this._tokenAdding) {
                 this._endTokenAdd({ kind: 'refused', error: String(msg) });
             } else if (forOp === 'source-add' || forOp === 'source-remove') {
@@ -611,7 +625,8 @@ class Store extends OnlineApp {
         return { st: this._connected ? this._st : null, connected: this._connected && !!this._st, secret: !!readSecret(),
             version: this._version(), note: this._sourcesNote, login: this._login, look: this._look,
             webText: web && web.enabled ? readFile(WEB_URL_FILE) : '', accountsNote: this._accountsNote,
-            pick: this._pick && { repo: this._pick.repo, probe: this._pick.probe, tokenNote: !!this._pick.tokenNote } };
+            pick: this._pick && { repo: this._pick.repo, probe: this._pick.probe, tokenNote: !!this._pick.tokenNote },
+            uplinkNote: this._uplinkNote };
     }
 
     /* A press on the drawn screens (src/store_ui.js acts). */
@@ -620,7 +635,7 @@ class Store extends OnlineApp {
         switch (act.do) {
         case 'tab': this._drawn.setTab(act.tab); break;
         case 'filter': this._drawn.setFilter(act.filter); break;
-        case 'back': this._drawn.pop(); break;
+        case 'back': this._back(); break;
         case 'check': this._send({ op: 'check' }); break;
         case 'open':
             if (act.page.name === 'source') {
@@ -631,6 +646,12 @@ class Store extends OnlineApp {
                 this._tokenId = act.page.id;
             } else if (act.page.name === 'confirm' && act.page.kind === 'remove') {
                 this._removeId = act.page.id;
+            } else if (act.page.name === 'wifi') {
+                const w = wifiOf({ connected: this._connected, st: this._st });
+                this._uplinkNote = null;
+                if (w && w.enabled && !w.scanning) {
+                    this._uplink({ op: 'wifi-scan' });
+                }
             }
             this._drawn.push(act.page);
             break;
@@ -653,6 +674,22 @@ class Store extends OnlineApp {
         case 'pick-retry': this._probe(); break;
         case 'pick-add-token': this._pickAddToken(); break;
         case 'look': this._setLook(act.look); break;
+        case 'key': this._key(act.key); break;
+        case 'wifi-power': {
+            const w = wifiOf({ connected: this._connected, st: this._st });
+            if (w) {
+                this._uplink({ op: 'wifi-enable', on: !w.enabled });
+            }
+            break;
+        }
+        case 'wifi-scan': this._uplink({ op: 'wifi-scan' }); break;
+        case 'wifi-join': this._uplink({ op: 'wifi-connect', ssid: act.ssid }); break;
+        case 'wifi-password': this._wifiPassword(act.ssid); break;
+        case 'wifi-forget':
+            this._drawn.closePage(isConfirm('wifi-forget'));
+            this._uplink({ op: 'wifi-forget', ssid: act.ssid });
+            break;
+        case 'uplink-prefer': this._uplink({ op: 'uplink-prefer', kind: act.kind }); break;
         default: break;
         }
         this._render();
@@ -666,6 +703,36 @@ class Store extends OnlineApp {
         } catch (e) {
             logger.warn(`look not kept: ${e.message}`);
         }
+    }
+
+    /* A request for the uplink, which the updater relays; its refusal shows
+     * on the Wi-Fi and preferred-connection pages. */
+    _uplink(req) {
+        this._uplinkNote = null;
+        if (!this._privileged(req)) {
+            this._uplinkNote = readSecret() ? 'updater not running' : 'no updater secret';
+        }
+    }
+
+    /* A secured network not saved yet: its password, typed (iDrive 8: the
+     * drawn keyboard's word keys and symbols; iDrive 7: the HMI's speller),
+     * goes to the updater and is not kept. */
+    _wifiPassword(ssid) {
+        this._uplinkNote = null;
+        this._spell(ssid, (m) => { this._uplinkNote = sourcesMessage(m); this._render(); },
+            { label: 'Password', layout: 'text', symbols: true, go: 'Connect', min: 8, max: 63, secret: 'password' }).then((psk) => {
+            if (!psk) {
+                return;
+            }
+            if (!/^[\x20-\x7e]{8,63}$/.test(psk)) {
+                this._uplinkNote = 'A Wi-Fi password is 8 to 63 letters, digits and symbols';
+                this._render();
+                return;
+            }
+            logger.info('wifi: join with a password');
+            this._uplink({ op: 'wifi-connect', ssid, psk });
+            this._render();
+        });
     }
 
     _openState(name) {
@@ -882,9 +949,13 @@ class Store extends OnlineApp {
 
     /* The speller's text; null when the driver left it without OK or it
      * could not be opened (the status line says so); undefined when a newer
-     * speller replaced it. */
-    _spell(title, note) {
+     * speller replaced it. On iDrive 8's drawn screens the text is typed on
+     * the drawn keyboard instead (_type, with opts). */
+    _spell(title, note, opts) {
         const seq = ++this._spellSeq;
+        if (this._hmi === 'ID8' && this._drawnUi()) {
+            return this._type(Object.assign({ title }, opts)).then((text) => (seq === this._spellSeq ? text : undefined));
+        }
         // the HMI gives the focus back to a page once the speller has closed (_showPick)
         this._focusedPage = null;
         // the speller is the HMI's: the renderer's layer is not drawn over it
@@ -905,6 +976,69 @@ class Store extends OnlineApp {
             }
             return null;
         }).then((text) => (seq === this._spellSeq ? text : undefined));
+    }
+
+    /* Text typed on the drawn keyboard: the type page (src/store_ui.js, its
+     * opts) over the page on top. Its Enter key gives the text; leaving the
+     * page (BACK, a tab, the widget screens taking over) or a newer page
+     * gives null. */
+    _type(opts) {
+        if (this._typing) {
+            this._typed(null);
+        }
+        return new Promise((resolve) => {
+            const page = Object.assign({ name: 'type', text: '', shift: false, sym: false }, opts);
+            const typing = { page, resolve, under: null };
+            this._typing = typing;
+            typing.under = this._drawn.push(page);
+        });
+    }
+
+    _key(key) {
+        const page = this._typing && this._typing.page;
+        if (page && this._drawn.top() === page && typeKey(page, key)) {
+            this._typed(page.text);
+        }
+    }
+
+    /* A page's back item: the keyboard's page closes as with OK, but gives no text. */
+    _back() {
+        if (this._typing && this._drawn.top() === this._typing.page) {
+            this._typed(null);
+        } else {
+            this._drawn.pop();
+        }
+    }
+
+    /* Closes the keyboard's page: the page it took the place of at the
+     * last depth comes back, else the page below gets the focus back. The
+     * HMI's BACK closes the last depth's host state with the page: a repo's
+     * page it took the place of opens again once the focus is back. */
+    _typed(text) {
+        const typing = this._typing;
+        this._typing = null;
+        if (this._drawnUi() && this._drawn.top() === typing.page) {
+            // the HMI gives the focus back to the page below once this one has closed (_showPick)
+            this._focusedPage = null;
+            if (typing.under) {
+                this._drawn.restore(typing.under);
+                this._focusedPage = `drawn:${typing.under.name}`;
+            } else {
+                this._drawn.pop();
+            }
+        } else if (this._drawnUi()) {
+            if (this._focusedPage === `drawn:${typing.page.name}`) {
+                this._focusedPage = null;
+            }
+            if (this._pick && typing.under && isPage('pick')(typing.under) && this._drawn.stack.length === DEPTHS - 1) {
+                this._pick.open = false;
+            }
+        }
+        // a repo's page that waited for the keyboard opens once the focus is back
+        if (this._pick && !this._pick.open) {
+            this._awaitFocus(this._pick);
+        }
+        typing.resolve(text);
     }
 
     _addSource() {
@@ -929,7 +1063,7 @@ class Store extends OnlineApp {
      * whose it is before it stores it; the status line says what came of it. */
     _addToken() {
         this._endTokenAdd(null);
-        this._spell('GitHub token', (m) => this._accountNote(m)).then((text) => {
+        this._spell('GitHub token', (m) => this._accountNote(m), { secret: true }).then((text) => {
             const token = (text || '').trim();
             if (!token) {
                 return;
@@ -986,14 +1120,20 @@ class Store extends OnlineApp {
     _startPick(repo) {
         this._endPick();
         const pick = { repo, probe: null, tokens: '', back: false, open: false };
-        pick.timer = setTimeout(() => {
-            pick.back = true;
-            this._render();
-        }, FOCUS_BACK_MS);
+        this._awaitFocus(pick);
         this._pick = pick;
         if (this._probe()) {
             this._note({ kind: 'checking', repo });
         }
+    }
+
+    _awaitFocus(pick) {
+        clearTimeout(pick.timer);
+        pick.back = false;
+        pick.timer = setTimeout(() => {
+            pick.back = true;
+            this._render();
+        }, FOCUS_BACK_MS);
     }
 
     _endPick() {
@@ -1067,13 +1207,14 @@ class Store extends OnlineApp {
         }
     }
 
-    /* Once the updater has answered and the focus is back: a repo with one
+    /* Once the updater has answered, the focus is back and the drawn
+     * keyboard is not up (its page stays on top): a repo with one
      * thing to add it on is added on it, one with none as typed; one no
      * account reaches, or with more to pick from, gets its page; anything
      * else goes on the status line. */
     _showPick() {
         const pick = this._pick;
-        if (!pick || pick.open || !pick.probe || !(pick.back || this._focusedPage !== null)) {
+        if (!pick || pick.open || !pick.probe || this._typing || !(pick.back || this._focusedPage !== null)) {
             return;
         }
         const options = pickOptions(pick.probe);
@@ -1115,7 +1256,7 @@ class Store extends OnlineApp {
     }
 
     /* The repo's page left (BACK) ends the repo being added, once it stays
-     * gone HIDE_SETTLE_MS; the speller over it does not. */
+     * gone HIDE_SETTLE_MS; the speller or the drawn keyboard over it does not. */
     _leavePick() {
         const pick = this._pick;
         if (!pick || !pick.open) {
@@ -1125,10 +1266,10 @@ class Store extends OnlineApp {
             pick.shown = true;
             clearTimeout(pick.goneTimer);
             pick.goneTimer = null;
-        } else if (pick.shown && !this._spelling && !pick.goneTimer) {
+        } else if (pick.shown && !this._spelling && !this._typing && !pick.goneTimer) {
             pick.goneTimer = setTimeout(() => {
                 pick.goneTimer = null;
-                if (this._pick === pick && !this._spelling && !this._pickShown()) {
+                if (this._pick === pick && !this._spelling && !this._typing && !this._pickShown()) {
                     logger.info(`left ${pick.repo}`);
                     this._endPick();
                 }
@@ -1223,6 +1364,10 @@ class Store extends OnlineApp {
     }
 
     _render() {
+        // the drawn keyboard's page left: what it was opened for gets nothing
+        if (this._typing && !(this._drawnUi() && this._drawn.stack.indexOf(this._typing.page) >= 0)) {
+            this._typed(null);
+        }
         if (!this._visible || this._shutdownPromise) {
             return;
         }

@@ -18,8 +18,8 @@ import (
 	"strings"
 )
 
-// usbNetDrivers are the USB Ethernet drivers an adapter is taken from when
-// usb_device does not name it.
+// usbNetDrivers are the USB Ethernet drivers whose adapters the uplink
+// takes.
 var usbNetDrivers = map[string]bool{
 	"asix": true, "ax88179_178a": true, "smsc95xx": true, "smsc75xx": true, "r8152": true,
 	"cdc_ether": true, "cdc_ncm": true, "cdc_eem": true, "cdc_subset": true, "rndis_host": true,

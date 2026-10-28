@@ -246,10 +246,10 @@ f = screen('usb');
 eq(f.labels.slice(4), ['Drive Recorder', 'GPU renderer'], 'not the one for another head unit only');
 eq(text(f, 'subtitle'), 'USB STICK · 2 packages');
 
-// Settings: sources, Add source, Accounts, Phone access, the unit; no restart while busy
+// Settings: sources, Add source, Wi-Fi, Accounts, Phone access, the unit; no restart while busy
 f = screen('settings');
 eq(f.labels.slice(4), ['iDrive 7', 'iDrive 8', 'robertnisipeanu/mgu-store', 'cauliflower/idrive7-apps', 'IterioDev/car-apps', 'USB STICK',
-    'Add source', 'Internet', 'Accounts', 'Phone access', 'Check now']);
+    'Add source', 'Wi-Fi', 'Internet', 'Accounts', 'Phone access', 'Check now']);
 // the look: the head unit's own until one is picked; each pick is a press
 eq(f.items.filter((i) => /^iDrive/.test(i.label)).map((i) => i.act), [{ do: 'look', look: 'id7' }, { do: 'look', look: 'id8' }]);
 eq(view(fixture.model({ tab: 'settings' })).look, 'id7', 'an iDrive 7 unit: the iDrive 7 look');
@@ -296,6 +296,118 @@ f = screen('pick-offline');
 eq([own(f), text(f, 'status')], [['Try again', 'Back'], 'Offline']);
 eq(f.items[0].act, { do: 'pick-retry' });
 eq(text(screen('pick', { pick: { repo: 'o/r', probe: null } }), 'status'), 'Checking');
+
+// the type page (iDrive 8's text entry): the text, the keyboard's keys in focus order, each pressing what it types
+const { typeKey } = require(path.join(__dirname, '..', 'src', 'store_ui.js'));
+f = screen('type');
+eq([text(f, 'title'), text(f, 'field')], ['Add source', 'robertnisipeanu/mgu-store']);
+eq(own(f).slice(0, 11), ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'q']);
+eq(own(f).slice(-8), ['https://', 'github.com/', '.com', '-', '_', ':', 'OK', 'Back'], 'App Manager 2\'s URL keys, OK, Back');
+eq(f.items[0].act, { do: 'key', key: '1' });
+ok(own(f).indexOf('#+=') < 0, 'the URL keys have no symbols page');
+f = screen('type-token');
+eq(text(f, 'field'), '········3c4d', 'a token: its last 4 characters');
+ok(own(f).indexOf('Q') >= 0 && own(f).indexOf('q') < 0, 'Shift: capitals');
+eq(own(screen('type-symbols')).slice(10, 20), ['!', '@', '#', '$', '%', '^', '&', '*', '(', ')'], 'the symbols page');
+/* Presses keys by what they show on the page's frame in unit's box; true once its Enter key was pressed. */
+function typeOn(unit, page, keys) {
+    const p = UNITS[unit];
+    let done = false;
+    keys.forEach((label) => {
+        const items = frame(fixture.model({ tab: 'settings', stack: [{ name: 'main' }, page] }),
+            { textScale: p.scale, focus: -1, scroll: {}, layout: p.layout }).items;
+        const k = items.find((i) => i.label === label);
+        ok(k && k.act.do === 'key', `${unit}: a key ${label} (${items.map((i) => i.label)})`);
+        done = typeKey(page, k.act.key) || done;
+    });
+    return done;
+}
+Object.keys(UNITS).forEach((unit) => {
+    let page = { name: 'type', title: 'Add source', text: '' };
+    ok(!typeOn(unit, page, ['github.com/', 'Shift', 'O', 'Shift', '/', 'r', '_', '1', 'Delete', '2']), `${unit}: not done while typing`);
+    eq(page.text, 'github.com/O/r_2', `${unit}: URL keys, Shift, Delete`);
+    ok(typeOn(unit, page, ['OK']) && page.text === 'github.com/O/r_2', `${unit}: OK gives the text`);
+    page = { name: 'type', title: 'Password', text: '', layout: 'text', symbols: true, go: 'Connect' };
+    typeOn(unit, page, ['Shift', 'W', 'Shift', 'i', '#+=', '-', '\\', '"', '`', 'abc', 'Space', 'x', 'Delete', '!']);
+    eq(page.text, 'Wi-\\"` !', `${unit}: Shift, the symbols page and back, Space, Delete`);
+    ok(typeOn(unit, page, ['Connect']), `${unit}: its Enter key says Connect`);
+});
+// the word keys with their symbols page type every printable ASCII character
+const reach = new Set();
+[{ shift: false }, { shift: true }, { sym: true }].forEach((o) => own(screen('type-text',
+    { stack: [{ name: 'main' }, Object.assign({ name: 'type', layout: 'text', symbols: true, go: 'Connect' }, o)] }))
+    .forEach((l) => reach.add(l === 'Space' ? ' ' : l)));
+eq(Array.from({ length: 95 }, (x, i) => String.fromCharCode(32 + i)).filter((c) => !reach.has(c)), [], 'ASCII 32 to 126');
+const capped = { name: 'type', text: '', max: 3 };
+typeOn('iDrive 8', capped, ['a', 'b', 'c', 'd']);
+eq(capped.text, 'abc', 'no more than max');
+const near = { name: 'type', text: '', max: 10 };
+typeOn('iDrive 8', near, ['a', 'github.com/', '.com', 'b']);
+eq(near.text, 'a.comb', 'a key that would go past max types nothing');
+
+// Wi-Fi (the uplink's, state.uplink.wifi): Settings' row with its state, only with the uplink's Wi-Fi
+f = screen('settings');
+eq([f.values.access.items[0].title, f.values.access.items[0].sub], ['Wi-Fi', 'Online · Mario iPhone']);
+eq(f.items.find((i) => i.label === 'Wi-Fi').act, { do: 'open', page: { name: 'wifi' } });
+ok(screen('settings', {}, { uplink: null }).labels.indexOf('Wi-Fi') < 0, 'no Wi-Fi without the uplink (an updater before 0.8.0)');
+ok(screen('settings', {}, { uplink: { device: null, state: 'searching', error: null, preferred: '', wifi: null } }).labels.indexOf('Wi-Fi') < 0,
+    'nor with an uplink without Wi-Fi (before 0.7.0, or not on auto)');
+const wifiSub = (w) => screen('settings', {}, { uplink: Object.assign({}, fixture.state().uplink, { wifi: Object.assign({}, fixture.state().uplink.wifi, w) }) })
+    .values.access.items[0].sub;
+eq([{ link: 'connected' }, { link: 'connecting', ssid: 'Cafe' }, { enabled: false, link: 'off', ssid: '' },
+    { link: 'unavailable', ssid: '', error: 'wlan1 is in access point mode' },
+    { link: 'failed', ssid: '', error: 'wpa_supplicant ended (exit status 1)' }, { link: 'idle', ssid: '', error: 'could not join Cafe' },
+    { link: 'idle', ssid: '' }].map(wifiSub),
+['Connected · Mario iPhone', 'Connecting · Cafe', 'Not used', 'Unavailable', 'Failed', 'Error', 'Not connected']);
+// the page: the network joined first, then the scan's, then saved ones out of range; a tap joins a saved or open one and asks a
+// secured one's password; a saved one has Forget; Don't use Wi-Fi, Scan, the preferred connection
+f = screen('wifi');
+eq(own(f), ['Forget', 'FRITZ!Box 7590 XY', 'Cafe Free WiFi', 'Telekom_FON', 'Forget', "Don't use Wi-Fi", 'Scan', 'Preferred: Wi-Fi', 'Back']);
+eq(f.values.networks.items.map((n) => n.sub), ['Online · Strong', 'Secured · Strong', 'Open · Good', 'Open · Weak', 'Saved · not in range']);
+eq([text(f, 'subtitle'), text(f, 'state'), text(f, 'info')], ['5 networks', 'Online · Mario iPhone', 'IP 172.20.10.3 · -52 dBm']);
+eq(f.items.slice(0, 5).map((i) => i.act), [{ do: 'open', page: { name: 'confirm', kind: 'wifi-forget', ssid: 'Mario iPhone' } },
+    { do: 'wifi-password', ssid: 'FRITZ!Box 7590 XY' }, { do: 'wifi-join', ssid: 'Cafe Free WiFi' }, { do: 'wifi-join', ssid: 'Telekom_FON' },
+    { do: 'open', page: { name: 'confirm', kind: 'wifi-forget', ssid: 'Home' } }]);
+eq(f.items.slice(5, 8).map((i) => i.act), [{ do: 'wifi-power' }, { do: 'wifi-scan' }, { do: 'open', page: { name: 'prefer' } }]);
+f = screen('wifi-off');
+eq([own(f), f.values.networks.empty, text(f, 'state')], [['Use Wi-Fi', 'Preferred: Wi-Fi', 'Back'], 'Not used', 'Not used'],
+    'not used: no networks, no Scan');
+// failed: the reason shown, no Scan
+f = screen('wifi', {}, { uplink: Object.assign({}, fixture.state().uplink, { wifi: { enabled: true, link: 'failed', networks: [], saved: [],
+    scanning: false, error: 'wpa_supplicant ended (exit status 1) (trying again in 30s)' } }) });
+eq([text(f, 'state'), text(f, 'note'), f.values.scan.disabled], ['Failed', 'wpa_supplicant ended (exit status 1) (trying again in 30s)', true]);
+// the uplink's state missing (it restarts): waiting, nothing to press but Back
+f = screen('wifi', {}, { uplink: null });
+eq([text(f, 'state'), f.values.networks.empty, own(f)], ['Waiting', 'Waiting', ['Back']]);
+f = screen('wifi-failed');
+eq([text(f, 'state'), text(f, 'note')], ['Error', 'could not join "FRITZ!Box 7590 XY" (wrong password, or out of range)']);
+eq(f.items[0].act, { do: 'wifi-join', ssid: 'Mario iPhone' }, 'a saved network not joined: a tap joins it');
+eq(text(screen('wifi', { uplinkNote: 'needs mgu-uplink 0.7.0 or newer, running' }), 'note'), 'needs mgu-uplink 0.7.0 or newer, running',
+    'the updater\'s or uplink\'s refusal');
+ok(own(screen('wifi', {}, { uplink: Object.assign({}, fixture.state().uplink, { wifi: Object.assign({}, fixture.state().uplink.wifi,
+    { scanning: true }) }) })).indexOf('Scan') < 0, 'no Scan while it scans');
+// the password: word keys and symbols, Connect only from 8 characters
+f = screen('wifi-password');
+eq([text(f, 'title'), text(f, 'field'), f.values.field.label], ['FRITZ!Box 7590 XY', '···', 'Password · at least 8 characters']);
+ok(own(f).indexOf('Connect') >= 0 && own(f).indexOf('#+=') >= 0, 'word keys with the symbols page, Connect');
+const pass = { name: 'type', title: 'FRITZ!Box 7590 XY', text: '', label: 'Password', layout: 'text', symbols: true, go: 'Connect', min: 8, max: 63 };
+ok(!typeOn('iDrive 8', pass, ['s', 'e', 'c', 'r', 'e', 't', '1', 'Connect']), 'Connect does nothing under 8 characters');
+ok(typeOn('iDrive 8', pass, ['#+=', '!', 'Connect']) && pass.text === 'secret1!', 'then gives the password');
+// Forget asks first
+f = screen('confirm-wifi-forget');
+eq([f.labels, text(f, 'title'), text(f, 'text'), f.items[1].act], [['Cancel', 'Forget'], 'Forget network?', 'Home', { do: 'wifi-forget', ssid: 'Home' }]);
+// the preferred connection: Automatic and the uplink's three groups; the preferred one marked, the others a tap away
+f = screen('prefer');
+eq(own(f), ['Automatic', 'USB', 'Phone', 'Back']);
+eq([text(f, 'status'), f.values.list.items[1].right, f.values.list.items[1].sub], ['Online through Wi-Fi', 'chip:Preferred', 'In use']);
+eq([f.items[0].act, f.items[2].act], [{ do: 'uplink-prefer', kind: '' }, { do: 'uplink-prefer', kind: 'phone' }]);
+f = screen('prefer', {}, { uplink: Object.assign({}, fixture.state().uplink, { device: { kind: 'iphone', name: 'iPhone' }, preferred: 'usb' }) });
+eq([text(f, 'status'), f.values.list.items[3].sub, f.values.list.items[2].right], ['Online through Phone', 'In use', 'chip:Preferred']);
+// unavailable: the reason shown, no Scan
+f = screen('wifi', {}, { uplink: Object.assign({}, fixture.state().uplink, { wifi: { enabled: true, link: 'unavailable', networks: [], saved: [],
+    scanning: false, error: 'wlan1 is in access point mode' } }) });
+eq([text(f, 'state'), text(f, 'note'), f.values.networks.empty, f.values.scan.disabled, text(f, 'subtitle')],
+    ['Unavailable', 'wlan1 is in access point mode', 'Unavailable', true, '']);
 
 // sign-in, phone, no updater
 f = screen('login');

@@ -5,9 +5,9 @@
  * screens out for iDrive 7's). store,
  * app, confirm (the sheet), installed, usb and settings are IterioDev's App
  * Manager 2 screens (mgu-app-store apps/oap-appmanager/renderer/screens.json
- * @ 4d5f508, the HMI UI builder's export of projects/app-manager.json) with the Store's labels; source, pick, accounts, login and phone
- * are the Store's own in the same frame. Each element is drawn by
- * am_gpu.js; src/store_ui.js gives their values.
+ * @ 4d5f508, the HMI UI builder's export of projects/app-manager.json) with the Store's labels; source, pick, accounts, login, phone,
+ * type (his Add repository page's text box and keyboard), wifi (his App Manager 2.0.6's Wi-Fi page) and prefer are the Store's
+ * own in the same frame. Each element is drawn by am_gpu.js; src/store_ui.js gives their values.
  */
 module.exports = {
  "design": {
@@ -1628,6 +1628,373 @@ module.exports = {
       "opts": { "text": "", "size": 44, "font": "bold", "align": "left", "color": "text" } },
     { "name": "steps", "rtype": "gpu", "gpu": "text", "x": 610, "y": 340, "w": 2140, "h": 500,
       "opts": { "text": "", "size": 34, "font": "label", "align": "left", "color": "text", "wrap": true } }
+   ]
+  },
+  {
+   "kind": "gpu",
+   "name": "type",
+   "theme": "m_tricolour",
+   "bg": "theme",
+   "components": [
+    {
+     "name": "nav",
+     "rtype": "gpu",
+     "gpu": "sideNav",
+     "x": 126,
+     "y": 114,
+     "w": 300,
+     "h": 726,
+     "opts": {
+      "items": "Store, grid\nInstalled, check\nUSB, usb\nSettings, gear",
+      "sel": 0
+     }
+    },
+    {
+     "name": "back",
+     "rtype": "gpu",
+     "gpu": "vbutton",
+     "x": 480,
+     "y": 138,
+     "w": 96,
+     "h": 96,
+     "opts": {
+      "text": "",
+      "vicon": "back",
+      "style": "round",
+      "color": "#f4f7fb"
+     },
+     "onTap": "event:back"
+    },
+    {
+     "name": "title",
+     "rtype": "gpu",
+     "gpu": "text",
+     "x": 610,
+     "y": 138,
+     "w": 2200,
+     "h": 90,
+     "opts": {
+      "text": "",
+      "size": 72,
+      "font": "bold",
+      "align": "left",
+      "color": "text"
+     }
+    },
+    {
+     "name": "field",
+     "rtype": "gpu",
+     "gpu": "field",
+     "x": 480,
+     "y": 258,
+     "w": 2360,
+     "h": 96,
+     "opts": {
+      "text": "",
+      "caret": true,
+      "focus": true,
+      "size": 40
+     }
+    },
+    {
+     "name": "keyboard",
+     "rtype": "gpu",
+     "gpu": "keyboard",
+     "x": 480,
+     "y": 372,
+     "w": 2360,
+     "h": 462,
+     "opts": {
+      "shift": false
+     }
+    }
+   ]
+  },
+  {
+   "kind": "gpu",
+   "name": "wifi",
+   "theme": "m_tricolour",
+   "bg": "theme",
+   "components": [
+    {
+     "name": "nav",
+     "rtype": "gpu",
+     "gpu": "sideNav",
+     "x": 126,
+     "y": 114,
+     "w": 300,
+     "h": 726,
+     "opts": {
+      "items": "Store, grid\nInstalled, check\nUSB, usb\nSettings, gear",
+      "sel": 0
+     }
+    },
+    {
+     "name": "back",
+     "rtype": "gpu",
+     "gpu": "vbutton",
+     "x": 480,
+     "y": 138,
+     "w": 96,
+     "h": 96,
+     "opts": {
+      "text": "",
+      "vicon": "back",
+      "style": "round",
+      "color": "#f4f7fb"
+     },
+     "onTap": "event:back"
+    },
+    {
+     "name": "title",
+     "rtype": "gpu",
+     "gpu": "text",
+     "x": 610,
+     "y": 138,
+     "w": 800,
+     "h": 90,
+     "opts": {
+      "text": "Wi-Fi",
+      "size": 72,
+      "font": "bold",
+      "align": "left",
+      "color": "text"
+     }
+    },
+    {
+     "name": "subtitle",
+     "rtype": "gpu",
+     "gpu": "text",
+     "x": 610,
+     "y": 227,
+     "w": 1400,
+     "h": 43,
+     "opts": {
+      "text": "",
+      "size": 34,
+      "font": "label",
+      "align": "left",
+      "color": "dim"
+     }
+    },
+    {
+     "name": "networks",
+     "rtype": "gpu",
+     "gpu": "appList",
+     "x": 480,
+     "y": 292,
+     "w": 1560,
+     "h": 540,
+     "opts": {
+      "items": [],
+      "rowH": 108,
+      "empty": ""
+     }
+    },
+    {
+     "name": "panel",
+     "rtype": "gpu",
+     "gpu": "rect",
+     "x": 2100,
+     "y": 136,
+     "w": 740,
+     "h": 700,
+     "opts": {
+      "color": "panelTop",
+      "radius": 28
+     }
+    },
+    {
+     "name": "icon",
+     "rtype": "gpu",
+     "gpu": "appIcon",
+     "x": 2140,
+     "y": 176,
+     "w": 120,
+     "h": 120,
+     "opts": {
+      "vicon": "wifi",
+      "kind": "service",
+      "colors": "#7a808a,#3a3f47"
+     }
+    },
+    {
+     "name": "state",
+     "rtype": "gpu",
+     "gpu": "text",
+     "x": 2290,
+     "y": 192,
+     "w": 510,
+     "h": 48,
+     "opts": {
+      "text": "",
+      "size": 38,
+      "font": "bold",
+      "align": "left",
+      "color": "text"
+     }
+    },
+    {
+     "name": "info",
+     "rtype": "gpu",
+     "gpu": "text",
+     "x": 2290,
+     "y": 248,
+     "w": 510,
+     "h": 40,
+     "opts": {
+      "text": "",
+      "size": 30,
+      "font": "label",
+      "align": "left",
+      "color": "dim"
+     }
+    },
+    {
+     "name": "note",
+     "rtype": "gpu",
+     "gpu": "text",
+     "x": 2140,
+     "y": 336,
+     "w": 660,
+     "h": 130,
+     "opts": {
+      "text": "",
+      "size": 32,
+      "font": "label",
+      "align": "left",
+      "color": "#ffb020",
+      "wrap": true
+     }
+    },
+    {
+     "name": "power",
+     "rtype": "gpu",
+     "gpu": "vbutton",
+     "x": 2140,
+     "y": 496,
+     "w": 660,
+     "h": 96,
+     "opts": {
+      "text": "",
+      "vicon": "wifi",
+      "style": "outline"
+     },
+     "onTap": "event:power"
+    },
+    {
+     "name": "scan",
+     "rtype": "gpu",
+     "gpu": "vbutton",
+     "x": 2140,
+     "y": 608,
+     "w": 660,
+     "h": 96,
+     "opts": {
+      "text": "Scan",
+      "vicon": "refresh",
+      "style": "outline"
+     },
+     "onTap": "event:scan"
+    },
+    {
+     "name": "prefer",
+     "rtype": "gpu",
+     "gpu": "vbutton",
+     "x": 2140,
+     "y": 720,
+     "w": 660,
+     "h": 96,
+     "opts": {
+      "text": "",
+      "vicon": "route",
+      "style": "outline"
+     },
+     "onTap": "event:prefer"
+    }
+   ]
+  },
+  {
+   "kind": "gpu",
+   "name": "prefer",
+   "theme": "m_tricolour",
+   "bg": "theme",
+   "components": [
+    {
+     "name": "nav",
+     "rtype": "gpu",
+     "gpu": "sideNav",
+     "x": 126,
+     "y": 114,
+     "w": 300,
+     "h": 726,
+     "opts": {
+      "items": "Store, grid\nInstalled, check\nUSB, usb\nSettings, gear",
+      "sel": 0
+     }
+    },
+    {
+     "name": "back",
+     "rtype": "gpu",
+     "gpu": "vbutton",
+     "x": 480,
+     "y": 138,
+     "w": 96,
+     "h": 96,
+     "opts": {
+      "text": "",
+      "vicon": "back",
+      "style": "round",
+      "color": "#f4f7fb"
+     },
+     "onTap": "event:back"
+    },
+    {
+     "name": "title",
+     "rtype": "gpu",
+     "gpu": "text",
+     "x": 610,
+     "y": 138,
+     "w": 1600,
+     "h": 90,
+     "opts": {
+      "text": "Preferred connection",
+      "size": 72,
+      "font": "bold",
+      "align": "left",
+      "color": "text"
+     }
+    },
+    {
+     "name": "status",
+     "rtype": "gpu",
+     "gpu": "text",
+     "x": 610,
+     "y": 227,
+     "w": 1600,
+     "h": 43,
+     "opts": {
+      "text": "",
+      "size": 34,
+      "font": "label",
+      "align": "left",
+      "color": "dim"
+     }
+    },
+    {
+     "name": "list",
+     "rtype": "gpu",
+     "gpu": "appList",
+     "x": 610,
+     "y": 292,
+     "w": 1500,
+     "h": 540,
+     "opts": {
+      "items": [],
+      "rowH": 108,
+      "empty": ""
+     }
+    }
    ]
   }
  ]

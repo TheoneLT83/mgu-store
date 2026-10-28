@@ -167,14 +167,16 @@
             'Store, grid\nInstalled, check, 2\nUSB, usb\nSettings, gear'), F('sel', 'Selected (0 = first)', 'int', 0)] },
         vbutton: { label: 'Button (vector icon)', icon: '⏺', store: true, box: [660, 120], fields: [F('text', 'Text', 'text', 'Install'), F('vicon', 'Vector icon', 'vicon', 'arrowDown'),
             F('style', 'Style', 'select', 'primary', ['primary', 'outline', 'tinted', 'round']), F('color', 'Colour', 'color', ''), F('disabled', 'Greyed out', 'bool', false), SIZE] },
-        keyboard: { label: 'Keyboard', icon: '⌨', store: true, box: [2360, 518], fields: [F('shift', 'Capitals', 'bool', false)] },
+        keyboard: { label: 'Keyboard', icon: '⌨', store: true, box: [2360, 518], fields: [F('shift', 'Capitals', 'bool', false),
+            F('layout', 'Keys', 'select', 'url', ['url', 'text']), F('go', 'Enter key text (it types that)', 'text', 'Next'),
+            F('symbols', 'Symbols key #+= (word keys only)', 'bool', false), F('sym', 'Showing the symbols', 'bool', false)] },
         // the Store's own (src/store_elements.js)
         qr: { label: 'QR code', icon: '▦', store: true, box: [400, 400], fields: [F('text', 'Text', 'text', '')] },
         sheet: { label: 'Sheet (dims the screen)', icon: '▢', store: true, box: [1500, 520], fields: [F('dim', 'Dim (0-1)', 'num', 0.55), F('radius', 'Corner radius', 'num', 32)] },
     };
     // kit/vicons.js names (the editor's 'vicon' fields)
     const VICONS = ['grid', 'check', 'arrowDown', 'clock', 'back', 'chevron', 'plus', 'trash', 'lock', 'unlock', 'warning', 'gear', 'usb', 'refresh',
-        'gauge', 'stopwatch', 'camera', 'phone', 'tether', 'display', 'route', 'wrench'];
+        'gauge', 'stopwatch', 'camera', 'phone', 'tether', 'display', 'route', 'wrench', 'wifi'];
 
     // reduce, not Object.fromEntries: this file also runs in apps on the car (Node 8)
     const defaults = (type) => ELEMENTS[type].fields.reduce((o, f) => { o[f.key] = f.def; return o; }, {});

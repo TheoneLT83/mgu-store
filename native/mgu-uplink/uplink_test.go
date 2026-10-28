@@ -137,13 +137,17 @@ func TestHookLease(t *testing.T) {
 }
 
 func TestNftRuleset(t *testing.T) {
-	r := nftRuleset("vethuplink", []int{12205, 12990})
+	r := nftRuleset([]string{"vethuplink", "wlan1"}, []int{12205, 12990})
 	for _, want := range []string{
 		"add table inet mgu_uplink\ndelete table inet mgu_uplink\n",
 		`oifname "vethuplink" meta nfproto ipv4 meta skuid 12205 accept`,
 		`oifname "vethuplink" meta nfproto ipv4 meta skuid 12990 accept`,
 		`oifname "vethuplink" counter drop`,
 		`iifname "vethuplink" counter drop`,
+		`oifname "wlan1" meta nfproto ipv4 meta skuid 12205 accept`,
+		`oifname "wlan1" counter drop`,
+		`iifname "wlan1" counter drop`,
+		"\t\tiifname \"wlan1\" drop\n\t\toifname \"wlan1\" drop\n\t}\n}\n",
 	} {
 		if !strings.Contains(r, want) {
 			t.Errorf("ruleset lacks %q:\n%s", want, r)

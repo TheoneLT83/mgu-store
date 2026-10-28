@@ -683,7 +683,8 @@ updates. Keys: `sources`, `credentials_dir`, `builtin_repo`, `default_sources`,
 what it started, and fails), `deploy_tool`, `uplink_tool`, `bootstrap_check_s`, `privacy_tool`,
 `state_dir`, `tool_root`, `oap_root`, `mainapp_uid`, `store_app`,
 `reboot`, `log_file`, `socket`, `socket_group`, `web_uid`, `web_gid`,
-`web_port`, `web_iface`, `web_secret`. Relative paths are relative to
+`web_port`, `web_iface`, `web_secret`, `uplink_status`, `uplink_ctl`,
+`uplink_poll_s` ("The uplink"). Relative paths are relative to
 `updater.conf`.
 
 **Log.** Every line the daemon logs goes to the journal and, with its UTC
@@ -722,6 +723,9 @@ each request, and whenever it changes (at most every 250 ms):
   "login": { "url": "https://github.com/login/device", "code": "ABCD-1234",
     "expiresAt": 1792620900000, "status": "pending", "error": null },
   "web": { "enabled": false, "urls": [], "error": null },
+  "uplink": { "device": { "kind": "wifi", "name": "Phone" }, "state": "online", "error": null, "preferred": "wifi",
+    "wifi": { "enabled": true, "link": "online", "ssid": "Phone", "ip": "172.20.10.2", "signal": -45, "networks": [ … ],
+      "saved": [ "Phone" ], "scanning": false, "error": null } },
   "busy": { "id": "doom", "phase": "download", "progress": 524288, "total": 2080457 },
   "rebooting": false, "rebootError": null,
   "components": [ { "id": "doom", "kind": "app", "title": "DOOM", "version": "1.0.1",
@@ -764,6 +768,10 @@ each request, and whenever it changes (at most every 250 ms):
 - `login`: the GitHub sign-in in progress (`pending`, `done`, `error`,
   `expired`), or null.
 - `web`: the phone page's state (`js/web.js`), present when the updater has it.
+- `uplink`: the uplink's `status.json` ("The uplink"): its `device`,
+  `state`, `error`, `preferred` (`""`: none) and `wifi` (null without it:
+  an uplink before 0.7.0, or not on `uplink = auto`); null while the
+  uplink does not run.
 - `catalog`: the sources as one line, for the Store 0.3: `checking` while
   any is read, `error` the first source that failed (`<label>: <error>`).
 - `privacy` is the app-privacy patch's state from `patch_mainapp.js check
@@ -788,6 +796,8 @@ Requests: `{"op":"status"}`, `{"op":"check"}`, `{"op":"install","id"}`
 | `{"op":"login-start"}`, `{"op":"login-cancel"}` | GitHub sign-in, which adds a token |
 | `{"op":"web","enable":true\|false}` | the phone page on or off, kept across restarts (`state/web.json`) |
 | `{"op":"logs","unit","lines"}` | `{"type":"logs","unit","text"}`: a journal for the phone page |
+| `{"op":"uplink-prefer","kind"}` | the uplink's preferred connection: `wifi`, `usb`, `phone` (`""` for none), relayed as its `prefer` ("The uplink") |
+| `{"op":"wifi-enable","on":true\|false}`, `{"op":"wifi-scan"}`, `{"op":"wifi-connect","ssid","psk"?}`, `{"op":"wifi-forget","ssid"}` | the uplink's Wi-Fi, relayed as they are ("The uplink") |
 
 A refused request gets `{"type":"error","op",…,"error"}`; one without the
 right secret, `"error":"forbidden"`. The direct answer to a request
@@ -802,7 +812,8 @@ and the apps' group of `oap_root`; written again within 15 s when the Store's
 uid changes or the file is gone, as after MainApp's crash recovery reinstalls
 the Store) and to `web_secret` for the phone page (`web_uid`).
 Every OAP app can reach the socket; only these two can change sources or
-tokens, sign in, remove components or read journals. While the
+tokens, sign in, remove components, read journals or change the uplink's
+Wi-Fi and preferred connection. While the
 phone page is on, `web-url` beside `updater-secret` holds its hotspot
 address with the access token (one line, the Store's own 0400 file) for the
 Store's QR code; it is removed when the page goes off, rewritten when the
@@ -811,6 +822,23 @@ the file when it gets one.
 
 `js/client.js` is the client (the Store bundles it; the privileged
 requests take the secret as `opts.secret` or `setSecret()`).
+
+### The uplink
+
+The Store talks to the updater only; the uplink's requests socket
+(`uplink_ctl`, `/run/mgu-uplink/ctl.sock`, root only, mgu-uplink 0.7.0)
+is the updater's to reach. `uplink-prefer`, `wifi-enable`, `wifi-scan`,
+`wifi-connect` and `wifi-forget` (privileged) are checked here (a kind of
+up to 16 lower-case letters, a network name of 1 to 32 bytes, a password
+of 8 to 63 printable ASCII characters or none, `on` true or false), then
+sent on as one request on a new connection, `uplink-prefer` as `prefer`,
+with only those fields: never the secret. The answer is the state once
+the uplink took it, else `{"type":"error","op","error"}` with the
+uplink's reason, `needs mgu-uplink 0.7.0 or newer, running` without its
+socket, or `the uplink gave no answer` after 12 s. The log names the
+request and the network, never the password. The uplink's
+`/run/mgu-uplink/status.json` (`uplink_status`) is read every
+`uplink_poll_s` (2 s), and the state goes out when it changed.
 
 ## Command line
 
@@ -871,6 +899,10 @@ releases, branches, tags, contents, tarballs, the device flow), with
   (with a stand-in page), `rid`, a first start without `sources.json`, default
   sources (added once, kept out after a removal, not doubled), and
   the Store 0.3's texts from the state;
+- the uplink's requests against a fake `ctl.sock`: only with the secret,
+  each sent on with its own fields only (no secret), a password passed on
+  exactly and in no log line, the ones the uplink could not take refused
+  here, the uplink's refusal, no socket; its `status.json` in the state;
 - sources listed apart: an id two sources list is a row for each, only
   its origin updates an installed one, another source's newer one is
   beside it, blocked; with nothing installed, the package built elsewhere

@@ -8,21 +8,24 @@
  * (kit/runtime/canvas.js) closely. Output is premultiplied alpha.
  */
 #include <GLES2/gl2.h>
+#include <fcntl.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include "gfx.h"
 #include "proto.h"
 
-enum { K_BOX = 0, K_RRECT = 1, K_ARC = 3, K_LINE = 4, K_GLYPH = 5, K_TEX = 6, K_VCOL = 7, K_RAMPRECT = 8, K_QUAD = 9, K_IMG = 10 };
+enum { K_BOX = 0, K_RRECT = 1, K_ARC = 3, K_LINE = 4, K_GLYPH = 5, K_TEX = 6, K_VCOL = 7, K_RAMPRECT = 8, K_QUAD = 9, K_IMG = 10, K_YUV = 11 };
 
 /* vertex: pos(2) kind(1) pad(1) | a(4) | b(4) | c(4) | d(4) | col(4) = 24 floats */
 #define VF 24
 typedef struct { float v[VF]; } vert;
 
 static GLuint prog, vbo, ibo;
-static GLint u_view, u_atlas, u_ramp, u_tex;
+static GLint u_view, u_atlas, u_ramp, u_tex, u_tex2, u_tex3;
 static GLuint atlas_tex, ramp_tex;
 #define ATLAS_W 2048
 #define ATLAS_H 4096
@@ -34,6 +37,7 @@ static char err[256];
 
 static vert *vb; static size_t nv, cap;                  /* current batch */
 static GLuint cur_tex;                                   /* layer texture bound for K_TEX quads */
+static GLuint cur_tex2, cur_tex3;                        /* a video's U and V planes (K_YUV; cur_tex = Y) */
 static int fb_w, fb_h;
 static float g_alpha = 1;
 
@@ -51,7 +55,7 @@ static const char *VS =
 static const char *FS =
     "precision highp float;\n"
     "varying vec2 v_p; varying float v_kind; varying vec4 v_a; varying vec4 v_b; varying vec4 v_c; varying vec4 v_d; varying vec4 v_col;\n"
-    "uniform sampler2D u_atlas; uniform sampler2D u_ramp; uniform sampler2D u_tex;\n"
+    "uniform sampler2D u_atlas; uniform sampler2D u_ramp; uniform sampler2D u_tex; uniform sampler2D u_tex2; uniform sampler2D u_tex3;\n"
     "const float PI = 3.14159265358979;\n"
     /* exact overlap of the pixel square around p with the box a.xy..a.zw */
     "float boxcov(vec2 p, vec4 r) { vec2 o = clamp(min(p + 0.5, r.zw) - max(p - 0.5, r.xy), 0.0, 1.0); return o.x * o.y; }\n"
@@ -106,10 +110,19 @@ static const char *FS =
     "    vec4 e = vec4(dot(v_a.xy, p) + v_a.z, dot(vec2(v_a.w, v_b.x), p) + v_b.y, dot(v_b.zw, p) + v_c.x, dot(v_c.yz, p) + v_c.w);\n"
     "    vec4 c4 = clamp(e + 0.5, 0.0, 1.0); cov = c4.x * c4.y * c4.z * c4.w;\n"
     "  }\n"
-    "  else {\n"                                                /* picture: a = centre, half size; b.x radius; uv in c.xy (premultiplied) */
+    "  else if (k < 10.5) {\n"                                  /* picture: a = centre, half size; b.x radius; uv in c.xy (premultiplied) */
     "    float ic = clamp(0.5 - rrdist(p, v_a, v_b.x), 0.0, 1.0) * v_col.a;\n"
     "    if (ic <= 0.0) discard;\n"
     "    gl_FragColor = texture2D(u_tex, v_c.xy) * ic; return;\n"
+    "  }\n"
+    "  else {\n"                                                /* video, I420 planes Y U V: as a picture; b.y 1 = BT.709, b.z 1 = full range */
+    "    float ic = clamp(0.5 - rrdist(p, v_a, v_b.x), 0.0, 1.0) * v_col.a;\n"
+    "    if (ic <= 0.0) discard;\n"
+    "    float cy = texture2D(u_tex, v_c.xy).r, cu = texture2D(u_tex2, v_c.xy).r - 0.501961, cv = texture2D(u_tex3, v_c.xy).r - 0.501961;\n"
+    "    if (v_b.z < 0.5) { cy = (cy - 0.062745) * 1.164384; cu *= 1.138393; cv *= 1.138393; }\n"
+    "    vec3 rgb = v_b.y > 0.5 ? vec3(cy + 1.5748 * cv, cy - 0.187324 * cu - 0.468124 * cv, cy + 1.8556 * cu)\n"
+    "                           : vec3(cy + 1.402 * cv, cy - 0.344136 * cu - 0.714136 * cv, cy + 1.772 * cu);\n"
+    "    gl_FragColor = vec4(clamp(rgb, 0.0, 1.0) * ic, ic); return;\n"
     "  }\n"
     "  float a = col.a * cov;\n"
     "  if (a <= 0.0) discard;\n"
@@ -139,6 +152,8 @@ int gfx_init(void) {
     u_atlas = glGetUniformLocation(prog, "u_atlas");
     u_ramp = glGetUniformLocation(prog, "u_ramp");
     u_tex = glGetUniformLocation(prog, "u_tex");
+    u_tex2 = glGetUniformLocation(prog, "u_tex2");
+    u_tex3 = glGetUniformLocation(prog, "u_tex3");
     glGenBuffers(1, &vbo); glGenBuffers(1, &ibo);
 
     glGenTextures(1, &atlas_tex);
@@ -284,9 +299,93 @@ int gfx_image_def(gfx_client *c, uint32_t id, int w, int h, const uint8_t *px) {
     return 0;
 }
 
+/* ---------------- videos (proto.h M_VIDEO): frames read from the producer's file ---------------- */
+
+static gfx_video *find_video(gfx_client *c, uint32_t id) {
+    for (gfx_video *v = c->videos; v; v = v->next) if (v->id == id) return v;
+    return NULL;
+}
+
+void gfx_video_drop(gfx_client *c, uint32_t id) {
+    for (gfx_video **pp = &c->videos; *pp; pp = &(*pp)->next) {
+        if ((*pp)->id == id) {
+            gfx_video *v = *pp; *pp = v->next;
+            for (int k = 0; k < 3; k++) if (v->tex[k]) glDeleteTextures(1, &v->tex[k]);
+            close(v->fd); free(v->buf); free(v);
+            c->nvideo--;
+            return;
+        }
+    }
+}
+
+/* only /dev/shm/mgu-video-<letters, digits, - _ .>: the renderer runs as root, an app must not name other files */
+int gfx_video_def(gfx_client *c, uint32_t id, const char *path) {
+    static const char pfx[] = "/dev/shm/mgu-video-";
+    gfx_video_drop(c, id);
+    const char *n = path + sizeof pfx - 1;
+    int ok = !strncmp(path, pfx, sizeof pfx - 1) && *n && *n != '.' && strlen(n) <= 64;
+    for (const char *s = n; ok && *s; s++)
+        ok = (*s >= 'a' && *s <= 'z') || (*s >= 'A' && *s <= 'Z') || (*s >= '0' && *s <= '9') || *s == '-' || *s == '_' || *s == '.';
+    if (!ok) { snprintf(err, sizeof err, "video %u: not a /dev/shm/mgu-video-* file", id); return -1; }
+    if (c->nvideo >= GFX_VIDEO_MAX) { snprintf(err, sizeof err, "video %u: an app has at most %d videos", id, GFX_VIDEO_MAX); return -1; }
+    int fd = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+    struct stat st;
+    if (fd < 0 || fstat(fd, &st) < 0 || !S_ISREG(st.st_mode)) {
+        if (fd >= 0) close(fd);
+        snprintf(err, sizeof err, "video %u: cannot open %.80s", id, path);
+        return -1;
+    }
+    gfx_video *v = calloc(1, sizeof *v);
+    if (!v) { close(fd); snprintf(err, sizeof err, "video %u: out of memory", id); return -1; }
+    v->id = id; v->fd = fd;
+    v->next = c->videos; c->videos = v; c->nvideo++;
+    return 0;
+}
+
+static int video_head(const gfx_video *v, struct mgu_video_head *h) {
+    return pread(v->fd, h, sizeof *h, 0) == (ssize_t)sizeof *h && h->magic == MGU_VIDEO_MAGIC && h->version == 1
+        && h->w >= 16 && h->h >= 16 && h->w <= GFX_VIDEO_SIDE && h->h <= GFX_VIDEO_SIDE && !(h->w & 1) && !(h->h & 1)
+        && h->nslot >= 1 && h->nslot <= 4 && h->slot < h->nslot;
+}
+
+int gfx_video_pending(gfx_client *c) {
+    struct mgu_video_head h;
+    for (gfx_video *v = c->videos; v; v = v->next) if (video_head(v, &h) && h.seq != v->seq) return 1;
+    return 0;
+}
+
+/* the newest frame to the GPU (pread, not mmap: a file the producer shrinks can't crash the renderer).
+   ponytail: a copy per frame (~1.4 MB at 720p); mmap or dmabuf if that ever shows */
+static void video_update(gfx_video *v) {
+    struct mgu_video_head h;
+    if (!video_head(v, &h) || h.seq == v->seq) return;
+    size_t ysz = (size_t)h.w * h.h, csz = (size_t)(h.w / 2) * (h.h / 2), fsz = ysz + 2 * csz;
+    if (fsz > v->cap) { uint8_t *b = realloc(v->buf, fsz); if (!b) return; v->buf = b; v->cap = fsz; }
+    if (pread(v->fd, v->buf, fsz, (off_t)sizeof h + (off_t)h.slot * (off_t)fsz) != (ssize_t)fsz) return;
+    int resize = (int)h.w != v->w || (int)h.h != v->h;
+    v->seq = h.seq; v->w = (int)h.w; v->h = (int)h.h; v->matrix = h.matrix == 1; v->full = h.full == 1;
+    const uint8_t *pl[3] = { v->buf, v->buf + ysz, v->buf + ysz + csz };
+    for (int k = 0; k < 3; k++) {
+        int pw = k ? v->w / 2 : v->w, ph = k ? v->h / 2 : v->h;
+        if (!v->tex[k]) {
+            glGenTextures(1, &v->tex[k]);
+            glBindTexture(GL_TEXTURE_2D, v->tex[k]);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            resize = 1;
+        }
+        glBindTexture(GL_TEXTURE_2D, v->tex[k]);
+        if (resize) glTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, pw, ph, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, pl[k]);
+        else glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, pw, ph, GL_LUMINANCE, GL_UNSIGNED_BYTE, pl[k]);
+    }
+}
+
 void gfx_client_free(gfx_client *c) {
     while (c->layers) gfx_layer_drop(c, c->layers->id);
     while (c->images) gfx_image_drop(c, c->images->id);
+    while (c->videos) gfx_video_drop(c, c->videos->id);
     c->natlas = c->nramp = 0;
 }
 
@@ -320,10 +419,12 @@ static void flush(void) {
     }
     glUseProgram(prog);
     glUniform2f(u_view, (float)fb_w, (float)fb_h);
-    glUniform1i(u_atlas, 0); glUniform1i(u_ramp, 1); glUniform1i(u_tex, 2);
+    glUniform1i(u_atlas, 0); glUniform1i(u_ramp, 1); glUniform1i(u_tex, 2); glUniform1i(u_tex2, 3); glUniform1i(u_tex3, 4);
     glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, atlas_tex);
     glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, ramp_tex);
     glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, cur_tex);
+    glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, cur_tex2);
+    glActiveTexture(GL_TEXTURE4); glBindTexture(GL_TEXTURE_2D, cur_tex3);
     glActiveTexture(GL_TEXTURE0);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
@@ -542,6 +643,27 @@ static void draw_image(gfx_image *m, float x, float y, float w, float h, float r
     flush();
 }
 
+/* the video's newest frame fitted into the device rect (aspect kept, centred), corner radius r */
+static void draw_video(gfx_video *m, float x, float y, float w, float h, float r) {
+    if (!m->w || !(w > 0 && h > 0 && w < 65536 && h < 65536 && isfinite(x) && isfinite(y))) return;
+    float a = (float)m->w / m->h;
+    if (w / h > a) { float fw = h * a; x += (w - fw) / 2; w = fw; } else { float fh = w / a; y += (h - fh) / 2; h = fh; }
+    if (r > w / 2) r = w / 2;
+    if (r > h / 2) r = h / 2;
+    if (!(r > 0)) r = 0;
+    flush();
+    cur_tex = m->tex[0]; cur_tex2 = m->tex[1]; cur_tex3 = m->tex[2];
+    float x0 = floorf(x) - 1, y0 = floorf(y) - 1, x1 = ceilf(x + w) + 1, y1 = ceilf(y + h) + 1;
+    vert *v = quad(x0, y0, x1, y1, K_YUV);
+    set4(v, 4, x + w / 2, y + h / 2, w / 2, h / 2);
+    set4(v, 8, r, (float)m->matrix, (float)m->full, 0);
+    float u0 = (x0 - x) / w, u1 = (x1 - x) / w, v0 = (y0 - y) / h, v1 = (y1 - y) / h;
+    v[0].v[12] = u0; v[0].v[13] = v0; v[1].v[12] = u1; v[1].v[13] = v0;
+    v[2].v[12] = u1; v[2].v[13] = v1; v[3].v[12] = u0; v[3].v[13] = v1;
+    setcol(v, 0xffffffff);
+    flush();
+}
+
 static void run(gfx_client *c, const gfx_xf *xf0, const uint32_t *cmd, size_t n, int depth) {
     gfx_xf cur = *xf0;
     const gfx_xf *xf = &cur;
@@ -659,6 +781,13 @@ static void run(gfx_client *c, const gfx_xf *xf0, const uint32_t *cmd, size_t n,
             i += 6;
             break;
         }
+        case OP_VIDEO: {
+            NEED(6);
+            gfx_video *m = depth == 0 ? find_video(c, U(i + 5)) : NULL;     /* not in cached layers: they are drawn once */
+            if (m) draw_video(m, X(F(i)), Y(F(i + 1)), L(F(i + 2)), L(F(i + 3)), L(F(i + 4)));
+            i += 6;
+            break;
+        }
         case OP_CLIP: {
             NEED(4);
             flush();
@@ -692,6 +821,7 @@ static void run(gfx_client *c, const gfx_xf *xf0, const uint32_t *cmd, size_t n,
 }
 
 void gfx_draw(gfx_client *c, const gfx_xf *xf, int fbw, int fbh, const uint32_t *cmd, size_t n, int clear_transparent) {
+    for (gfx_video *v = c->videos; v; v = v->next) video_update(v);
     fb_w = fbw; fb_h = fbh; g_alpha = 1;
     glViewport(0, 0, fbw, fbh);
     glDisable(GL_SCISSOR_TEST);

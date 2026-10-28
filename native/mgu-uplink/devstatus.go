@@ -5,7 +5,9 @@ package main
 //
 //	{"device": {"kind": "iphone", "name": "Apple Inc. iPhone"} | null,
 //	 "state": "searching|connecting|trust-needed|busy|online|error",
-//	 "error": null | "Tap Trust on the iPhone" | ...}
+//	 "error": null | "Tap Trust on the iPhone" | ...,
+//	 "preferred": "phone",      only while a group is preferred
+//	 "wifi": {...}}             the Wi-Fi provider (wifi.go), only with uplink = auto
 //
 // searching: no usable device. connecting: a device is being set up or
 // waits for its DHCP lease. trust-needed: an iPhone is up but sends nothing,
@@ -29,14 +31,16 @@ const (
 )
 
 type statusDevice struct {
-	Kind string `json:"kind"` // usb, usbecm, rndis, ncm, iphone, netdev
+	Kind string `json:"kind"` // usb, usbecm, wifi (name: the network), rndis, ncm, iphone, netdev
 	Name string `json:"name"`
 }
 
 type uplinkStatus struct {
-	Device *statusDevice `json:"device"`
-	State  string        `json:"state"`
-	Error  *string       `json:"error"`
+	Device    *statusDevice `json:"device"`
+	State     string        `json:"state"`
+	Error     *string       `json:"error"`
+	Preferred string        `json:"preferred,omitempty"`
+	WiFi      *wifiStatus   `json:"wifi,omitempty"`
 }
 
 // deviceLink is a Link that knows which device it runs on.
@@ -48,6 +52,7 @@ var ustat struct {
 	sync.Mutex
 	path     string
 	last     []byte
+	cur      uplinkStatus
 	note     string // a running link's own remark, e.g. the iPhone's hotspot being off
 	trust    bool   // a running iPhone link is waiting for Trust
 	trustMsg string
@@ -57,6 +62,7 @@ var ustat struct {
 func statusInit(path string) {
 	ustat.Lock()
 	ustat.path, ustat.last, ustat.note, ustat.trust, ustat.trustMsg = path, nil, "", false, ""
+	ustat.cur = uplinkStatus{}
 	ustat.Unlock()
 }
 
@@ -65,21 +71,42 @@ func statusInit(path string) {
 func setStatus(dev *statusDevice, state, msg string) {
 	ustat.Lock()
 	defer ustat.Unlock()
-	if ustat.path == "" {
-		return
-	}
 	if msg == "" && state == stateConnecting {
 		msg = ustat.note
 	}
-	st := uplinkStatus{Device: dev, State: state}
+	ustat.cur.Device, ustat.cur.State, ustat.cur.Error = dev, state, nil
 	if msg != "" {
-		st.Error = &msg
+		ustat.cur.Error = &msg
 	}
-	b := marshalJSON(st)
+	writeStatus()
+}
+
+// setStatusPreferred and setStatusWiFi set the preferred group and the
+// Wi-Fi provider's state.
+func setStatusPreferred(kind string) {
+	ustat.Lock()
+	defer ustat.Unlock()
+	ustat.cur.Preferred = kind
+	writeStatus()
+}
+
+func setStatusWiFi(w *wifiStatus) {
+	ustat.Lock()
+	defer ustat.Unlock()
+	ustat.cur.WiFi = w
+	writeStatus()
+}
+
+// writeStatus writes ustat.cur, with ustat held, once there is a state.
+func writeStatus() {
+	if ustat.path == "" || ustat.cur.State == "" {
+		return
+	}
+	b := marshalJSON(ustat.cur)
 	if bytes.Equal(b, ustat.last) {
 		return
 	}
-	if err := writeJSON(ustat.path, st, 0644); err != nil {
+	if err := writeJSON(ustat.path, ustat.cur, 0644); err != nil {
 		logf("%s: %v", ustat.path, err)
 		return
 	}

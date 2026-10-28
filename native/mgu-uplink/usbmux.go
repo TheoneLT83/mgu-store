@@ -28,7 +28,6 @@ import (
 
 const (
 	muxProtoVersion = 0
-	muxProtoControl = 1
 	muxProtoSetup   = 2
 	muxProtoTCP     = 6
 	muxMagic        = 0xfeedface
@@ -41,6 +40,10 @@ const (
 	muxReadSize   = 16384
 	muxMaxPayload = 3*16384 - 16 - 20
 	muxConnectTO  = 5 * time.Second
+
+	// muxConnMaxBuffered: what a connection holds unread at most, the
+	// largest lockdown message with its framing and TLS records.
+	muxConnMaxBuffered = lockdownMax + 64<<10
 )
 
 // muxPipe is the bulk endpoint pair of the phone's usbmux interface
@@ -307,6 +310,11 @@ func (c *muxConn) input(flags byte, payload []byte) {
 		return
 	}
 	c.mu.Lock()
+	if len(c.rbuf)+len(payload) > muxConnMaxBuffered {
+		c.mu.Unlock()
+		c.fail(fmt.Errorf("usbmux: port %d sent more than %d bytes unread", c.rport, muxConnMaxBuffered))
+		return
+	}
 	c.txAck += uint32(len(payload))
 	c.rbuf = append(c.rbuf, payload...)
 	c.mu.Unlock()

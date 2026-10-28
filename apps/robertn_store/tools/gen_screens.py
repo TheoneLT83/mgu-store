@@ -2,7 +2,9 @@
 """Writes src/am_screens.js from IterioDev's App Manager 2 screens.json
 (mgu-app-store apps/oap-appmanager/renderer/screens.json): his store, app,
 restart (as confirm), installed, usb and settings screens with the Store's
-labels, and the Store's own pages in the same frame.
+labels, and the Store's own pages in the same frame (type: his Add
+repository page's text box and keyboard under a title; wifi: his App
+Manager 2.0.6's Wi-Fi page; prefer: the uplink's preferred connection).
 
     python3 tools/gen_screens.py <screens.json> src/am_screens.js <mgu-app-store commit>
 """
@@ -108,6 +110,37 @@ st['components'] += [copy.deepcopy(BACK),
     comp('qr', 'qr', 1900, 220, 600, 600, {'text': ''}),
 ]
 screens.append(st)
+# text typed on the drawn keyboard: his Add repository page's text box and keyboard under a title
+field = copy.deepcopy(get(S['addrepo'], 'url')); field.pop('onTap')
+field.update({'name': 'field', 'x': 480, 'y': 258, 'w': 2360})
+keys = copy.deepcopy(get(S['addrepo'], 'keyboard')); keys.update({'y': 372, 'h': 462})
+st = base('type')
+st['components'] += [copy.deepcopy(BACK), text('title', 610, 138, 2200, 90, '', 72, 'bold'), field, keys]
+screens.append(st)
+# Wi-Fi (IterioDev App Manager 2.0.6's Wi-Fi page): the networks on the left, the state and its buttons in the panel
+st = base('wifi')
+st['components'] += [copy.deepcopy(BACK),
+    text('title', 610, 138, 800, 90, 'Wi-Fi', 72, 'bold'),
+    text('subtitle', 610, 227, 1400, 43, '', 34, 'label', 'dim'),
+    comp('networks', 'appList', 480, 292, 1560, 540, {'items': [], 'rowH': 108, 'empty': ''}),
+    comp('panel', 'rect', 2100, 136, 740, 700, {'color': 'panelTop', 'radius': 28}),
+    comp('icon', 'appIcon', 2140, 176, 120, 120, {'vicon': 'wifi', 'kind': 'service', 'colors': '#7a808a,#3a3f47'}),
+    text('state', 2290, 192, 510, 48, '', 38, 'bold'),
+    text('info', 2290, 248, 510, 40, '', 30, 'label', 'dim'),
+    text('note', 2140, 336, 660, 130, '', 32, 'label', '#ffb020', wrap=True),
+    comp('power', 'vbutton', 2140, 496, 660, 96, {'text': '', 'vicon': 'wifi', 'style': 'outline'}, 'event:power'),
+    comp('scan', 'vbutton', 2140, 608, 660, 96, {'text': 'Scan', 'vicon': 'refresh', 'style': 'outline'}, 'event:scan'),
+    comp('prefer', 'vbutton', 2140, 720, 660, 96, {'text': '', 'vicon': 'route', 'style': 'outline'}, 'event:prefer'),
+]
+screens.append(st)
+# the uplink's preferred connection
+st = base('prefer')
+st['components'] += [copy.deepcopy(BACK),
+    text('title', 610, 138, 1600, 90, 'Preferred connection', 72, 'bold'),
+    text('status', 610, 227, 1600, 43, '', 34, 'label', 'dim'),
+    comp('list', 'appList', 610, 292, 1500, 540, {'items': [], 'rowH': 108, 'empty': ''}),
+]
+screens.append(st)
 body = json.dumps({'design': d['design'], 'screens': screens}, indent=1)
 open(out, 'w').write("""'use strict';
 /**
@@ -116,9 +149,9 @@ open(out, 'w').write("""'use strict';
  * screens out for iDrive 7's). store,
  * app, confirm (the sheet), installed, usb and settings are IterioDev's App
  * Manager 2 screens (mgu-app-store apps/oap-appmanager/renderer/screens.json
- * @ %s, the HMI UI builder's export of projects/app-manager.json) with the Store's labels; source, pick, accounts, login and phone
- * are the Store's own in the same frame. Each element is drawn by
- * am_gpu.js; src/store_ui.js gives their values.
+ * @ %s, the HMI UI builder's export of projects/app-manager.json) with the Store's labels; source, pick, accounts, login, phone,
+ * type (his Add repository page's text box and keyboard), wifi (his App Manager 2.0.6's Wi-Fi page) and prefer are the Store's
+ * own in the same frame. Each element is drawn by am_gpu.js; src/store_ui.js gives their values.
  */
 module.exports = %s;
 """ % (commit[:7], body))

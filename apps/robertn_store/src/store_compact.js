@@ -209,7 +209,39 @@ function compact(W, H, look) {
         text('status', X, HEAD + 14, CW, 44, '', 32, 'bold'),
         text('steps', X, HEAD + 72, CW, B - HEAD - 72, '', 25, 'label', undefined, { wrap: true })
     ]);
-    return { design: { w: W, h: H }, screens: [store, app, confirm, installed, usb, settings, source, accounts, pick, login, phone, internet] };
+    // text typed on the drawn keyboard: the text box under the title, the keyboard below
+    const FIELD_H = 64;
+    const keysY = HEAD + 14 + FIELD_H + 16;
+    const type = screen('type', 3, [
+        back(),
+        title('', titleX),
+        el('field', 'field', X, HEAD + 14, CW, FIELD_H, { text: '', caret: true, focus: true, size: 30 }),
+        el('keyboard', 'keyboard', X, keysY, CW, B - keysY, { shift: false })
+    ]);
+    // Wi-Fi: the networks on the left, the state and its buttons in the panel on the right
+    const wbY = (k) => B - 14 - (3 - k) * BTN_H - (2 - k) * 12;      // the panel's k-th button (0, 1, 2)
+    const wifi = screen('wifi', 3, [
+        back(),
+        title('Wi-Fi', titleX),
+        status('subtitle', titleX + 170, px - titleX - 194),
+        list('networks', X, HEAD + 14, px - X - 24, B - HEAD - 14, { empty: '' }),
+        el('panel', 'rect', px, M, PW, B - M, { color: 'panelTop', radius: 20 }),
+        el('icon', 'appIcon', px + 20, M + 20, 96, 96, { vicon: 'wifi', kind: 'service', colors: '#7a808a,#3a3f47' }),
+        text('state', px + 132, M + 30, PW - 152, 36, '', 28, 'bold'),
+        text('info', px + 132, M + 72, PW - 152, 30, '', 23, 'label', DIM),
+        text('note', px + 20, M + 132, PW - 40, wbY(0) - 12 - M - 132, '', 23, 'label', AMBER, { wrap: true }),
+        button('power', px + 20, wbY(0), PW - 40, BTN_H, '', 'outline', 28, { vicon: 'wifi' }),
+        button('scan', px + 20, wbY(1), PW - 40, BTN_H, 'Scan', 'outline', 28, { vicon: 'refresh' }),
+        button('prefer', px + 20, wbY(2), PW - 40, BTN_H, '', 'outline', 28, { vicon: 'route' })
+    ]);
+    const prefer = screen('prefer', 3, [
+        back(),
+        title('Preferred connection', titleX),
+        status('status', R - 420, 420),
+        list('list', X, HEAD + 14, Math.min(1100, CW), B - HEAD - 14, { empty: '' })
+    ]);
+    return { design: { w: W, h: H }, screens: [store, app, confirm, installed, usb, settings, source, accounts, pick, login, phone, type,
+        wifi, prefer, internet] };
 }
 
 module.exports = { compact };

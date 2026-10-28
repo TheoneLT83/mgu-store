@@ -442,6 +442,25 @@ static int handle(client *c, uint32_t type, const uint8_t *p, uint32_t len) {
         make_current_any(c);
         gfx_image_drop(&c->g, w[0]);
         return 0;
+    case M_VIDEO: {
+        if (nw < 2) return -1;
+        char path[128];
+        size_t n = strnlen((const char *)p + 4, len - 4);
+        if (n >= sizeof path) n = sizeof path - 1;
+        memcpy(path, p + 4, n); path[n] = 0;
+        make_current_any(c);
+        if (gfx_video_def(&c->g, w[0], path) < 0) {        /* a bad path is the app's error, not a reason to drop it */
+            const char *e = gfx_error();
+            LOG("%s: %s", c->app, e);
+            send_msg(c, E_ERROR, e, (uint32_t)strlen(e));
+        } else DBG("%s: video %u from %s", c->app, w[0], path);
+        return 0;
+    }
+    case M_DROP_VIDEO:
+        if (nw < 1) return -1;
+        make_current_any(c);
+        gfx_video_drop(&c->g, w[0]);
+        return 0;
     case M_FRAME:
         if (nw > c->frame_cap) { c->frame_cap = nw + 1024; c->frame = realloc(c->frame, c->frame_cap * 4); }
         memcpy(c->frame, p, nw * 4);
@@ -611,12 +630,18 @@ int main(int argc, char **argv) {
 
     while (!quit) {
         uint64_t tnow = now_us();
+        int video_on = 0;
         for (int i = 0; i < MAX_CLIENTS; i++) {
             client *c = clients[i];
             if (!c) continue;
             /* apps send a frame at least every second while shown; 3 s of silence = hung */
             if (c->visible && !c->stale && c->last_msg && tnow - c->last_msg > WATCHDOG_US) {
                 c->stale = 1; LOG("%s: no frames for 3 s - hidden", c->app); apply_visibility(c);
+            }
+            /* a shown app with a video: its newest frame redraws the app's last frame (no message from the app) */
+            if (c->g.videos && shown(c) && c->frame_words) {
+                video_on = 1;
+                if (!c->dirty && gfx_video_pending(&c->g)) c->dirty = 1;
             }
             render_client(c);
         }
@@ -633,7 +658,9 @@ int main(int argc, char **argv) {
             pf[np].events = POLLIN | (clients[i]->outlen ? POLLOUT : 0);
             map[np++] = i;
         }
-        int wait_ms = 250;                               /* wake up in time for a capped app's waiting frame */
+        /* wake up in time for a capped app's waiting frame; a video's next frame: look every 5 ms.
+           ponytail: polling the frame file's header, an eventfd from the producer if it ever costs */
+        int wait_ms = video_on ? 5 : 250;
         for (int i = 0; i < MAX_CLIENTS; i++) if (clients[i]) {
             uint64_t us = cap_wait(clients[i], tnow);
             if (us && (int)(us / 1000) + 1 < wait_ms) wait_ms = (int)(us / 1000) + 1;

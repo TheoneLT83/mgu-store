@@ -44,7 +44,7 @@ var cp = require('child_process');
 
 /* deploy/component.json's version; bumped when a file under deploy/unit/
  * changes. */
-var VERSION = '0.5.9';
+var VERSION = '0.5.10';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -1472,7 +1472,9 @@ function privacyApplyAndBounce(state) {
     if (!fs.existsSync(tool)) return { ok: false, why: 'tool missing at ' + tool };
     var r = run(CFG.node, [tool, 'apply', '--json'], { allowFail: true, timeout: 120000 });
     var result = lastJsonLine(r.stdout);
-    if (r.status !== 0 || !result) return { ok: false, why: 'apply exited ' + r.status + (result ? '' : ' with no result') };
+    if (r.status !== 0 || !result) {
+        return { ok: false, why: 'apply exited ' + r.status + (result ? privacyMismatch(result) : ' with no result') };
+    }
     say('app-privacy: ' + (result.state || 'applied') + (result.changed ? ' (applied now)' : ''));
     /* MainApp-21 is never bounced: it loads the bundles at its next start,
      * as it takes app changes (app-privacy reports nextStart) */
@@ -1483,6 +1485,32 @@ function privacyApplyAndBounce(state) {
         }
     } else if ((result.changed || result.restartNeeded) && managerPid()) bounceManager();
     return { ok: true };
+}
+/* app-privacy's JSON result of a refusal: the MainApp bundles do not
+ * match its edits (a MainApp version it was not made for, or bundles
+ * carrying a newer app-privacy's edits). */
+function privacyMismatch(result) {
+    if (result.state !== 'mismatch' || !Array.isArray(result.files)) return '';
+    var problems = [];
+    result.files.forEach(function (f) {
+        (f.problems || []).forEach(function (p) { problems.push(path.basename(f.path || f.kind || '') + ': ' + p); });
+    });
+    var pkg = readJsonOrNull(path.join(mainappRoot(), 'package.json'));
+    return ': its edits do not fit this head unit\'s MainApp' + (pkg && pkg.version ? ' ' + pkg.version : '') +
+        ' (' + problems.join('; ') + ')';
+}
+/* Before anything changes: the app-privacy this install brings must fit
+ * this head unit's MainApp, else the install is refused and the car stays
+ * as it is. */
+function preflightPrivacy(artifacts) {
+    artifacts.filter(function (a) { return a.kind === 'tool' && a.id === 'app-privacy'; }).forEach(function (a) {
+        var tool = env('MGU_DEPLOY_PRIVACY', path.join(a.dir, 'files', 'patch_mainapp.js'));
+        if (!fs.existsSync(tool)) return;
+        var result = lastJsonLine(run(CFG.node, [tool, 'check', '--json'], { allowFail: true, timeout: 120000 }).stdout);
+        if (result && result.state === 'mismatch') {
+            throw refuse('app-privacy ' + a.version + privacyMismatch(result) + '; nothing was installed');
+        }
+    });
 }
 /* After app-privacy's revert put the stock bundles back. */
 function privacyReverted() {
@@ -3308,7 +3336,8 @@ function fallbackTouched() {
 }
 /* The fallback copy of the stock main.js (or of input) with the
  * app-privacy patch on it, in a temporary file; refused when either
- * refuses. */
+ * refuses or the copy does not parse: MainApp would crash on it at every
+ * start. */
 function buildPatchedCopy(input) {
     var tmp = path.join(DEPLOY_DIR, 'main.fallback-' + process.pid + '.js');
     mkdirp(DEPLOY_DIR);
@@ -3317,6 +3346,12 @@ function buildPatchedCopy(input) {
         if (fs.existsSync(privacyTool())) {
             var pr = privacyApplyQuiet(['--main', tmp]);
             if (!pr || pr.status !== 0) throw refuse('app-privacy refused the fallback copy; not binding it');
+        }
+        var syntax = run(CFG.node, ['--check', tmp], { allowFail: true, timeout: 60000 });
+        if (syntax.status !== 0) {
+            var why = (syntax.stderr || '').split('\n').filter(function (l) { return /^[A-Za-z]*Error: /.test(l); })[0];
+            throw refuse('the fallback copy of ' + (input || mainJs()) + ' does not parse' +
+                (why ? ' (' + why.trim() + ')' : '') + '; not binding it, MainApp keeps its own main.js');
         }
     } catch (e) { rmrf(tmp); throw e; }
     return tmp;
@@ -4115,6 +4150,16 @@ function cmdInstall(args) {
             }
         });
         if (!unitInfo().hmi) warn('which head unit this is is unknown (' + unitInfo().basis + '): mguHmi is not checked');
+        if (args.skipOlder) {
+            var tools = installedTools();
+            validated = validated.filter(function (a) {
+                var t = a.kind === 'tool' && tools.filter(function (t) { return t.id === a.id; })[0];
+                var older = t && semverCmp(a.version, t.version) < 0;
+                if (older) say(a.id + ' ' + a.version + ' skipped; ' + t.version + ' is installed');
+                return !older;
+            });
+        }
+        preflightPrivacy(validated);
         var decisions = {};
         validated.forEach(function (a) {
             if (a.kind === 'app') decisions[a.id] = appDecision(a, args.skipOlder);
@@ -4125,15 +4170,6 @@ function cmdInstall(args) {
                 say('the queued removal of ' + a.id + ' is dropped');
             }
         });
-        if (args.skipOlder) {
-            var tools = installedTools();
-            validated = validated.filter(function (a) {
-                var t = a.kind === 'tool' && tools.filter(function (t) { return t.id === a.id; })[0];
-                var older = t && semverCmp(a.version, t.version) < 0;
-                if (older) say(a.id + ' ' + a.version + ' skipped; ' + t.version + ' is installed');
-                return !older;
-            });
-        }
         var work = validated.filter(function (a) {
             return a.kind !== 'app' || ['current', 'older'].indexOf(decisions[a.id].action) < 0;
         }).map(function (a) { return a.kind !== 'app' ? a : id8 ? id8Package(a, stage) : prepareApp(a, stage); });

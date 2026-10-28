@@ -1,12 +1,15 @@
-# robertn_store 0.9.4
+# robertn_store 0.9.6
 
 The Store: every app and head-unit tool of every source, each with its
-state, the progress of the running install, the sources and the phone page.
+state, the progress of the running install, the sources, the phone page
+and the uplink's Wi-Fi.
 It is the screen of [mgu-updater](../../native/mgu-updater/README.md),
 which does all the work; the app shows the state the updater streams over
 its socket and sends it requests: check, install and reboot, and the
 privileged ones (uninstall, source-add, source-probe, source-remove, token-add, token-remove,
-login-start, login-cancel, web), which carry the secret the updater leaves in the app's data folder
+login-start, login-cancel, web, and uplink-prefer, wifi-enable, wifi-scan, wifi-connect,
+wifi-forget, which the updater relays to [mgu-uplink](../../native/mgu-uplink/README.md)),
+which carry the secret the updater leaves in the app's data folder
 (`data/updater-secret`, read again for every request). It is for iDrive 7
 and iDrive 8 (`mguHmi`).
 
@@ -47,7 +50,7 @@ USB, Settings) beside:
 - **Settings**: the sources (each opens its page: channel, account,
   components, error, Remove with a confirm step, and while a sign-in does
   not reach a private one the GitHub App's install page as a QR code and
-  its address), Add source, Accounts (each one's Remove with a confirm
+  its address), Add source, Wi-Fi (below), Accounts (each one's Remove with a confirm
   step; Sign in with GitHub while `state.signin` is true; Add token), Phone
   access, the head unit and versions, Check now, Restart head unit.
 
@@ -166,8 +169,10 @@ refuses it), then **Sign in with GitHub** and **Add token**. Pressing an
 account opens *Remove account?*: its name, the sources it reads, **Cancel**
 and **Remove** (`token-remove`).
 
-**Add token** opens the speller, titled *GitHub token*; the text confirmed
-with OK, trimmed, goes to the updater as `token-add`. The updater asks
+**Add token** opens the speller (on iDrive 8's drawn screens the keyboard
+page, below, showing only the token's last four characters), titled
+*GitHub token*; the text confirmed with OK, trimmed, goes to the updater
+as `token-add`. The updater asks
 GitHub whose token it is before storing it: the status line says
 `Checking token` meanwhile, then `Added <account>` once the account
 appears, or the updater's refusal. A token the updater already has adds no
@@ -183,7 +188,14 @@ closes itself once signed in.
 **Add source** opens the HMI's own full-screen speller (`src/speller.js`,
 the free-text speller use case `02076b22-…` that x_call uses; the
 manifest's usecasemanagement proxies let the app open it), titled *Add
-source*. The text confirmed with OK, trimmed, is:
+source*. On iDrive 8, while the renderer draws the Store, it opens the
+keyboard page instead: the title, the text and App Manager 2's on-screen
+keyboard (digits, letters with Shift, `. / - _ :`, `https://`,
+`github.com/`, `.com`, Delete, OK), a page of the drawn screens typed by
+touch; OK takes the text, BACK or a tab leaves it. The keyboard also has
+word keys with a symbols page (`#+=` / `abc`, every printable ASCII
+symbol) for text that needs them (`src/store.js` `_type`). The text
+confirmed with OK, trimmed, is:
 
 - `owner/repo`, or a repo's address on github.com (`github.com/owner/repo`,
   `https://github.com/owner/repo`, with or without `.git` or a trailing
@@ -216,10 +228,13 @@ shows on the page until the repo's next answer); once the accounts change
 it is asked about again and lists its choices, or, with none, is added
 without a channel. A failure on the page shows with **Try again**. BACK
 from the page ends the adding. The page opens only once the HMI has
-given the focus back from the speller (or 2 s after it closed), since the
-focus coming back below a page opened earlier closes it.
+given the focus back from the speller or the keyboard page (or 2 s after
+it closed), since the focus coming back below a page opened earlier
+closes it. Leaving the keyboard of an Add token pressed there, with OK,
+its back button or BACK, returns to the repo's page.
 
-Leaving the speller without OK, or OK with nothing typed, sends nothing. A
+Leaving the speller or the keyboard page without OK, or OK with nothing
+typed, sends nothing. A
 USB stick holding a catalog or a repo tree appears in the list by itself
 ([mgu-updater](../../native/mgu-updater/README.md)).
 
@@ -239,6 +254,34 @@ QR codes are written to `/dev/shm/robertn_store_qr_<uid>/` (0755, files
 replaced, when their page has nothing to show, and at start and shutdown.
 Neither the sign-in code, the phone page's address nor the secret goes into
 a log line.
+
+## Wi-Fi
+
+On the drawn screens, Settings has **Wi-Fi** while the uplink reports its
+Wi-Fi (`state.uplink.wifi`: mgu-uplink 0.7.0 or newer on `uplink = auto`,
+through an updater from 0.8.0; without them the row is not there), with
+its state: `Online · <network>`, `Connected · <network>` (joined; the
+uplink uses another device or waits for DHCP), `Connecting · <network>`,
+`Not connected`, `Not used`, `Unavailable` (no radio, or the car uses it),
+`Failed`, `Error`; the page shows the reason. Its page (from IterioDev App Manager 2.0.6's Wi-Fi page) lists,
+while Wi-Fi is on, the network joined first, then the latest scan's,
+strongest first, then saved ones out of range, each with `Online` /
+`Connected` / `Connecting`, `Saved`, `Secured` or `Open` and its signal
+(`Strong`, `Good`, `Weak`). A press on a saved or open network joins it
+(`wifi-connect`); on a secured one not saved yet it opens the password:
+on iDrive 8 the keyboard page with word keys and the symbols page, titled
+with the network, whose **Connect** takes 8 to 63 characters; on iDrive 7
+the HMI's speller. The password goes to the updater in that request and
+is kept nowhere, logged nowhere. A saved network has **Forget** (a confirm
+step, `wifi-forget`). The panel shows the state, address and signal, the
+uplink's error (a join that failed) or the refusal of the last request,
+and **Use Wi-Fi** / **Don't use Wi-Fi** (`wifi-enable`: whether the uplink uses Wi-Fi; Use Wi-Fi unblocks a soft-blocked radio and leaves it on), **Scan** (`wifi-scan`, also
+asked when the page opens) and **Preferred: <kind>**, which opens the
+preferred connection: Automatic, Wi-Fi, USB (adapters and LTE sticks),
+Phone (Android and iPhone tethering): the uplink's `preferred` values
+`wifi`, `usb`, `phone`; the one preferred marked, the one in use said so; a press makes it the one the uplink tries first
+(`uplink-prefer`), the others staying fallbacks. The widget screens have
+none of this.
 
 An app installs or updates in place when the running MainApp can do it:
 only that app stops and starts. Otherwise the installer restarts MainApp's
@@ -281,15 +324,15 @@ tools/test_screens.js      every drawn screen in iDrive 7's and 8's boxes: in th
 tools/test_store.js        src/store.js's flows against stand-in SDK, RHMI, updater, speller and renderer
 tools/shots.js             screenshots of the drawn screens through mgu-render --replay
 tools/make_icon.py         the 140x140 tile icon from tools/store_icon.svg (headless Chromium)
-robertn_store@0.9.7/       staged package tree (no javascript/: the build writes it)
+robertn_store@0.9.8/       staged package tree (no javascript/: the build writes it)
 ```
 
 ## Build
 
 ```sh
 cd apps/robertn_store
-node tools/build.js                                # robertn_store@0.9.7.src.tgz
-node tools/build.js --sdk <donor .tgz|.js>         # and robertn_store@0.9.7.tgz (MGU_SDK_DONOR)
+node tools/build.js                                # robertn_store@0.9.8.src.tgz
+node tools/build.js --sdk <donor .tgz|.js>         # and robertn_store@0.9.8.tgz (MGU_SDK_DONOR)
 node tools/test_view.js && node tools/test_rhmi.js && node tools/test_qr.js && node tools/test_speller.js &&
     node tools/test_screens.js && node tools/test_store.js && STORE_HMI=ID8 node tools/test_store.js
 (cd ../../native/mgu-render && make test) && node tools/shots.js <out dir>     # screenshots
@@ -309,7 +352,10 @@ naming the bundle and data folder, `node --check`, `javascript/build.json`.
 `lib/client.js` and `lib/mgu_render_client.js` are committed: run the build
 after `native/mgu-updater/js/client.js` or
 `native/mgu-render/js/mgu_render_client.js` changes and commit the copies.
-The Store requires mgu-render (`release.json`), so an install puts it on.
+The Store requires mgu-render and mgu-uplink (`release.json`), so an
+install puts them on. The uplink is the Store's requirement, not the
+updater's: mgu-uplink requires the updater, and the updater's planner
+refuses two components that require each other.
 
 ## Needs the head unit
 
@@ -320,4 +366,5 @@ The Store requires mgu-render (`release.json`), so an install puts it on.
 - iDrive 8: the widget layout (`LT_State_Wide_List`, `LT_Button_MediaEntry_1Row`
   cells, the QR picture label), the layer host states' proxies and focus
   events, `mapEntryState` switching, the manifest's proxies under MainApp-21,
-  the entry point's insertion there.
+  the entry point's insertion there, typing on the keyboard page in the car,
+  the Wi-Fi pages against the car's radio.

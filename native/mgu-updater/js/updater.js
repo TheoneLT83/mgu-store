@@ -615,7 +615,26 @@ function under(entry, id) {
     return Object.assign({}, entry, { id, listedId: entry.id, artifact: Object.assign({}, entry.artifact, { name: `${id}@${entry.version}.tgz` }) });
 }
 // Requests only the Store and the phone page may make (they hold the secret).
-const PRIVILEGED = ['uninstall', 'source-add', 'source-probe', 'source-remove', 'login-start', 'login-cancel', 'token-add', 'token-remove', 'web', 'logs'];
+const PRIVILEGED = ['uninstall', 'source-add', 'source-probe', 'source-remove', 'login-start', 'login-cancel', 'token-add', 'token-remove', 'web', 'logs',
+    'uplink-prefer', 'wifi-enable', 'wifi-scan', 'wifi-connect', 'wifi-forget'];
+
+/* The uplink's requests (native/mgu-uplink ctl.sock) the Store makes through
+ * the updater (README.md, "The uplink"): each one's ctl.sock request, built
+ * from the Store's fields only (never the secret), or why it is refused. */
+const SSID_OK = (s) => typeof s === 'string' && s.length > 0 && Buffer.byteLength(s) <= 32;
+const UPLINK_OPS = {
+    'uplink-prefer': (r) => (typeof r.kind === 'string' && /^[a-z]{0,16}$/.test(r.kind) ? { op: 'prefer', kind: r.kind }
+        : 'uplink-prefer needs a kind ("" for none)'),
+    'wifi-enable': (r) => (typeof r.on === 'boolean' ? { op: 'wifi-enable', on: r.on } : 'wifi-enable needs on: true or false'),
+    'wifi-scan': () => ({ op: 'wifi-scan' }),
+    'wifi-connect': (r) => (!SSID_OK(r.ssid) ? 'a network name is 1 to 32 bytes'
+        // a WPA passphrase: 8 to 63 printable ASCII characters; none for a saved or an open network
+        : r.psk !== undefined && r.psk !== '' && !(typeof r.psk === 'string' && /^[\x20-\x7e]{8,63}$/.test(r.psk))
+            ? 'a Wi-Fi password is 8 to 63 letters, digits and symbols'
+            : Object.assign({ op: 'wifi-connect', ssid: r.ssid }, r.psk ? { psk: r.psk } : {})),
+    'wifi-forget': (r) => (SSID_OK(r.ssid) ? { op: 'wifi-forget', ssid: r.ssid } : 'a network name is 1 to 32 bytes')
+};
+const UPLINK_WAIT_MS = 12000;           // the uplink answers within its own 10 s deadline
 
 /* The phone page (web.js, README.md "Phone page"), when this version has it. */
 let web = fs.existsSync(path.join(HERE, 'web.js')) ? require('./web') : null;
@@ -702,6 +721,10 @@ class Updater {
         this.rebooting = false;
         this.rebootError = null;
         this.secret = crypto.randomBytes(32).toString('hex');
+        // the uplink's status.json as read last (readUplink)
+        this.uplinkText = null;
+        this.uplink = null;
+        this.readUplink();
         this.storeSecretUid = null;
         this.webUrl = null;
         this.webEnabled = false;
@@ -1130,6 +1153,8 @@ class Updater {
             // one of them each, for clients that know a single provider (the Store 0.7)
             providers: Object.keys(this.providers).reduce((o, cap) => Object.assign(o, { [cap]: this.providers[cap][0] }), {}),
             online: readLease(this.conf).online,
+            // the uplink's device, preferred group and Wi-Fi (its status.json), null while it does not run
+            uplink: this.uplink,
             privacy: this.privacy,
             // one line for clients that know a single catalog (the Store 0.3)
             catalog: {
@@ -2733,6 +2758,81 @@ class Updater {
         return undefined;
     }
 
+    /* Reads the uplink's status.json (uplink_status): { device, state, error,
+     * preferred, wifi }, null without one. True when it changed. One that
+     * does not parse is read again next time. */
+    readUplink() {
+        let text = '';
+        try {
+            text = this.conf.uplink_status ? fs.readFileSync(this.conf.uplink_status, 'utf8') : '';
+        } catch (e) { /* the uplink does not run */ }
+        if (text === this.uplinkText) {
+            return false;
+        }
+        let st = null;
+        try {
+            st = text ? JSON.parse(text) : null;
+        } catch (e) {
+            return false;
+        }
+        this.uplinkText = text;
+        this.uplink = st && typeof st === 'object' ? { device: st.device || null, state: st.state || null, error: st.error || null,
+            preferred: st.preferred || '', wifi: st.wifi && typeof st.wifi === 'object' ? st.wifi : null } : null;
+        return true;
+    }
+
+    /* A request for the uplink, relayed to its ctl.sock (uplink_ctl, root
+     * only): the state once the uplink took it, else its refusal. A Wi-Fi
+     * password goes on to the uplink only: never into a log line or a reply. */
+    uplinkRequest(req, reply) {
+        const msg = UPLINK_OPS[req.op](req);
+        if (typeof msg === 'string') {
+            return msg;
+        }
+        console.log(`uplink: ${req.op}${msg.ssid ? ` ${JSON.stringify(msg.ssid)}` : ''}${msg.kind !== undefined ? ` ${JSON.stringify(msg.kind)}` : ''}`);
+        let finished = false;
+        let buf = '';
+        const sock = net.connect(this.conf.uplink_ctl || '/run/mgu-uplink/ctl.sock');
+        const done = (error) => {
+            if (finished) {
+                return;
+            }
+            finished = true;
+            clearTimeout(timer);
+            sock.destroy();
+            if (error) {
+                console.log(`uplink: ${req.op} refused: ${error}`);
+                reply({ type: 'error', op: req.op, error });
+                return;
+            }
+            if (this.readUplink()) {
+                this.changed();
+            }
+            reply(this.state());
+        };
+        const timer = setTimeout(() => done('the uplink gave no answer'), UPLINK_WAIT_MS);
+        sock.setEncoding('utf8');
+        sock.on('connect', () => sock.write(JSON.stringify(msg) + '\n'));
+        sock.on('data', (d) => {
+            buf += d;
+            const nl = buf.indexOf('\n');
+            if (nl < 0) {
+                if (buf.length > 4096) {
+                    done('the uplink gave no answer');
+                }
+                return;
+            }
+            let a = null;
+            try {
+                a = JSON.parse(buf.slice(0, nl));
+            } catch (e) { /* not an answer */ }
+            done(a && a.ok === true ? null : String((a && a.error) || 'the uplink gave no answer'));
+        });
+        sock.on('error', (e) => done(e.code === 'ENOENT' || e.code === 'ECONNREFUSED' ? 'needs mgu-uplink 0.7.0 or newer, running' : e.message));
+        sock.on('close', () => done('the uplink gave no answer'));
+        return undefined;
+    }
+
     /* One request; returns the reason it is refused, null when the state
      * answers it, or undefined when it answers later through reply(msg). */
     handle(req, reply) {
@@ -2754,6 +2854,11 @@ class Updater {
         case 'token-remove': return this.tokenRemove(req.id);
         case 'web': return this.setWeb(req.enable === true);
         case 'logs': return this.logs(req, reply);
+        case 'uplink-prefer':
+        case 'wifi-enable':
+        case 'wifi-scan':
+        case 'wifi-connect':
+        case 'wifi-forget': return this.uplinkRequest(req, reply);
         default: return `unknown op ${req.op}`;
         }
     }
@@ -2995,6 +3100,12 @@ class Updater {
                     this.handover();
                 }
             }, 15000);
+            // the uplink's status.json (its Wi-Fi scans and links), for the Store
+            setInterval(() => {
+                if (this.readUplink()) {
+                    this.changed();
+                }
+            }, (Number(this.conf.uplink_poll_s) || 2) * 1000);
             // the uplink coming up is a good moment to look
             setInterval(() => {
                 const online = readLease(this.conf).online;

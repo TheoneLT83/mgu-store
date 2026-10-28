@@ -185,7 +185,8 @@ folder holding a `component.json` (`native/<id>`, or `deploy` for the deploy
 tool itself):
 
 - `build`, when present, is a command run in that folder first
-  (mgu-uplink: `make target`, which needs Go);
+  (mgu-uplink: `make target`, which needs Go, and Docker for its
+  wpa_supplicant);
 - `files[{path, from, mode}]` are read from `from`; a missing one fails,
   naming the build command;
 - the artifact's `component.json` is `{id, kind, version, title,

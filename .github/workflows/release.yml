@@ -41,7 +41,8 @@ jobs:
         with:
           node-version: 22.12.0
 
-      # mgu-uplink's build (the one tool with a native build step)
+      # mgu-uplink's Go build. Its wpa_supplicant (native/mgu-uplink/wpa) and
+      # mgu-render build in the runner's Docker, in Ubuntu 18.04 images.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: 1.27.2

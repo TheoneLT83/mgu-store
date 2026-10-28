@@ -14,6 +14,7 @@ of their dialect and through mgu-render.
 | `iterio/screen-drag-timer-home.bin.gz` | same | drag-timer project, screen home, 30 frames: CLAIM |
 | `iterio/screen-appmanager2-{store,app,settings}.bin.gz` | IterioDev App Manager 2.0.2 `renderer/` (`screenapp.js`, `store-widgets.js`, kit `renderd.js`) | its `screens.json` screens store (grid with two generated icons via `setImage`: IMAGE ×2), app, settings, view id7: CLAIM, ATLAS, FRAME |
 | `iterio/screen-appmanager203-store-fps30.bin.gz` | IterioDev App Manager 2.0.3 `renderer/` | the store screen as above with `maxFps: 30`: FPS (12) |
+| `iterio/video.bin.gz`, `refused-path.bin.gz`, `refused-dotdot.bin.gz` | IterioDev hmi-ui-builder kit `renderd.js` (renderer protocol 4) | `node test_video.js --streams DIR`: video, video-badpath, video-dotdot; VIDEO (13) of `/dev/shm/mgu-video-test` (its `frame.bin`, the same bytes as `test/gen_sessions.js`'s `mgu-video-replay-a`), a VIDEO op fitted into a wider box; the other two name `/etc/passwd` and `/dev/shm/mgu-video-../../etc/passwd` |
 
 The builder's and the App Manager's streams use the upstream kit's Ubuntu font atlases (in place of their
 `kit/fonts/*.json`, with no `icon.json`); none carries data baked from the HMI's fonts or icons.

@@ -298,12 +298,17 @@ func (l *relayLink) teardown() {
 	if l.dev == nil {
 		return
 	}
+	failed := false
 	select {
 	case <-l.done: // the device left, or failed
+		failed = true
 	default:
-		if h, ok := l.fr.(haltFramer); ok {
-			h.halt()
-		}
+	}
+	// An iPhone goes back to the media daemon also when its link failed
+	// (nothing received, Trust declined): its halt is a sysfs write, which
+	// does nothing once the phone is gone.
+	if h, ok := l.fr.(haltFramer); ok && (!failed || l.kind == kindIPhone) {
+		h.halt()
 	}
 	for i := len(l.claimed) - 1; i >= 0; i-- {
 		l.dev.releaseInterface(l.claimed[i])

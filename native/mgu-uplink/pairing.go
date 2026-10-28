@@ -44,15 +44,15 @@ import (
 	"time"
 )
 
+// pairRetry: without a notification from the phone, Pair is asked again
+// after this long.
+var pairRetry = 60 * time.Second
+
 const (
 	lockdownType      = "com.apple.mobile.lockdown"
 	notifyProxy       = "com.apple.mobile.insecure_notification_proxy"
 	notifyRequestPair = "com.apple.mobile.lockdown.request_pair"
 	notifyHostBUID    = "com.apple.mobile.lockdown.request_host_buid"
-
-	// pairRetry: without a notification from the phone, Pair is asked again
-	// after this long.
-	pairRetry = 60 * time.Second
 
 	trustTapNote    = "Tap Trust on the iPhone and enter its passcode"
 	trustUnlockNote = "Unlock the iPhone"
@@ -88,7 +88,8 @@ func loadHostIdentity(dir string) (*hostIdentity, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, err
 	}
-	if err := writeJSON(hostIdentityFile(dir), nid, 0600); err != nil {
+	syncDir(filepath.Dir(dir))
+	if err := writeJSONDurable(hostIdentityFile(dir), nid, 0600); err != nil {
 		return nil, err
 	}
 	return nid, nil
@@ -214,6 +215,32 @@ func newUUID() string {
 	return strings.ToUpper(fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16]))
 }
 
+// errTrustDenied: the phone's owner answered "Don't Trust". The phone is
+// not asked again until it is plugged in again.
+var errTrustDenied = errors.New("Trust was declined on the iPhone")
+
+// iphoneTrustRetrying runs iphoneTrust on m until it succeeds, retrying
+// every retry on the same usbmux session. It ends on errTrustDenied, on
+// ctx, and when the usbmux session itself ends (the phone only sets usbmux
+// up again after it re-enumerates).
+func iphoneTrustRetrying(ctx context.Context, m *usbMux, dir string, note func(string), retry time.Duration) error {
+	for {
+		err := iphoneTrust(ctx, m, dir, note)
+		if err == nil || errors.Is(err, errTrustDenied) || ctx.Err() != nil {
+			return err
+		}
+		select {
+		case <-m.done:
+			return fmt.Errorf("usbmux ended: %v", err)
+		default:
+		}
+		logf("iPhone: %v; trying again in %s", err, retry)
+		if sleepCtx(ctx, retry) != nil {
+			return ctx.Err()
+		}
+	}
+}
+
 // iphoneTrust makes the phone trust the unit for this connection: a
 // lockdown session as the paired host, pairing first when the phone does
 // not know the unit. note tells the phone's owner what to do ("" when
@@ -227,7 +254,7 @@ func iphoneTrust(ctx context.Context, m *usbMux, dir string, note func(string)) 
 	if err == nil {
 		return nil
 	}
-	if !isLockdownError(err, "InvalidHostID") && !strings.Contains(err.Error(), "TLS") {
+	if !isLockdownError(err, "InvalidHostID") {
 		return err
 	}
 	logf("iPhone: not paired with this unit (%v); pairing", err)
@@ -276,7 +303,7 @@ func iphonePair(ctx context.Context, m *usbMux, id *hostIdentity, note func(stri
 		return err
 	}
 	l.setValue(lockdownType, "UntrustedHostBUID", id.SystemBUID)
-	_, err = l.pair(id, devCert)
+	err = l.pair(id, devCert)
 	if err == nil {
 		l.Close()
 		return nil
@@ -286,7 +313,9 @@ func iphonePair(ctx context.Context, m *usbMux, id *hostIdentity, note func(stri
 	l.Close()
 	for {
 		switch {
-		case isLockdownError(err, "PairingDialogResponsePending"), isLockdownError(err, "UserDeniedPairing"):
+		case isLockdownError(err, "UserDeniedPairing"):
+			return errTrustDenied
+		case isLockdownError(err, "PairingDialogResponsePending"):
 			note(trustTapNote)
 		case isLockdownError(err, "PasswordProtected"):
 			note(trustUnlockNote)
@@ -317,7 +346,7 @@ func iphonePair(ctx context.Context, m *usbMux, id *hostIdentity, note func(stri
 		if err2 != nil {
 			return err2
 		}
-		_, err = l.pair(id, devCert)
+		err = l.pair(id, devCert)
 		l.Close()
 		if err == nil {
 			return nil

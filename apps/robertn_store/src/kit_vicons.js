@@ -64,6 +64,10 @@ const ICONS = {
         cv.polyline(ell(r * 0.5), w * 0.7, f);
         for (const v of [-0.5, 0.5]) { const h = Math.sqrt(1 - v * v) * (r - w / 2); cv.line(cx - h, cy + v * r, cx + h, cy + v * r, w * 0.7, f); }
         ICONS.usb(cv, cx - s * 0.3, cy - s * 0.3, s * 0.6, c); },
+    // Wi-Fi: three arcs over a dot (IterioDev App Manager 2.0.6)
+    wifi(cv, x, y, s, c) { const cx = x + s / 2, cy = y + s * 0.8, w = s * 0.09;
+        for (const r of [0.26, 0.46, 0.66]) cv.arc(cx, cy, s * r - w, s * r, -45, 45, c);
+        cv.circle(cx, cy, s * 0.08, c); },
     phone(cv, x, y, s, c) { const w = s * 0.08;
         cv.strokeRoundRect(x + s * 0.3, y + s * 0.1, s * 0.4, s * 0.8, s * 0.08, w, c); cv.line(x + s * 0.44, y + s * 0.78, x + s * 0.56, y + s * 0.78, w * 0.8, c); },
     display(cv, x, y, s, c) { const w = s * 0.08;

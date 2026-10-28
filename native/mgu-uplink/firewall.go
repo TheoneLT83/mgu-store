@@ -1,13 +1,15 @@
 package main
 
-// Firewall, two parts (nftables 0.9.6 syntax, the unit's nft):
+// Firewall, two parts (nftables 0.9.6 syntax, the unit's nft), for each
+// interface the service guards (session.go guarded: the uplink interface,
+// and the Wi-Fi interface while the Wi-Fi provider has it):
 //
 //  1. table inet mgu_uplink, this tool's own: only the allowed uids may send out
-//     of the uplink interface; nothing may connect in from it; nothing is
+//     of the interface; nothing may connect in from it; nothing is
 //     forwarded through it. A drop in any base chain is final, so this holds
 //     whatever the unit's own tables say.
-//  2. One rule at the top of the unit's ip filter output chain accepting the
-//     uplink interface. That chain otherwise sends uids it does not know to
+//  2. One rule per interface at the top of the unit's ip filter output chain
+//     accepting it. That chain otherwise sends uids it does not know to
 //     logblocked, and an accept is needed in every base chain on the hook; the
 //     rule is safe because part 1 already limits the interface to the allowed
 //     uids. Skipped where the unit's table is absent.
@@ -16,6 +18,7 @@ import (
 	"bytes"
 	"fmt"
 	"os/exec"
+	"sort"
 	"strings"
 )
 
@@ -24,29 +27,38 @@ const (
 	nftComment = "mgu-uplink"
 )
 
-func nftRuleset(ifname string, uids []int) string {
+func nftRuleset(ifnames []string, uids []int) string {
 	var b strings.Builder
-	q := fmt.Sprintf("%q", ifname)
 	// add+delete makes the replacement one atomic transaction whether or not
 	// the table exists.
 	fmt.Fprintf(&b, "add table inet %s\ndelete table inet %s\n", nftTable, nftTable)
 	fmt.Fprintf(&b, "table inet %s {\n", nftTable)
 	b.WriteString("\tchain output {\n\t\ttype filter hook output priority 0; policy accept;\n")
-	for _, uid := range uids {
-		fmt.Fprintf(&b, "\t\toifname %s meta nfproto ipv4 meta skuid %d accept\n", q, uid)
+	for _, ifname := range ifnames {
+		q := fmt.Sprintf("%q", ifname)
+		for _, uid := range uids {
+			fmt.Fprintf(&b, "\t\toifname %s meta nfproto ipv4 meta skuid %d accept\n", q, uid)
+		}
+		// A flow can only be established through an accepted first packet; this
+		// passes the closing segments of sockets their app has already closed.
+		fmt.Fprintf(&b, "\t\toifname %s meta nfproto ipv4 ct state established,related accept\n", q)
+		// udhcpc's unicast renewals (root).
+		fmt.Fprintf(&b, "\t\toifname %s udp sport 68 udp dport 67 accept\n", q)
+		fmt.Fprintf(&b, "\t\toifname %s counter drop\n", q)
 	}
-	// A flow can only be established through an accepted first packet; this
-	// passes the closing segments of sockets their app has already closed.
-	fmt.Fprintf(&b, "\t\toifname %s meta nfproto ipv4 ct state established,related accept\n", q)
-	// udhcpc's unicast renewals (root).
-	fmt.Fprintf(&b, "\t\toifname %s udp sport 68 udp dport 67 accept\n", q)
-	fmt.Fprintf(&b, "\t\toifname %s counter drop\n\t}\n", q)
-	b.WriteString("\tchain input {\n\t\ttype filter hook input priority 0; policy accept;\n")
-	fmt.Fprintf(&b, "\t\tiifname %s meta nfproto ipv4 ct state established,related accept\n", q)
-	fmt.Fprintf(&b, "\t\tiifname %s udp sport 67 udp dport 68 accept\n", q)
-	fmt.Fprintf(&b, "\t\tiifname %s counter drop\n\t}\n", q)
-	b.WriteString("\tchain forward {\n\t\ttype filter hook forward priority 0; policy accept;\n")
-	fmt.Fprintf(&b, "\t\tiifname %s drop\n\t\toifname %s drop\n\t}\n}\n", q, q)
+	b.WriteString("\t}\n\tchain input {\n\t\ttype filter hook input priority 0; policy accept;\n")
+	for _, ifname := range ifnames {
+		q := fmt.Sprintf("%q", ifname)
+		fmt.Fprintf(&b, "\t\tiifname %s meta nfproto ipv4 ct state established,related accept\n", q)
+		fmt.Fprintf(&b, "\t\tiifname %s udp sport 67 udp dport 68 accept\n", q)
+		fmt.Fprintf(&b, "\t\tiifname %s counter drop\n", q)
+	}
+	b.WriteString("\t}\n\tchain forward {\n\t\ttype filter hook forward priority 0; policy accept;\n")
+	for _, ifname := range ifnames {
+		q := fmt.Sprintf("%q", ifname)
+		fmt.Fprintf(&b, "\t\tiifname %s drop\n\t\toifname %s drop\n", q, q)
+	}
+	b.WriteString("\t}\n}\n")
 	return b.String()
 }
 
@@ -65,12 +77,12 @@ func (c config) nft(stdin string, args ...string) (string, error) {
 	return out.String(), nil
 }
 
-// applyFirewall installs both parts for the given uids.
-func applyFirewall(c config, ifname string, uids []int) error {
-	if _, err := c.nft(nftRuleset(ifname, uids), "-f", "-"); err != nil {
+// applyFirewall installs both parts for the given interfaces and uids.
+func applyFirewall(c config, ifnames []string, uids []int) error {
+	if _, err := c.nft(nftRuleset(ifnames, uids), "-f", "-"); err != nil {
 		return err
 	}
-	return ensureUnitAccept(c, ifname)
+	return ensureUnitAccept(c, ifnames)
 }
 
 func firewallPresent(c config) bool {
@@ -86,29 +98,67 @@ func unitChainPresent(c config) bool {
 // unitAcceptHandles returns the handles of this tool's rules in the unit's
 // ip filter output chain.
 func unitAcceptHandles(c config) []string {
+	var hs []string
+	for h := range unitAccepts(c) {
+		hs = append(hs, h)
+	}
+	sort.Strings(hs)
+	return hs
+}
+
+// unitAccepts maps the handles of this tool's rules in the unit's ip
+// filter output chain to the interface each accepts.
+func unitAccepts(c config) map[string]string {
 	out, err := c.nft("", "-a", "list", "chain", "ip", "filter", "output")
 	if err != nil {
 		return nil
 	}
-	var hs []string
-	for _, line := range strings.Split(out, "\n") {
-		if !strings.Contains(line, `comment "`+nftComment+`"`) {
-			continue
-		}
-		if i := strings.LastIndex(line, "# handle "); i >= 0 {
-			hs = append(hs, strings.TrimSpace(line[i+len("# handle "):]))
-		}
-	}
-	return hs
+	return parseUnitAccepts(out)
 }
 
-func ensureUnitAccept(c config, ifname string) error {
-	if !unitChainPresent(c) || len(unitAcceptHandles(c)) > 0 {
+func parseUnitAccepts(listing string) map[string]string {
+	rules := map[string]string{}
+	for _, line := range strings.Split(listing, "\n") {
+		i := strings.LastIndex(line, "# handle ")
+		if !strings.Contains(line, `comment "`+nftComment+`"`) || i < 0 {
+			continue
+		}
+		ifname := ""
+		if _, rest, ok := strings.Cut(line, `oifname "`); ok {
+			ifname, _, _ = strings.Cut(rest, `"`)
+		}
+		rules[strings.TrimSpace(line[i+len("# handle "):])] = ifname
+	}
+	return rules
+}
+
+// ensureUnitAccept makes this tool's rules in the unit's chain accept
+// exactly ifnames.
+func ensureUnitAccept(c config, ifnames []string) error {
+	if !unitChainPresent(c) {
 		return nil
 	}
-	_, err := c.nft("", "insert", "rule", "ip", "filter", "output",
-		"oifname", fmt.Sprintf("%q", ifname), "accept", "comment", fmt.Sprintf("%q", nftComment))
-	return err
+	have := unitAccepts(c)
+	var got []string
+	for _, n := range have {
+		got = append(got, n)
+	}
+	want := append([]string(nil), ifnames...)
+	sort.Strings(got)
+	sort.Strings(want)
+	if strings.Join(got, " ") == strings.Join(want, " ") {
+		return nil
+	}
+	for h := range have {
+		c.nft("", "delete", "rule", "ip", "filter", "output", "handle", h)
+	}
+	for _, n := range ifnames {
+		if _, err := c.nft("", "insert", "rule", "ip", "filter", "output",
+			"oifname", fmt.Sprintf("%q", n), "accept", "comment", fmt.Sprintf("%q", nftComment)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func deleteFirewall(c config) {

@@ -101,6 +101,44 @@ func writeJSON(path string, v interface{}, mode os.FileMode) error {
 	return os.Rename(tmp, path)
 }
 
+// writeJSONDurable is writeJSON for state that has to survive the power
+// being cut at any moment: the new file is synced before the rename and its
+// folder after it.
+func writeJSONDurable(path string, v interface{}, mode os.FileMode) error {
+	tmp := path + ".tmp"
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(marshalJSON(v))
+	if err == nil {
+		err = f.Chmod(mode)
+	}
+	if err == nil {
+		err = f.Sync()
+	}
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Rename(tmp, path)
+	}
+	if err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return syncDir(filepath.Dir(path))
+}
+
+func syncDir(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Sync()
+}
+
 func readLease(path string) *Lease {
 	b, err := os.ReadFile(path)
 	if err != nil {

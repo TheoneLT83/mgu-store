@@ -1,5 +1,8 @@
 # mgu-render changelog
 
+## 0.4.0
+
+- Video, from IterioDev mgu-renderd 1.2.0 protocol 4, for third-party apps in the iterio and native dialects: a player writes decoded frames (I420, up to 2048×2048, BT.601 or BT.709, limited or full range) to `/dev/shm/mgu-video-<name>` in up to four slots; the app names the file (VIDEO 13, DROP_VIDEO 14) and draws op 19 where the picture goes, fitted into the box with its aspect kept and a corner radius, under and over its other ops. Each new frame draws the app's last frame again without a message from the app; a shown app still sends at least one message a second, as IterioDev's kit does. Only `/dev/shm/mgu-video-*` regular files of the app's uid, root or `nobody` (IterioDev's mgu-ytplay) are opened (no links); others get an ERROR. A video counts w×h×3 bytes towards limits of its own, 12 MiB an app and 32 MiB all apps; a frame size past them is logged and the frame shown before stays. A frame the file is too short for draws the frame shown before, and the app is not redrawn for it until seq changes. READY's version is 4, X_READY's caps have 16 (video), and `js/mgu_render_client.js` has `video()` and `videoOp()`. Video streams from IterioDev's kit, which its YouTube app (IterioDev/car-apps) draws with, replay unchanged (`make test`).
 ## 0.3.3
 
 - `gate_legacy = 0` by default: another renderer's apps (the idrive7-apps kit's mgu-renderd next to this one) are no longer hidden by the foreground gate - on a G20 they were hidden altogether.

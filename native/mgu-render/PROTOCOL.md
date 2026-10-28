@@ -12,7 +12,7 @@ when nothing listens there, to the community one.
 | Dialect | Who sends it | Reference |
 |---|---|---|
 | **upstream** | idrive7-apps `kit/runtime/renderd.js` (car_vitals, gforce, doom, ...) | idrive7-apps `kit/renderd/src/proto.h`, protocol 1 |
-| **iterio** | IterioDev's kit `renderd.js` (oap-cardash, oap-draggy, oap-dtcscan, ...) | IterioDev mgu-renderd 1.1.2 `src/proto.h`, protocol 3 |
+| **iterio** | IterioDev's kit `renderd.js` (oap-cardash, oap-draggy, oap-dtcscan, oap-youtube, ...) | IterioDev mgu-renderd 1.2.0 `src/proto.h`, protocol 4 |
 | **native** | `js/mgu_render_client.js` | this file, `mgu-render/1` |
 
 `src/proto.h` has every number below.
@@ -50,13 +50,13 @@ Daemon to client:
 
 | Type | Name | Payload |
 |---|---|---|
-| 101 | READY | u32 version (3), screen w, screen h, touch routing on |
+| 101 | READY | u32 version (4), screen w, screen h, touch routing on |
 | 102 | TICK | u32 frame number, ms since start: the compositor took the last frame, send the next |
 | 103 | ERROR | utf8 text |
 | 104 | STATS | u32 frames shown in the last second, avg render µs, max render µs |
 
 READY carries four words to every client. Upstream's kit reads words 1 and 2;
-IterioDev's reads the version (3: pictures supported) and the touch word.
+IterioDev's reads the version (3: pictures supported, 4: video) and the touch word.
 
 ## Where the dialects differ
 
@@ -66,9 +66,12 @@ IterioDev's reads the version (3: pictures supported) and the touch word.
 | 10 | GRAB: u32 on: the iDrive controller to this app while it is shown | IMAGE: u32 id, w, h (1..1024), w×h premultiplied RGBA, rows top-down; the same id replaces |
 | 11 | (none) | DROP_IMAGE: u32 id |
 | 12 | (none) | FPS: u32 at most that many frames a second (0 = no cap, at most 1000): a faster frame waits, TICK comes at that rate |
+| 13 | (none) | VIDEO: u32 id, utf8 frame file path (NUL padded): that video's frames ("Video", below); the same id replaces |
+| 14 | (none) | DROP_VIDEO: u32 id |
 | 105 | CCU: a FrontCCU `RotaryEncoderStateFront` event the HMI did not get (u8 sequence, u16 BE knob, u8 press, u8 tilt, ...) | TOUCH: u32 phase (1 down, 2 move, 3 up), f32 x, y logical px |
 | 106 | (none) | CLOSED: the HMI was touched outside the claims; the app is hidden (SHOW 0) |
 | op 18 | IMAGE `id ver x y w h`: the image scaled into the rect, nearest pixel | IMAGE `x y w h r id`: the picture over the rect, corner radius r, filtered |
+| op 19 | (none) | VIDEO `x y w h r id`: the video's newest frame fitted into the rect (aspect kept, centred), corner radius r; nothing before its first frame, nothing inside a LAYER |
 
 ### Telling them apart
 
@@ -85,6 +88,8 @@ treats 9, 10, 11, the events and op 18 that way:
 - **11** is IterioDev's.
 - Anything else in 9-11 fits neither and ends the connection.
 - **12** is IterioDev's (renderd 1.1.2) and decides nothing: upstream sends none.
+- **13** and **14** are IterioDev's (renderd 1.2.0) and decide nothing either; a connection
+  already upstream ignores them, as upstream's daemon does.
 
 Until then nothing tells them apart, and nothing needs to: messages 1-8 are the
 same, the daemon sends 105 and 106 only to an app that claimed or grabbed, and
@@ -107,7 +112,7 @@ A client asks for it in HELLO: the app id, a NUL, then NUL-separated
 An older renderer takes the app id up to the NUL and answers with READY
 alone, so the client knows to fall back. mgu-render
 answers with X_READY first, then READY. Native clients use IterioDev's numbers
-for 9, 10, 11, 12, 105, 106 and op 18, and the extensions below, whose types start
+for 9-14, 105, 106 and ops 18 and 19, and the extensions below, whose types start
 with "MR" (0x4d52…) so they never meet a number another dialect uses. A
 dialect added later takes its own HELLO field and its own type prefix.
 
@@ -125,13 +130,61 @@ Daemon to client:
 
 | Type | Name | Payload |
 |---|---|---|
-| 0x4d520101 | X_READY | u32 version (1), modes (bit 0 layer, bit 1 embed: offered now), caps (1 touch routing, 2 controller gate loaded in the HMI and its event socket ours or free, 4 front gate, 8 pixmaps), i32 embed box x, y, w, h (0 when no embed), i32 app area x, y, w, h, u32 largest pixmap side, refresh mHz |
+| 0x4d520101 | X_READY | u32 version (1), modes (bit 0 layer, bit 1 embed: offered now), caps (1 touch routing, 2 controller gate loaded in the HMI and its event socket ours or free, 4 front gate, 8 pixmaps, 16 video), i32 embed box x, y, w, h (0 when no embed), i32 app area x, y, w, h, u32 largest pixmap side, refresh mHz |
 | 0x4d520102 | X_STATE | u32 mode, on screen, in front (the HMI shows the app's screen); sent whenever one changes |
 | 0x4d520103 | X_CCU | as upstream's CCU |
 
 Pixmaps share the id space of IMAGE pictures. Pictures, upstream images and
 pixmaps count towards 64 per app and 96 MiB for all apps; pictures also
 towards 32 MiB per app. An upload past them gets an ERROR and draws nothing.
+Videos have limits of their own (below).
+
+## Video
+
+IterioDev's protocol 4, the same in the iterio and native dialects. Another
+program (a player) writes decoded frames to a file in `/dev/shm`; the app
+names the file (VIDEO) and draws op 19 where the picture goes. The renderer
+reads the file's newest frame each time it draws the app, and draws the app's
+last frame again by itself when a newer one is there (it looks every 5 ms
+while a shown app has a video), so the app sends frames for its own changes.
+New video frames are not the app talking: a shown app still sends at least
+one message a second (its frame again will do), or after 3 s of silence it is
+taken for hung and hidden until it talks again, as IterioDev's kit does.
+
+- **Path**: `/dev/shm/mgu-video-<name>`, the name of letters, digits, `-`, `_`
+  and `.`, not starting with `.`, up to 64 characters; a regular file, opened
+  without following a link (the renderer runs as root), owned by the app's
+  uid, by root or by `nobody` (a player run as a system service: IterioDev's
+  mgu-ytplay gives its file to `nobody` and writes as `nobody`). Anything else
+  gets an ERROR and the app stays connected; the op then draws nothing. At
+  most 4 videos per app.
+- **File**: a 64-byte header, then `nslot` frames of w×h×3/2 bytes, I420 (the
+  Y plane, then U, then V, rows without padding):
+
+  | Word | Field |
+  |---|---|
+  | 0 | magic `0x4656474d` ("MGVF") |
+  | 1 | version, 1 |
+  | 2, 3 | w, h: even, 16..2048 |
+  | 4 | seq: frames written so far |
+  | 5 | slot: the newest frame's slot |
+  | 6 | nslot: 1..4 |
+  | 7 | matrix: 0 BT.601, 1 BT.709 |
+  | 8 | range: 0 limited (16-235), 1 full |
+  | 9-15 | zero |
+
+  The writer fills slot (slot + 1) % nslot, then sets slot, then seq + 1; the
+  renderer reads the header, then that slot. With 3 slots the writer is two
+  frames away from the one being read. A header that does not fit these
+  bounds, or a file shorter than its header says, draws the frame read before
+  (or nothing), and the app is not drawn again for it until seq changes.
+- **Limits**: a video counts w×h×3 bytes (its newest frame in memory and on
+  the GPU), from its first frame and at each new size: at most 12 MiB per app
+  (one 2048×2048 video, or two 1080p) and 32 MiB for all apps, apart from the
+  pictures' limits. A frame size past them is not shown: the frame shown before
+  stays (or nothing), and the renderer logs it, until there is room.
+- A new size (PLACE with another w or h) drops the videos with the other
+  resources; the client sends VIDEO again.
 
 ## Placement
 
@@ -198,3 +251,4 @@ Words after the op: f32 coordinates in logical px, u32 colours 0xRRGGBBAA.
 | 16 | ALPHA | a: opacity for what follows |
 | 17 | XF | s ox oy: transform for what follows; s ≤ 0 back to the placement's |
 | 18 | IMAGE | per dialect, above |
+| 19 | VIDEO | x y w h r id (iterio, native): the video's newest frame, above |

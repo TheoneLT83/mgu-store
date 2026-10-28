@@ -11,7 +11,8 @@
  * renders exactly as fast as the screen shows. Apps (any uid but root) show only while the HMI has
  * their screen in front (the foreground gate, gate.c). Touch on apps' claimed areas is routed to
  * them (touch.c); the iDrive controller can be held back from the HMI for an app (GRAB, when the
- * HMI's controller gate is loaded).
+ * HMI's controller gate is loaded). A video's frames come from a file another program writes (VIDEO): each new
+ * frame draws the app's last frame again.
  *
  * Apps connect to its own socket (socket_path). The community renderers' socket (shared_path) is a link to it
  * while no other renderer is installed (share.c): their apps then draw here, unchanged. display-bridge's socket
@@ -19,10 +20,11 @@
  *
  *   mgu-render [-c FILE] [-s key=value]... [-v]
  *   mgu-render [-c FILE] --share | --unshare   link the community and display-bridge sockets now, or remove the links (the socket unit)
- *   mgu-render --replay FILE --out FILE.pam [--raw FILE.rgba]   render a recorded client stream offscreen
+ *   mgu-render --replay FILE --out FILE.pam [--raw FILE.rgba] [--uid N]   render a recorded client stream offscreen, as
+ *                                                                          an app of uid N (default: the caller's)
  *
  * From mgu-renderd src/main.c (idrive7-apps kit/renderd, MIT, Copyright (c) 2026 cauliflowermossgrape;
- * touch routing and pictures by IterioDev) and display-bridge (embed placement,
+ * touch routing, pictures and video by IterioDev) and display-bridge (embed placement,
  * foreground gate).
  */
 #define _GNU_SOURCE
@@ -777,7 +779,7 @@ static void hello(client *c, const uint8_t *p, uint32_t len) {
         c->dialect = DIALECT_NATIVE;
         int emb = embed_available(), area[4];
         app_area(area);
-        uint32_t caps = CAP_PIXMAP | (touch_on ? CAP_TOUCH_ROUTE : 0) | (cfg.foreground_gate[0] ? CAP_FRONT_GATE : 0) |
+        uint32_t caps = CAP_PIXMAP | CAP_VIDEO | (touch_on ? CAP_TOUCH_ROUTE : 0) | (cfg.foreground_gate[0] ? CAP_FRONT_GATE : 0) |
                         (ctl_gate_loaded() && ccu_free() ? CAP_CONTROLLER : 0);
         uint32_t x[15] = { MGU_NATIVE_VERSION, (1u << (MODE_LAYER - 1)) | (emb ? 1u << (MODE_EMBED - 1) : 0), caps };
         for (int k = 0; k < 4; k++) { x[3 + k] = emb ? (uint32_t)cfg.embed_area[k] : 0; x[7 + k] = (uint32_t)area[k]; }
@@ -834,6 +836,20 @@ static int picture(client *c, const uint8_t *p, uint32_t len) {
     return 0;
 }
 
+static int video(client *c, const uint8_t *p, uint32_t len) {
+    if (len < 8) return -1;
+    uint32_t id; memcpy(&id, p, 4);
+    char path[128];
+    size_t n = strnlen((const char *)p + 4, len - 4);
+    if (n >= sizeof path) n = sizeof path - 1;
+    memcpy(path, p + 4, n); path[n] = 0;
+    make_current_any(c);
+    /* a bad path is the app's error, not a reason to drop it */
+    if (gfx_video_def(&c->g, id, path, c->uid) < 0) { log_warn("%s: %s", c->app, gfx_error()); send_error(c, gfx_error()); }
+    else log_debug("%s: video %u from %s", c->app, id, path);
+    return 0;
+}
+
 static int grab(client *c, const uint32_t *w, size_t nw) {
     if (nw < 1) return -1;
     c->grab_t = w[0] ? now_us() : 0;
@@ -875,6 +891,15 @@ static int handle(client *c, uint32_t type, const uint8_t *p, uint32_t len) {
         if (nw < 1) return -1;
         c->min_us = w[0] ? 1000000ull / (w[0] > 1000 ? 1000 : w[0]) : 0;
         log_debug("%s: at most %u frames a second", c->app, w[0]);
+        return 0;
+    case MI_VIDEO:
+        if (c->dialect == DIALECT_UPSTREAM) return 0;
+        return video(c, p, len);
+    case MI_DROP_VIDEO:
+        if (c->dialect == DIALECT_UPSTREAM) return 0;
+        if (nw < 1) return -1;
+        make_current_any(c);
+        gfx_video_drop(&c->g, w[0]);
         return 0;
     case M_PLACE: {
         if (nw < 7) return -1;
@@ -1200,14 +1225,14 @@ static void accept_client(void) {
     if (slot < 0) { log_warn("%d apps connected already: refused", MAX_CLIENTS); close(fd); return; }
     int sz = 4 << 20; setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &sz, sizeof sz);
     client *c = calloc(1, sizeof *c);
-    c->fd = fd; c->slot = slot; c->xf.s = 1; c->es = EGL_NO_SURFACE; c->mode = MODE_LAYER; c->uid = UINT32_MAX;
+    c->fd = fd; c->slot = slot; c->xf.s = 1; c->es = EGL_NO_SURFACE; c->mode = MODE_LAYER; c->uid = UINT32_MAX; c->g.name = c->app;
     struct ucred cr; socklen_t cl = sizeof cr;
     if (!getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &cr, &cl)) c->uid = cr.uid;
     clients[slot] = c;
 }
 
 /* ---------------- offscreen replay (testing on a PC) ---------------- */
-static int replay(const char *in, const char *out, const char *raw) {
+static int replay(const char *in, const char *out, const char *raw, uint32_t uid) {
     setenv("EGL_PLATFORM", "surfaceless", 0);
     if (egl_setup(EGL_DEFAULT_DISPLAY, 1) < 0) return 1;
     EGLint pa[] = { EGL_WIDTH, 16, EGL_HEIGHT, 16, EGL_NONE };
@@ -1219,6 +1244,7 @@ static int replay(const char *in, const char *out, const char *raw) {
     fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET);
     uint8_t *buf = malloc(n + 4); if (fread(buf, 1, n, f) != (size_t)n) return 1; fclose(f);
     client c; memset(&c, 0, sizeof c); c.fd = -1; c.xf.s = 1; c.mode = MODE_LAYER; strcpy(c.app, "replay");
+    c.uid = uid; c.g.name = c.app;
     GLuint tex = 0, fbo = 0;
     FILE *rf = raw ? fopen(raw, "wb") : NULL;
     uint8_t *rpx = NULL;
@@ -1358,11 +1384,12 @@ static volatile sig_atomic_t quit;
 static void on_sig(int s) { (void)s; quit = 1; }
 
 static void usage(const char *a0) {
-    fprintf(stderr, "usage: %s [-c FILE] [-s key=value]... [-v] [--share | --unshare] | --replay FILE --out FILE.pam [--raw FILE.rgba]\n", a0);
+    fprintf(stderr, "usage: %s [-c FILE] [-s key=value]... [-v] [--share | --unshare] | --replay FILE --out FILE.pam [--raw FILE.rgba] [--uid N]\n", a0);
 }
 
 int main(int argc, char **argv) {
     const char *rin = NULL, *rout = "out.pam", *rraw = NULL;
+    uint32_t ruid = (uint32_t)getuid();
     int share_only = 0;
     cfg_defaults(&cfg);
     for (int i = 1; i < argc; i++) {
@@ -1371,6 +1398,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--replay") && i + 1 < argc) rin = argv[++i];
         else if (!strcmp(argv[i], "--out") && i + 1 < argc) rout = argv[++i];
         else if (!strcmp(argv[i], "--raw") && i + 1 < argc) rraw = argv[++i];
+        else if (!strcmp(argv[i], "--uid") && i + 1 < argc) ruid = (uint32_t)strtoul(argv[++i], NULL, 10);
         else if (!strcmp(argv[i], "-v")) cfg.verbose = 1;
         else if (!strcmp(argv[i], "--share")) share_only = 1;
         else if (!strcmp(argv[i], "--unshare")) share_only = 2;
@@ -1378,7 +1406,7 @@ int main(int argc, char **argv) {
     }
     log_verbose = cfg.verbose;
     t_start = now_us();
-    if (rin) return replay(rin, rout, rraw);
+    if (rin) return replay(rin, rout, rraw, ruid);
     share_setup();
     if (share_only) {
         for (int i = 0; i < 2; i++) {
@@ -1421,12 +1449,18 @@ int main(int argc, char **argv) {
     uint64_t gate_retry = 0, embed_retry = 0, share_next = 0;
     while (!quit) {
         uint64_t tnow = now_us();
+        int video_on = 0;
         for (int i = 0; i < MAX_CLIENTS; i++) {
             client *c = clients[i];
             if (!c) continue;
             /* apps send a frame at least every second while shown; 3 s of silence = hung */
             if (shown(c) && !c->stale && c->last_msg && tnow - c->last_msg > WATCHDOG_US) {
                 c->stale = 1; log_warn("%s: no frames for 3 s - hidden", c->app); update_all();
+            }
+            /* a shown app with a video: its newest frame draws the app's last frame again (no message from the app) */
+            if (c->g.videos && shown(c) && c->frame_words) {
+                video_on = 1;
+                if (!c->dirty && gfx_video_pending(&c->g)) c->dirty = 1;
             }
             if (c->mode == MODE_LAYER) render_layer(c);
         }
@@ -1458,7 +1492,9 @@ int main(int argc, char **argv) {
             pf[np].events = POLLIN | (clients[i]->outlen ? POLLOUT : 0);
             map[np++] = i;
         }
-        int wait_ms = ctl_gate_on ? 100 : 250;               /* controller held: keep its file fresh */
+        /* controller held: keep its file fresh; a video's next frame: look every 5 ms.
+           ponytail: polling the frame file's header, an eventfd from the player if it ever costs */
+        int wait_ms = video_on ? 5 : ctl_gate_on ? 100 : 250;
         for (int i = 0; i < MAX_CLIENTS; i++) if (clients[i]) {   /* in time for a capped app's waiting frame */
             uint64_t us = cap_wait(clients[i], tnow);
             if (us && (int)(us / 1000) + 1 < wait_ms) wait_ms = (int)(us / 1000) + 1;

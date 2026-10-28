@@ -1,0 +1,58 @@
+wpa_supplicant 2.10 for the head unit's NXP moal driver (host_mlme=1): in SME mode, the
+driver's connect event is taken as the association result (../wifi.go). From IterioDev
+mgu-wifi 1.0.0. Under wpa_supplicant's BSD licence, like the code it changes.
+
+--- a/src/drivers/driver_nl80211_event.c	2026-10-27 21:37:33.329275600 +0200
++++ b/src/drivers/driver_nl80211_event.c	2026-10-27 21:39:57.303126400 +0200
+@@ -433,11 +433,47 @@
+ 
+ 	if (drv->capa.flags & WPA_DRIVER_FLAGS_SME) {
+ 		/*
+-		 * Avoid reporting two association events that would confuse
+-		 * the core code.
++		 * MGU (NXP moal, host_mlme=1): the driver reports the association
++		 * that our SME asked for as NL80211_CMD_CONNECT and never as
++		 * NL80211_CMD_ASSOCIATE, so upstream's "ignore it" left SME waiting
++		 * for an association event that never comes. Take it as the
++		 * association result. The BSSID is the one SME authenticated with
++		 * (the driver's NL80211_ATTR_MAC carried IE bytes on its own
++		 * connect path); the request IEs are dropped, SME already set the
++		 * RSN IE it sent.
+ 		 */
+-		wpa_printf(MSG_DEBUG, "nl80211: Ignore connect event (cmd=%d) "
+-			   "when using userspace SME", cmd);
++		const u8 *bssid = !is_zero_ether_addr(drv->auth_bssid) ?
++			drv->auth_bssid : drv->auth_attempt_bssid;
++
++		status_code = status ? nla_get_u16(status) : WLAN_STATUS_SUCCESS;
++		wpa_printf(MSG_INFO, "nl80211: MGU: connect event (cmd=%d) in SME mode: status=%u associated=%d bssid="
++			   MACSTR, cmd, status_code, drv->associated, MAC2STR(bssid));
++		if (addr)
++			wpa_hexdump(MSG_INFO, "nl80211: MGU: connect MAC", nla_data(addr), nla_len(addr));
++		if (req_ie)
++			wpa_hexdump(MSG_INFO, "nl80211: MGU: connect req IEs", nla_data(req_ie), nla_len(req_ie));
++		if (resp_ie)
++			wpa_hexdump(MSG_INFO, "nl80211: MGU: connect resp IEs", nla_data(resp_ie), nla_len(resp_ie));
++		if (cmd != NL80211_CMD_CONNECT || drv->associated || is_zero_ether_addr(bssid))
++			return;
++
++		os_memset(&event, 0, sizeof(event));
++		if (status_code != WLAN_STATUS_SUCCESS) {
++			event.assoc_reject.bssid = bssid;
++			event.assoc_reject.status_code = status_code;
++			wpa_supplicant_event(drv->ctx, EVENT_ASSOC_REJECT, &event);
++			return;
++		}
++		drv->associated = 1;
++		os_memcpy(drv->bssid, bssid, ETH_ALEN);
++		os_memcpy(drv->prev_bssid, bssid, ETH_ALEN);
++		if (resp_ie && ieee802_11_parse_elems(nla_data(resp_ie), nla_len(resp_ie), NULL, 0) != ParseFailed) {
++			event.assoc_info.resp_ies = nla_data(resp_ie);
++			event.assoc_info.resp_ies_len = nla_len(resp_ie);
++		}
++		event.assoc_info.freq = drv->assoc_freq;
++		drv->first_bss->freq = drv->assoc_freq;
++		wpa_supplicant_event(drv->ctx, EVENT_ASSOC, &event);
+ 		return;
+ 	}
+ 

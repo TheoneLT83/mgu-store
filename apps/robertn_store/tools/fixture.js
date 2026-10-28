@@ -4,7 +4,7 @@
  * download, an update, a branch's new commit, a queued install, a failure,
  * a restart pending, a component for the other head unit, a second
  * renderer, a USB stick, a source that needs a sign-in, accounts, the phone
- * page), and the Store's drawn screens over it, for tools/test_screens.js
+ * page, the uplink's Wi-Fi), and the Store's drawn screens over it (the keyboard's and Wi-Fi's pages too), for tools/test_screens.js
  * and tools/shots.js.
  */
 
@@ -36,6 +36,13 @@ function state() {
         signinApp: { installUrl: 'https://github.com/apps/mgu-store/installations/new' },
         login: null,
         web: { enabled: false, urls: [], error: null },
+        uplink: { device: { kind: 'wifi', name: 'Mario iPhone' }, state: 'online', error: null, preferred: 'wifi',
+            wifi: { enabled: true, link: 'online', ssid: 'Mario iPhone', ip: '172.20.10.3', signal: -52, scanning: false, error: null,
+                networks: [{ ssid: 'Mario iPhone', signal: -52, secure: true, saved: true, current: true },
+                    { ssid: 'FRITZ!Box 7590 XY', signal: -58, secure: true, saved: false, current: false },
+                    { ssid: 'Cafe Free WiFi', signal: -70, secure: false, saved: false, current: false },
+                    { ssid: 'Telekom_FON', signal: -81, secure: false, saved: false, current: false }],
+                saved: ['Mario iPhone', 'Home'] } },
         busy: { id: 'doom', op: 'install', phase: 'download', progress: 874512, total: 2080457 },
         rebooting: false,
         rebootError: null,
@@ -103,11 +110,36 @@ function screens() {
         ['pick-private', { tab: 'settings', stack: main.concat([{ name: 'pick' }]), pick: { repo: 'someone/private-apps',
             probe: { status: 'auth-needed' } } }],
         ['pick-offline', { tab: 'settings', stack: main.concat([{ name: 'pick' }]), pick: { repo: 'someone/apps', probe: { status: 'offline' } } }],
+        // the drawn keyboard's pages: URL keys; a token; word keys and their symbols page
+        ['type', { tab: 'settings', stack: main.concat([{ name: 'type', title: 'Add source', text: 'robertnisipeanu/mgu-store' }]) }],
+        ['type-token', { tab: 'settings', stack: main.concat([{ name: 'accounts' }, { name: 'type', title: 'GitHub token', text: 'ghp_1a2b3c4d',
+            secret: true, shift: true }]) }],
+        ['type-text', { tab: 'settings', stack: main.concat([{ name: 'type', title: 'Password', text: 'Wi', layout: 'text', symbols: true,
+            go: 'Connect' }]) }],
+        ['type-symbols', { tab: 'settings', stack: main.concat([{ name: 'type', title: 'Password', text: 'Wi-\\"`', layout: 'text', symbols: true,
+            sym: true, go: 'Connect' }]) }],
+        // Wi-Fi (the uplink's): its networks, off, a join that failed; a password; Forget; the preferred connection
+        ['wifi', { tab: 'settings', stack: main.concat([{ name: 'wifi' }]) }],
+        ['wifi-off', { tab: 'settings', stack: main.concat([{ name: 'wifi' }]) },
+            wifiSt(st, { enabled: false, link: 'off', ssid: '', ip: '', signal: null, networks: [] })],
+        ['wifi-failed', { tab: 'settings', stack: main.concat([{ name: 'wifi' }]) },
+            wifiSt(st, { link: 'idle', ssid: '', ip: '', signal: null, error: 'could not join "FRITZ!Box 7590 XY" (wrong password, or out of range)',
+                networks: st.uplink.wifi.networks.map((n) => Object.assign({}, n, { current: false })) })],
+        ['wifi-password', { tab: 'settings', stack: main.concat([{ name: 'wifi' }, { name: 'type', title: 'FRITZ!Box 7590 XY', text: 'sec',
+            label: 'Password', layout: 'text', symbols: true, go: 'Connect', min: 8, max: 63, secret: 'password' }]) }],
+        ['confirm-wifi-forget', { tab: 'settings', stack: main.concat([{ name: 'wifi' }, { name: 'confirm', kind: 'wifi-forget', ssid: 'Home' }]),
+            focus: 0 }],
+        ['prefer', { tab: 'settings', stack: main.concat([{ name: 'wifi' }, { name: 'prefer' }]) }],
         ['offline', { tab: 'store', stack: main, connected: false, st: null, secret: false }],
         ['internet', { tab: 'settings', stack: main.concat([{ name: 'internet' }]) }],
         ['internet-offline', { tab: 'settings', stack: main.concat([{ name: 'internet' }]) }, { online: false }],
         ['store-no-internet', { tab: 'store', stack: main }, { online: false, busy: null }]
     ];
+}
+
+/* State overrides: the uplink's Wi-Fi with w over it. */
+function wifiSt(st, w) {
+    return { uplink: Object.assign({}, st.uplink, { wifi: Object.assign({}, st.uplink.wifi, w) }) };
 }
 
 function model(over, stOver) {

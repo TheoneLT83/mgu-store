@@ -20,6 +20,10 @@ func TestIPhethLegacy(t *testing.T) {
 	iphethUnpackLegacy([]byte{0, 0}, func(f []byte) { t.Fatal("emitted from a pad-only transfer") })
 }
 
+// iphethNCMHeader is the NTH16 and the fixed-size 96-byte NDP16 an iPhone
+// puts before its datagrams.
+const iphethNCMHeader = nth16Len + 96
+
 // iosNTB is a block as an iPhone sends it: NTH16, a 96-byte NDP16 right
 // after it, the datagrams after both.
 func iosNTB(datagrams ...[]byte) []byte {

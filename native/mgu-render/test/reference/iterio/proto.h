@@ -7,8 +7,25 @@
  */
 #ifndef MGU_PROTO_H
 #define MGU_PROTO_H
+#include <stdint.h>
 
-#define MGU_PROTO_VERSION 3   /* 2: touch (M_CLAIM / E_TOUCH, MGU7 workspace); 3: pictures (M_IMAGE, OP_IMAGE) */
+#define MGU_PROTO_VERSION 4   /* 2: touch (M_CLAIM / E_TOUCH, MGU7 workspace); 3: pictures (M_IMAGE, OP_IMAGE); 4: video (M_VIDEO, OP_VIDEO) */
+
+/*
+ * Video frames (protocol 4): another program (apps/ytplay mgu-ytplay) writes them to a file /dev/shm/mgu-video-<name>;
+ * the app names the file (M_VIDEO) and draws OP_VIDEO where the picture goes. The file: struct mgu_video_head, then
+ * nslot frames of w*h*3/2 bytes each, I420 (the Y plane, then U, then V, rows without padding). The writer fills
+ * slot (slot + 1) % nslot, then sets slot, then seq + 1; the renderer reads seq + slot, then that slot - with 3 slots
+ * the writer is two frames away from the one being read. A newer seq redraws the app's last frame by itself.
+ */
+#define MGU_VIDEO_MAGIC 0x4656474du   /* "MGVF" */
+struct mgu_video_head {
+    uint32_t magic, version;          /* MGU_VIDEO_MAGIC, 1 */
+    uint32_t w, h;                    /* even, 16..2048 */
+    uint32_t seq, slot, nslot;        /* frames written so far, the newest one's slot, slots (1..4) */
+    uint32_t matrix, full;            /* colours: 0 BT.601 / 1 BT.709; 0 limited (16-235) / 1 full range */
+    uint32_t pad[7];                  /* 64 bytes */
+};
 
 /* client -> daemon */
 enum {
@@ -25,6 +42,8 @@ enum {
     M_DROP_IMAGE = 11,/* u32 id */
     M_FPS = 12,       /* u32 max frames a second (0 = no cap): faster frames wait, E_TICK comes at that rate (renderd
                          1.1.2; an older renderer ignores it, like any unknown message) */
+    M_VIDEO = 13,     /* u32 id, utf8 file path (/dev/shm/mgu-video-*, NUL padded): that video's frames; same id replaces */
+    M_DROP_VIDEO = 14,/* u32 id */
 };
 
 /* daemon -> client */
@@ -58,6 +77,8 @@ enum {
     OP_XF = 17,       /* s ox oy  transform for what follows: device = v * s + (ox, oy); s <= 0: back to the placement's */
     OP_IMAGE = 18,    /* x y w h r id  picture stretched over the rect, corner radius r (layout of OP_RRECT: an older
                          renderer gets OP_RRECT + colour from the kit instead); unknown id: nothing drawn */
+    OP_VIDEO = 19,    /* x y w h r id  video id's newest frame fitted into the rect (aspect kept, centred), corner radius r
+                         (layout of OP_IMAGE); no frame yet: nothing drawn */
 };
 
 #endif

@@ -22,6 +22,11 @@
  * 'linear'), then pixels(id, rects, data) for the regions that changed, palette(id, rgb768) for INDEX8,
  * and draw it with an IMAGE op (x y w h r id) in each frame - imageOp() builds one.
  *
+ * Video (info.video; kept and sent again like pixmaps): video(id, '/dev/shm/mgu-video-<name>') names the frame file
+ * a player writes (PROTOCOL.md, "Video"), a VIDEO op in each frame (videoOp()) shows its newest frame there; each new
+ * frame draws the app's last frame again, but the app still sends at least one message a second while shown (an app
+ * silent for 3 s is hidden). video(id, null) forgets it.
+ *
  * Events: ready (screen, info), tick (n, ms), touch (phase, x, y), closed, state ({ mode, onScreen,
  * front }), ccu ({ seq, knob, press, tilt, raw }), stats, close. With `kit` (idrive7-apps / IterioDev
  * record.js), frame(recorder) uploads the fonts, ramps, layers and pictures a recording uses once per
@@ -38,17 +43,18 @@ const EventEmitter = require('events');
 // the socket unit it started with, listens only there (a renderer that is not mgu-render answers READY alone)
 const SOCKETS = process.env.MGU_RENDERD_SOCKET ? [process.env.MGU_RENDERD_SOCKET] :
     ['/run/mgu-render/render.sock', '/run/mgu-renderd/renderd.sock'];
-const M = { HELLO: 1, PLACE: 2, SHOW: 3, ATLAS: 4, RAMP: 5, LAYER: 6, FRAME: 7, DROP_LAYER: 8, CLAIM: 9, IMAGE: 10, DROP_IMAGE: 11, FPS: 12 };
+const M = { HELLO: 1, PLACE: 2, SHOW: 3, ATLAS: 4, RAMP: 5, LAYER: 6, FRAME: 7, DROP_LAYER: 8, CLAIM: 9, IMAGE: 10, DROP_IMAGE: 11, FPS: 12,
+    VIDEO: 13, DROP_VIDEO: 14 };
 const X = { MODE: 0x4d520001, GRAB: 0x4d520002, PIXMAP: 0x4d520003, PIXELS: 0x4d520004, PALETTE: 0x4d520005,
     READY: 0x4d520101, STATE: 0x4d520102, CCU: 0x4d520103 };
 const E = { READY: 101, TICK: 102, ERROR: 103, STATS: 104, TOUCH: 105, CLOSED: 106 };
 const MODES = { layer: 1, embed: 2 };
 const MODE_NAMES = [null, 'layer', 'embed'];
 const FORMATS = { rgba: 1, rgbx: 2, index8: 3 };
-const CAPS = { touch: 1, controller: 2, frontGate: 4, pixmap: 8 };
+const CAPS = { touch: 1, controller: 2, frontGate: 4, pixmap: 8, video: 16 };
 const PHASES = [null, 'down', 'move', 'up'];
 const IMG_MAX = 64, IMG_BYTES = 32 << 20;
-const OP_IMAGE = 18;
+const OP_IMAGE = 18, OP_VIDEO = 19;
 
 function msg(type, payload) {
     const len = payload ? payload.length : 0;
@@ -76,6 +82,12 @@ function imageOp(id, x, y, w, h, r) {
     u[0] = OP_IMAGE; u.set(new Uint32Array(f.buffer), 1); u[6] = id;
     return u;
 }
+/** The words of one VIDEO op: video `id`'s newest frame fitted into x, y, w, h (aspect kept, centred), corner radius r. */
+function videoOp(id, x, y, w, h, r) {
+    const u = imageOp(id, x, y, w, h, r);
+    u[0] = OP_VIDEO;
+    return u;
+}
 
 class RenderClient extends EventEmitter {
     constructor(appId, log, opts) {
@@ -101,6 +113,7 @@ class RenderClient extends EventEmitter {
         this.imageBytes = 0;
         this.useSeq = 0;
         this.pixmaps = new Map();     // id -> { w, h, format, filter, palette, last }
+        this.videos = new Map();      // id -> frame file
         this.waiting = false;
         this.retry = null;
         this.closed = false;
@@ -182,7 +195,7 @@ class RenderClient extends EventEmitter {
                 version: p.readUInt32LE(0), modes, embedBox: rect(p, 12), appArea: rect(p, 28),
                 pixmapSide: p.readUInt32LE(44), refreshMhz: p.readUInt32LE(48),
                 touch: !!(caps & CAPS.touch), controller: !!(caps & CAPS.controller),
-                frontGate: !!(caps & CAPS.frontGate), pixmap: !!(caps & CAPS.pixmap),
+                frontGate: !!(caps & CAPS.frontGate), pixmap: !!(caps & CAPS.pixmap), video: !!(caps & CAPS.video),
             };
         } else if (type === E.READY) {
             this.ready = true; this.errLogged = false;
@@ -194,6 +207,7 @@ class RenderClient extends EventEmitter {
                 this._write(u32msg(X.MODE, [MODES[this.wantMode]]));
                 if (this.placement) this._sendPlace();
                 this._sendPixmaps();
+                this._sendVideos();
                 if (this.claims.length) this._sendClaim();
                 if (this.visible) this._write(u32msg(M.SHOW, [1]));
                 if (this.grabbing) this._write(u32msg(X.GRAB, [1]));
@@ -239,7 +253,7 @@ class RenderClient extends EventEmitter {
         if (resize || scaleChanged) this._reset();
         if (!this.ready || !this.native) return;
         this._sendPlace();
-        if (resize) this._sendPixmaps();       // the renderer dropped them with the old size
+        if (resize) { this._sendPixmaps(); this._sendVideos(); }      // the renderer dropped them with the old size
     }
     _sendPlace() {
         const p = this.placement, b = Buffer.alloc(28);
@@ -321,6 +335,19 @@ class RenderClient extends EventEmitter {
         pm.palette = Buffer.from(rgb.buffer ? Buffer.from(rgb.buffer, rgb.byteOffset, 768) : rgb);
         if (this.ready && this.native) this._write(msg(X.PALETTE, Buffer.concat([words(new Uint32Array([id])), pm.palette])));
     }
+
+    /* ---- videos ---- */
+    /** Video id's frames come from `file` (/dev/shm/mgu-video-<name>); null forgets it. */
+    video(id, file) {
+        if (!file) {
+            if (this.videos.delete(id) && this.ready && this.native) this._write(u32msg(M.DROP_VIDEO, [id]));
+            return;
+        }
+        this.videos.set(id, file);
+        if (this.ready && this.native) this._sendVideo(id, file);
+    }
+    _sendVideos() { this.videos.forEach((file, id) => this._sendVideo(id, file)); }
+    _sendVideo(id, file) { this._write(msg(M.VIDEO, Buffer.concat([words(new Uint32Array([id])), Buffer.from(file)]))); }
 
     /* ---- kit resources (record.js) ---- */
     _ensureAtlas(id) {
@@ -407,4 +434,4 @@ class RenderClient extends EventEmitter {
     }
 }
 
-module.exports = { RenderClient, SOCKETS, imageOp, OP_IMAGE };
+module.exports = { RenderClient, SOCKETS, imageOp, OP_IMAGE, videoOp, OP_VIDEO };

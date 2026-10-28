@@ -166,19 +166,31 @@ class Drawn extends EventEmitter {
         return this.host.hostName(this.mode, depth);
     }
 
-    /* A page over the current one: the next depth's host state. */
+    /* A page over the current one: the next depth's host state. At DEPTHS
+     * it takes the top page's place and returns that page (restore). */
     push(page) {
         if (!this.mode) {
-            return;
+            return null;
         }
+        const top = this.top();
+        top.focus = this.focus;                 // where the HMI's focus comes back to
+        let replaced = null;
         if (this.stack.length >= DEPTHS) {
+            replaced = top;
             this.stack[DEPTHS - 1] = page;
         } else {
-            this.top().focus = this.focus;       // where the HMI's focus comes back to
             this.stack.push(page);
             this.host.openState(this.hostOf(this.stack.length));
         }
         this.focus = 0;
+        this.render();
+        return replaced;
+    }
+
+    /* Puts back the page push replaced at DEPTHS, with its focus. */
+    restore(page) {
+        this.stack[this.stack.length - 1] = page;
+        this._backTo();
         this.render();
     }
 

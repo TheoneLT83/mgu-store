@@ -1,27 +1,32 @@
 package main
 
-// The USB uplinks. scanUplink looks at what is plugged in every 2 s and
-// opens the first usable device of the kinds it covers, in this order:
+// The automatic uplink. scanUplink looks at what is plugged in, and whether
+// Wi-Fi is joined, every 2 s and opens the first usable device of the
+// kinds it covers, in this order:
 //
+//	wifi    the unit's own radio, joined to a saved network (wifi.go)
 //	usb     an adapter the kernel drives (netdev.go)
 //	usbecm  a CDC-ECM stick, a Huawei stick in CD-ROM mode switched first
 //	rndis   an Android phone in RNDIS tethering (most)
 //	ncm     an Android phone in NCM tethering (Pixel 6 and later)
 //	iphone  an iPhone's Personal Hotspot
 //
-// For the kernel-driven and CDC kinds it takes only devices no driver or
-// process holds; an iPhone, the lowest-priority kind, it takes from the
-// media daemon itself (iphone.go), so it reaches and takes an iPhone only
-// when no wired adapter, stick or Android phone is present. Once on a later
-// kind it ends that link when an earlier kind's device appears, so a stick
-// plugged in next to a phone takes over. An unplugged device ends its link
-// and the next scan finds whatever is there, so devices can be unplugged,
-// replugged and swapped while the service runs.
+// The preferred group's kinds (config Preferred, the prefer request:
+// preferGroups) go first and the others follow, each in that order. For
+// the kernel-driven and CDC kinds it takes only devices no driver or
+// process holds; an iPhone it takes from the media daemon itself
+// (iphone.go), so it reaches and takes an iPhone only when no device it
+// ranks higher is present. Once on a later kind it ends that link when an
+// earlier kind's device appears, so a stick plugged in next to a phone
+// takes over, and a change of the preferred group takes effect within 5 s. An unplugged device ends its link and the next scan
+// finds whatever is there, so devices can be unplugged, replugged and
+// swapped while the service runs.
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -38,7 +43,21 @@ const (
 	switchRepeat = 30 * time.Second
 )
 
-var autoKinds = []string{kindUSB, kindECM, kindRNDIS, kindNCM, kindIPhone}
+var autoKinds = []string{kindWiFi, kindUSB, kindECM, kindRNDIS, kindNCM, kindIPhone}
+
+// preferGroups are the choices of preferred and the kinds each puts first.
+var preferGroups = map[string][]string{
+	"wifi":  {kindWiFi},
+	"usb":   {kindUSB, kindECM},
+	"phone": {kindRNDIS, kindNCM, kindIPhone},
+}
+
+func checkPreferred(v string) error {
+	if _, ok := preferGroups[v]; v != "" && !ok {
+		return fmt.Errorf("preferred: %q is none of wifi, usb, phone", v)
+	}
+	return nil
+}
 
 func kindRank(kind string) int {
 	for i, k := range autoKinds {
@@ -50,22 +69,41 @@ func kindRank(kind string) int {
 }
 
 type scanUplink struct {
-	record  string // link.json, for a kernel adapter it renames
-	pairDir string // the iPhone pairing's host identity
+	record  string        // link.json, for a kernel adapter it renames
+	pairDir string        // the iPhone pairing's host identity
+	wifi    *wifiProvider // nil: no Wi-Fi
 
 	mu       sync.Mutex
+	prefer   string               // the group tried first (preferGroups)
 	failed   map[string]time.Time // device key -> last failed open
 	switched map[string]time.Time
 	logged   map[string]string // device key -> last message logged
 }
 
 func newScanUplink(c config) *scanUplink {
-	return &scanUplink{record: c.linkFile(), pairDir: c.pairDir(),
+	return &scanUplink{record: c.linkFile(), pairDir: c.pairDir(), prefer: c.Preferred,
 		failed: map[string]time.Time{}, switched: map[string]time.Time{},
 		logged: map[string]string{}}
 }
 
 func (u *scanUplink) String() string { return "auto" }
+
+func (u *scanUplink) setPreferred(group string) {
+	u.mu.Lock()
+	u.prefer = group
+	u.mu.Unlock()
+}
+
+// rank orders kinds: the preferred group's first, then the others, each in
+// autoKinds' order.
+func (u *scanUplink) rank(kind string) int {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if slices.Contains(preferGroups[u.prefer], kind) {
+		return kindRank(kind)
+	}
+	return len(autoKinds) + kindRank(kind)
+}
 
 // candidate is one device the uplink could open.
 type candidate struct {
@@ -79,17 +117,23 @@ type candidate struct {
 	busy     string // why the device is left alone
 }
 
-func (c candidate) rank() int { return kindRank(c.kind) }
-
-// candidates lists what is plugged in, best first.
+// candidates lists what is plugged in or joined, best first.
 func (u *scanUplink) candidates() []candidate {
 	var out []candidate
+	if u.wifi != nil {
+		if ssid, ok := u.wifi.associated(); ok {
+			out = append(out, candidate{kind: kindWiFi, key: "wifi:" + ssid, netdev: u.wifi.iface,
+				dev: statusDevice{Kind: kindWiFi, Name: ssid}})
+		}
+	}
 	for _, n := range usbNetdevs(sysClassNet) {
 		// The interface index is new for each attachment, the name may not be.
 		idx, _ := readSysctl(sysClassNet + "/" + n + "/ifindex")
 		out = append(out, candidate{kind: kindUSB, key: "netdev:" + n + "#" + idx, netdev: n, dev: netdevDevice(sysClassNet, n)})
 	}
-	for _, info := range scanUSBDevices() {
+	devs := scanUSBDevices()
+	iphoneForgetGone(devs)
+	for _, info := range devs {
 		apple := strings.HasPrefix(info.vidpid, "05ac:")
 		for _, kind := range []string{kindECM, kindRNDIS, kindNCM, kindIPhone} {
 			// An Apple device's own CDC functions (a Mac's, an iPhone's reverse
@@ -98,9 +142,8 @@ func (u *scanUplink) candidates() []candidate {
 			if apple && kind != kindIPhone {
 				continue
 			}
-			// The iPhone path reauthorizes the device, which changes its
-			// device number, so key its attempt on the stable bus position
-			// instead; otherwise a failed open would never back off.
+			// The iPhone's attempt is keyed on its bus position, so a
+			// failed open backs off however the device re-enumerates.
 			key := kind + ":" + info.key()
 			if kind == kindIPhone {
 				key = kind + ":" + info.sysName
@@ -118,8 +161,17 @@ func (u *scanUplink) candidates() []candidate {
 			}
 			c.fn = fn
 			// The uplink takes an iPhone from the media daemon itself
-			// (iphone.go), so a held iPhone is not left alone.
-			if kind != kindIPhone {
+			// (iphone.go), so a held iPhone is not left alone, unless its
+			// owner declined Trust; one whose last link failed waits for
+			// its backoff.
+			if kind == kindIPhone {
+				declined, wait := iphoneHeldBack(info)
+				if declined {
+					c.busy = iphoneDeclinedNote
+				} else if wait {
+					continue
+				}
+			} else {
 				var held []string
 				for _, n := range []int{fn.commIface, fn.dataIface} {
 					if d := info.ifaceDriver(n); d != "" {
@@ -134,7 +186,7 @@ func (u *scanUplink) candidates() []candidate {
 			break
 		}
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].rank() < out[j].rank() })
+	sort.SliceStable(out, func(i, j int) bool { return u.rank(out[i].kind) < u.rank(out[j].kind) })
 	return out
 }
 
@@ -184,10 +236,8 @@ func (u *scanUplink) Open(ctx context.Context) (Link, error) {
 				delete(u.failed, c.key)
 				delete(u.logged, c.key)
 				u.mu.Unlock()
-				if c.rank() > 0 {
-					l = u.watchPreferred(l, c)
-				}
-				return l, nil
+				// also on the best kind: the preferred group can change
+				return u.watchPreferred(l, c), nil
 			}
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
@@ -235,6 +285,8 @@ func (u *scanUplink) open(ctx context.Context, c candidate) (Link, error) {
 		}
 		l.dev = c.dev
 		return l, nil
+	case kindWiFi:
+		return u.wifi.openLink(c.dev.Name), nil
 	case kindIPhone:
 		return openIPhoneLink(ctx, c.info, c.fn, u.pairDir, func() error {
 			if p := u.preferred(c); p != nil {
@@ -268,7 +320,7 @@ func (u *scanUplink) modeSwitch(info usbDeviceInfo) {
 // from here; it is preferred once it returns as a network device.
 func (u *scanUplink) preferred(cur candidate) *candidate {
 	for _, c := range u.candidates() {
-		if c.rank() >= cur.rank() || c.busy != "" {
+		if u.rank(c.kind) >= u.rank(cur.kind) || c.busy != "" {
 			continue
 		}
 		if c.toSwitch {
@@ -293,8 +345,7 @@ func (e *preferredError) Error() string {
 	return fmt.Sprintf("%s %s is preferred", e.c.kind, e.c.dev.Name)
 }
 
-// preferLink is a link on a later kind, ended when a device of an
-// earlier kind appears.
+// preferLink is a link ended when a device of an earlier kind appears.
 type preferLink struct {
 	Link
 	done chan struct{}

@@ -467,10 +467,6 @@ const huaweiSwitchCBW = "5553424312345678000000000000001106200000010100010000000
 // one of the ECM ids after huaweiSwitchCBW.
 var switchDevices = map[string]bool{"12d1:1f01": true}
 
-// ecmStickDevices are the Huawei HiLink ids the usbecm uplink takes when
-// usb_device does not name the stick.
-var ecmStickDevices = map[string]bool{"12d1:14db": true, "12d1:14dc": true}
-
 // modeSwitch sends the switch command to the device's mass-storage
 // interface: claim it, write the command block on its bulk OUT endpoint,
 // read the status block back, release. The device then re-enumerates.

@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.9.8
+
+From robertnisipeanu/mgu-store's 0.9.5 and 0.9.6.
+
+Wi-Fi and the preferred connection, on the drawn screens (from IterioDev
+App Manager 2.0.6 Wi-Fi pages): Settings has Wi-Fi with its state while
+the uplink reports its Wi-Fi (mgu-uplink 0.7.0, through mgu-updater
+0.8.0; without them the Store is as before). Its page lists the networks (the
+one joined, the latest scan's, saved ones out of range) with their
+state and signal; a press joins a saved or open network, or asks a
+secured one's password: on iDrive 8 the keyboard page with word keys
+and symbols, Connect from 8 to 63 characters; on iDrive 7 the HMI's
+speller. Forget (with a confirm step), Use Wi-Fi / Don't use Wi-Fi, Scan (also when the
+page opens), and the preferred connection: Automatic, Wi-Fi, USB or
+Phone, tried first with the others as fallbacks. Wi-Fi the car itself
+uses shows as Unavailable, with the reason. A password goes to the updater
+only and is not logged. The keyboard page's text box can have a caption,
+and its Enter key a minimum length.
+
+Typing works on iDrive 8: while the renderer draws the Store, Add source
+and Add token open a page with the text and an on-screen keyboard (from
+IterioDev App Manager 2.0.6 keyboard): digits, letters with Shift,
+`. / - _ :`, `https://`, `github.com/` and `.com`, Delete and OK, typed
+by touch, one character per tap. A token shows only its last four
+characters. OK takes the text as the speller's OK does; BACK or a tab
+leaves the page and sends nothing. The keyboard also has word keys with
+a symbols page (`#+=` / `abc`) holding every printable ASCII symbol, for
+text that needs them. iDrive 7 and the widget screens keep the HMI's
+speller.
+
 ## 0.9.7
 
 From robertnisipeanu/mgu-store's 0.9.4: touch scrolling of the Store's grids and lists follows the finger and stops wherever it is let go, a row part way out of view included; a part-shown tile or row takes a tap on its shown part. The controller scrolls the focused item fully into view.

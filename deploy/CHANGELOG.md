@@ -1,5 +1,10 @@
 # Deploy tool changelog
 
+## 0.5.10
+
+- An install that brings app-privacy first checks that its patch fits this head unit's MainApp. When its edits do not fit (a MainApp version it does not support), the whole install is refused before anything changes on the car, naming the MainApp version and the edits that do not fit. An app-privacy apply that refuses names them too.
+- The fallback copy of MainApp's `main.js` is bound only when it parses (`node --check`): an install or `fallback on` with a copy that does not parse is refused, naming the syntax error, and MainApp keeps its own `main.js`. The boot unit, refreshed by the next app install or `fallback on`, leaves such a copy unbound at boot.
+
 ## 0.5.9
 
 - Source packages (`mgu-app.json`) are built with the certification service in their SOME/IP manifest, so one whose manifest lacks it installs on iDrive 7 and iDrive 8.

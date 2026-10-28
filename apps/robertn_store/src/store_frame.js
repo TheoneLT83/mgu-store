@@ -26,7 +26,7 @@ const { record } = require('./am_gpu.js');
 const { Recorder } = require('./kit_record.js');
 const { view, icons } = require('./store_ui.js');
 const { tabCells } = require('./am_widgets.js');
-const { gridView, listView, navItems, rightBoxes } = require('./am_store_widgets.js');
+const { gridView, listView, navItems, rightBoxes, keyBoxes, shown } = require('./am_store_widgets.js');
 const { compact } = require('./store_compact.js');
 const fonts = require('./kit_fonts.js');
 
@@ -126,6 +126,12 @@ function itemsOf(st, page) {
                         items.push({ x: chip.x, y: y + (v.rh - gap - ch) / 2, w: chip.w - 12, h: ch, r: ch / 2, label: chip.arg, act: it.chipAct, reveal, box: b });
                     }
                 }
+            });
+        } else if (c.gpu === 'keyboard') {
+            // each key presses what it types now (Shift: capitals, the symbols page: its symbols)
+            keyBoxes(b, o).forEach((k) => {
+                const key = shown(k, o);
+                items.push({ x: k.x, y: k.y, w: k.w, h: k.h, r: 18, label: key, act: { do: 'key', key } });
             });
         }
     });

@@ -56,7 +56,7 @@ The sources come from both renderers this replaces:
 | From | Parts |
 |---|---|
 | idrive7-apps `kit/renderd` (MIT, `LICENSE.mgu-renderd`) | `src/gfx.c` (GLES2 executor), the main loop, layer surfaces, `--replay`, the wire protocol |
-| IterioDev's mgu-renderd | touch routing (`src/touch.c`), pictures (IMAGE, DROP_IMAGE, limits), the frame cap (FPS), the client's picture cache (`js/mgu_render_client.js`) |
+| IterioDev's mgu-renderd | touch routing (`src/touch.c`), pictures (IMAGE, DROP_IMAGE, limits), the frame cap (FPS), video (VIDEO, DROP_VIDEO, op 19: frames from a player's file, YUV to RGB in the shader), the client's picture cache (`js/mgu_render_client.js`) |
 | display-bridge (mgu-apps) | the embed placement (`src/embed.c`, `js/hmi_template.js`, `systemd/mgu-render-hmi.sh`), the foreground gate (`src/gate.c`, `js/foreground_gate.js`), yield surfaces |
 
 The ivi protocol files (`protocol/*.xml`) are COVESA wayland-ivi-extension's,
@@ -248,6 +248,17 @@ Pixel apps: `gpu.pixmap(1, 320, 200, 'index8', 'nearest')`, `gpu.palette(1,
 rgb768)`, `gpu.pixels(1, rects, indices)` for what changed, and
 `imageOp(1, x, y, w, h)` in each frame (`test/pixel_client.js`).
 
+Video (`info.video`): a player process writes decoded frames (I420) to
+`/dev/shm/mgu-video-<name>` (PROTOCOL.md, "Video"); the app names the file
+with `gpu.video(1, '/dev/shm/mgu-video-<name>')` and puts
+`videoOp(1, x, y, w, h, r)` in its frames. Each new video frame draws the
+app's last frame again; the app still sends at least one message a second
+while it is shown (its frame again will do), since an app silent for 3 s is
+taken for hung and hidden. The frame file must be the app's (its uid), or a
+system player's (root, or `nobody`). IterioDev's YouTube app
+(IterioDev/car-apps, with its player mgu-ytplay) uses it through IterioDev's
+kit.
+
 The controller: read FrontCCU over SOME/IP in the app (display-bridge's
 `display_input.js` does) and keep the page's hidden focusable components for
 the HMI's own focus and BACK; `gpu.grab(true)` holds the dial back from the
@@ -259,7 +270,7 @@ HMI only where the HMI's controller gate is loaded (`info.controller`).
 |---|---|
 | `make target` | `build/target/mgu-render`: x86-64, glibc 2.27, loader `/lib/ld-linux-x86-64.so.2`, built in Ubuntu 18.04 (Docker, linux/amd64) |
 | `make check-target` | the binary's architecture, loader, libraries (`libwayland-client`, `libwayland-egl`, `libEGL`, `libGLESv2`, libc, libm) and glibc versions |
-| `make test` | in Ubuntu 24.04 with Mesa's llvmpipe (Docker): `test/test_dialect.c`, `test/test_touch.c` (routing; our table and ports only, in while claimed, out when not and when the renderer dies), `test/test_share.c` (the community socket beside a fake second renderer: handover, restart, take-back, the drop race, foreign sockets kept), and `test/replay.sh`: every session in `test/sessions/` (recorded from upstream's and IterioDev's kits, `test/sessions/README.md`) and the synthetic ones (`test/gen_sessions.js`) replayed through the original daemons (`test/reference/`) and mgu-render, every frame compared byte for byte; native pixmaps compared with the same pictures sent as IterioDev pictures |
+| `make test` | in Ubuntu 24.04 with Mesa's llvmpipe (Docker): `test/test_dialect.c`, `test/test_touch.c` (routing; our table and ports only, in while claimed, out when not and when the renderer dies), `test/test_share.c` (the community socket beside a fake second renderer: handover, restart, take-back, the drop race, foreign sockets kept), `test/test_video.c` (a frame file shorter than its header, the frame file's owner, the video limits), and `test/replay.sh`: every session in `test/sessions/` (recorded from upstream's and IterioDev's kits, `test/sessions/README.md`) and the synthetic ones (`test/gen_sessions.js`) replayed through the original daemons (`test/reference/`) and mgu-render, every frame compared byte for byte; native pixmaps compared with the same pictures sent as IterioDev pictures; video sessions read frame files in `/dev/shm` and their last frame is checked for the videos' colours; a frame file of another uid is refused |
 | `deploy/hu install mgu-render` | build and install on a unit or the emulator (deploy/README.md) |
 
 `mgu-render --replay FILE --out F.pam [--raw F.rgba]` draws a recorded
@@ -286,4 +297,5 @@ the car can show:
 
 **iDrive 8**
 - [ ] Layer with IterioDev's apps unchanged (their packages are iDrive 8 only), screen 2880×960, the touch divert as with IterioDev's renderer.
+- [ ] Video: IterioDev's YouTube app with its player mgu-ytplay: the player's frame rate on the screen (STATS) at 720p, and the render cost of a frame (STATS avg µs).
 - [ ] Embed: whether Hmi8 has an embedded compositor, an embedded-surface widget and loadable widget files (until then embed is not offered: no HmiMain3D).

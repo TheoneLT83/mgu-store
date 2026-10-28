@@ -6,7 +6,10 @@
  * speller (a fake use case factory answering with scripted text, Back or
  * OK) and mgu-render's client (records placement, frames, claims). The
  * widget screens first, then the drawn ones: the renderer coming and
- * going, proxies and focus, presses, touch, BACK, the confirm steps. The
+ * going, proxies and focus, presses, touch, BACK, the confirm steps, the
+ * drawn keyboard (iDrive 8's text entry, typed by touch), Wi-Fi (its page,
+ * a network's password, exactly as typed and never logged, Forget, the
+ * preferred connection). The
  * app runs from a copy of src/ in a temp folder, whose data/ holds
  * updater-secret and web-url. STORE_HMI=ID8 runs it on iDrive 8's
  * description. Node 8+.
@@ -133,7 +136,12 @@ class Client extends EventEmitter {
         return socketUp;
     }
 }
-const quiet = { info() {}, warn() {}, error() {} };
+const logged = [];                      // what the app logged
+const quiet = { info(l) { logged.push(String(l)); }, warn(l) { logged.push(String(l)); }, error(l) { logged.push(String(l)); } };
+const WIFI_PSK = 'p@ss "w0rd\\ {x}';
+// the uplink's Wi-Fi: a secured network not saved, an open one
+const WIFI = { enabled: true, link: 'idle', saved: [], scanning: false, error: null,
+    networks: [{ ssid: 'Home', signal: -50, secure: true, saved: false, current: false }, { ssid: 'Cafe', signal: -70, secure: false }] };
 /* mgu-render's client: what the Store asks of it. */
 const gpuLog = [];
 let fpsAsked = null;
@@ -858,6 +866,13 @@ function runDrawn() {
     const host = (d) => `ST_OnlineApps_Store${mode === 'embed' ? 'Embed' : 'Layer'}${d}`;
     const proxy = (d, i) => `store${mode === 'embed' ? 'Embed' : 'Layer'}${d}P${i}`;
     const lastText = (name) => (last(new RegExp(`^${name}\\.0\\.Text=`)) || '').split('=').slice(1).join('=');
+    // a tap (down and up) on the drawn key showing label
+    const tap = (label) => {
+        const k = drawn.items.find((i) => i.label === label);
+        eq(!!k, true, `a key ${label}: ${drawn.items.map((i) => i.label)}`);
+        gpu.emit('touch', 'down', k.x + 5, k.y + 5);
+        gpu.emit('touch', 'up', k.x + 5, k.y + 5);
+    };
     const st = Object.assign({}, ST, { unit: { hmi: HMI }, busy: null, signin: true, rebooting: false,
         components: [comp({ id: 'doom', title: 'DOOM', version: '1.0.1', installed: '1.0.0', status: 'update' }),
             comp({ id: 'gauges', title: 'Gauges', version: '1.2.0', installed: null, status: 'available' }),
@@ -965,11 +980,27 @@ function runDrawn() {
         eq([app._drawnModel().look, fs.readFileSync(path.join(DATA, 'look'), 'utf8')], ['id8', 'id8\n'], 'the picked look, kept');
         app._act({ do: 'look', look: 'id7' });
         eq(fs.readFileSync(path.join(DATA, 'look'), 'utf8'), 'id7\n', 'and changed');
-        // the speller hides the renderer's picture while it is up (Add source)
+        // Add source: iDrive 7 types in the HMI's speller, which hides the renderer's picture while it is up; iDrive 8
+        // on the drawn keyboard's page, the next host state
         drawn.setTab('settings');
-        spellerAnswers.push('o/r');
+        if (HMI === 'ID7') {
+            spellerAnswers.push('o/r');
+            app._act({ do: 'add-source' });
+            eq(gpu.visible, false, 'hidden under the speller');
+            return tick();
+        }
+        reset();
         app._act({ do: 'add-source' });
-        eq(gpu.visible, false, 'hidden under the speller');
+        eq([states, drawn.top().title, gpu.visible], [[`open ${host(2)}`], 'Add source', true], 'the keyboard\'s page over Settings');
+        app._states[host(1)].emit('focus', { focus: false });
+        app._states[host(2)].emit('visible', { visible: true });
+        app._states[host(2)].emit('focus', { focus: true });
+        ['o', '/', 'r'].forEach(tap);
+        eq(drawn.top().text, 'o/r', 'a tap types one character');
+        tap('OK');
+        eq(states.slice(-1), [`close ${host(2)}`], 'OK closes the page');
+        app._states[host(2)].emit('focus', { focus: false });
+        app._states[host(2)].emit('visible', { visible: false });
         return tick();
     }).then(() => {
         eq(gpu.visible, true, 'back after it');
@@ -978,7 +1009,7 @@ function runDrawn() {
         app._client.emit('probe', { type: 'probe', repo: 'o/r', status: 'auth-needed' });
         return tick();
     }).then(() => {
-        eq(drawn.stack.length, 1, 'no page opened under the closing speller');
+        eq(drawn.stack.length, 1, 'no page opened under the closing speller or keyboard page');
         reset();
         app._states[host(1)].emit('visible', { visible: true });
         app._states[host(1)].emit('focus', { focus: true });
@@ -993,11 +1024,24 @@ function runDrawn() {
     }).then(() => {
         eq(drawn.items.map((i) => i.label).filter((l) => /Sign in|Add token|Try again/.test(l)), ['Sign in with GitHub', 'Add token'],
             'a repo no account reaches: Sign in, Add token');
-        // Add token from the picker: the speller, then the focus back on the picker, which stays
+        // Add token from the picker: the speller (iDrive 8: the keyboard's page, the token hidden but its last 4
+        // characters), then the focus back on the picker, which stays
         reset();
-        spellerAnswers.push('ghp_drawn');
+        if (HMI === 'ID7') {
+            spellerAnswers.push('ghp_drawn');
+            app._act(drawn.items.find((i) => i.label === 'Add token').act);
+            app._states[host(2)].emit('focus', { focus: false });
+            return tick();
+        }
         app._act(drawn.items.find((i) => i.label === 'Add token').act);
+        eq([states, drawn.top().title, drawn.top().secret], [[`open ${host(3)}`], 'GitHub token', true]);
         app._states[host(2)].emit('focus', { focus: false });
+        app._states[host(3)].emit('visible', { visible: true });
+        app._states[host(3)].emit('focus', { focus: true });
+        ['g', 'h', 'p', '_', 'd', 'r', 'a', 'w', 'n', 'OK'].forEach(tap);
+        eq(states.slice(-1), [`close ${host(3)}`]);
+        app._states[host(3)].emit('focus', { focus: false });
+        app._states[host(3)].emit('visible', { visible: false });
         return tick();
     }).then(() => {
         eq(sent.map(secretless), [{ op: 'token-add', token: 'ghp_drawn' }]);
@@ -1007,7 +1051,7 @@ function runDrawn() {
             login: 'drawn', addedAt: 1, rejected: false, usedBy: [] }]) }));
         return tick();
     }).then(() => {
-        eq(drawn.top(), { name: 'pick' }, 'the picker survives the speller');
+        eq(drawn.top().name, 'pick', 'the picker survives the speller or keyboard page');
         eq(sent.map(secretless).slice(-1), [{ op: 'source-probe', repo: 'o/r' }], 'asked again with the new account');
         app._client.emit('probe', { type: 'probe', repo: 'o/r', name: 'Owner/R', status: 'ok', releases: true, tags: true, defaultBranch: 'main',
             branches: ['main', 'dev'], more: false });
@@ -1023,6 +1067,211 @@ function runDrawn() {
             'the pick adds it, as GitHub spells it');
         eq(states, [`close ${host(2)}`]);
         eq(drawn.stack.length, 1);
+        // the drawn keyboard for any text (_type): Shift, the symbols page and back, Space, Delete; its Enter key
+        // gives the text as typed
+        reset();
+        const typed = app._type({ title: 'Password', layout: 'text', symbols: true, go: 'Connect', max: 63 });
+        eq(states, [`open ${host(2)}`]);
+        app._states[host(1)].emit('focus', { focus: false });
+        app._states[host(2)].emit('visible', { visible: true });
+        app._states[host(2)].emit('focus', { focus: true });
+        ['Shift', 'W', 'Shift', 'i', '#+=', '-', '\\', '"', '`', 'abc', 'Space', 'x', 'Delete', '!', 'Connect'].forEach(tap);
+        return typed;
+    }).then((text) => {
+        eq(text, 'Wi-\\"` !', 'typed as shown');
+        eq(states.slice(-1), [`close ${host(2)}`]);
+        app._states[host(2)].emit('focus', { focus: false });
+        app._states[host(2)].emit('visible', { visible: false });
+        app._states[host(1)].emit('focus', { focus: true });
+        // BACK leaves it with nothing
+        const left = app._type({ title: 'Password', layout: 'text', symbols: true, go: 'Connect' });
+        app._states[host(1)].emit('focus', { focus: false });
+        app._states[host(2)].emit('visible', { visible: true });
+        app._states[host(2)].emit('focus', { focus: true });
+        tap('a');
+        app._states[host(2)].emit('focus', { focus: false });
+        app._states[host(2)].emit('visible', { visible: false });
+        app._states[host(1)].emit('focus', { focus: true });
+        return left;
+    }).then((text) => {
+        eq([text, drawn.stack.length, sent], [null, 1, []], 'BACK: no text, nothing sent');
+        // Wi-Fi, the uplink's through the updater: Settings' row opens its page, which asks a scan
+        app._client.emit('state', Object.assign({}, st, { uplink: { device: null, state: 'searching', error: null, preferred: '', wifi: WIFI } }));
+        drawn.setTab('settings');
+        reset();
+        tap('Wi-Fi');
+        eq([states, drawn.top().name, sent.map(secretless), !!sent[0].secret], [[`open ${host(2)}`], 'wifi', [{ op: 'wifi-scan' }], true],
+            'Wi-Fi: its page, a scan asked for, with the updater secret');
+        app._states[host(1)].emit('focus', { focus: false });
+        app._states[host(2)].emit('visible', { visible: true });
+        app._states[host(2)].emit('focus', { focus: true });
+        reset();
+        tap('Cafe');
+        eq(sent.map(secretless), [{ op: 'wifi-connect', ssid: 'Cafe' }], 'an open network: joined at once');
+        reset();
+        logged.length = 0;
+        if (HMI === 'ID7') {
+            // iDrive 7: the HMI's speller; a password too short is refused here
+            spellerAnswers.push('short');
+            tap('Home');
+            return tick().then(() => {
+                eq([spellerTitles, sent, app._drawnModel().uplinkNote], [['Home'], [], 'A Wi-Fi password is 8 to 63 letters, digits and symbols']);
+                spellerAnswers.push(WIFI_PSK);
+                tap('Home');
+                return tick();
+            });
+        }
+        // iDrive 8: the keyboard's page, word keys and symbols, Connect from 8 characters
+        tap('Home');
+        eq([states, drawn.top().name, drawn.top().title, drawn.top().go], [[`open ${host(3)}`], 'type', 'Home', 'Connect']);
+        app._states[host(2)].emit('focus', { focus: false });
+        app._states[host(3)].emit('visible', { visible: true });
+        app._states[host(3)].emit('focus', { focus: true });
+        ['p', '#+=', '@', 'Connect'].forEach(tap);
+        eq([drawn.top().name, sent], ['type', []], 'Connect under 8 characters does nothing');
+        ['abc', 's', 's', 'Space', '#+=', '"', 'abc', 'w', '0', 'r', 'd', '#+=', '\\', 'abc', 'Space', '#+=', '{', 'abc', 'x', '#+=', '}',
+            'Connect'].forEach(tap);
+        eq(states.slice(-1), [`close ${host(3)}`]);
+        app._states[host(3)].emit('focus', { focus: false });
+        app._states[host(3)].emit('visible', { visible: false });
+        app._states[host(2)].emit('focus', { focus: true });
+        return tick();
+    }).then(() => {
+        eq([sent.map(secretless), !!sent[0].secret, drawn.top().name], [[{ op: 'wifi-connect', ssid: 'Home', psk: WIFI_PSK }], true, 'wifi'],
+            'the password, exactly as typed, to the updater; back on the Wi-Fi page');
+        eq(logged.filter((l) => l.indexOf('w0rd') >= 0), [], 'no password in the log');
+        // joined and saved: Forget asks first; Don't use Wi-Fi, Scan
+        app._client.emit('state', Object.assign({}, st, { uplink: { device: { kind: 'wifi', name: 'Home' }, state: 'online', error: null, preferred: '',
+            wifi: Object.assign({}, WIFI, { link: 'online', ssid: 'Home', ip: '172.20.10.2', saved: ['Home'],
+                networks: [Object.assign({}, WIFI.networks[0], { saved: true, current: true }), WIFI.networks[1]] }) } }));
+        reset();
+        tap('Forget');
+        eq([states, drawn.items.map((i) => i.label)], [[`open ${host(3)}`], ['Cancel', 'Forget']]);
+        app._states[host(3)].emit('visible', { visible: true });
+        tap('Forget');
+        eq([sent.map(secretless), states.slice(-1)], [[{ op: 'wifi-forget', ssid: 'Home' }], [`close ${host(3)}`]], 'Forget, once confirmed');
+        app._states[host(3)].emit('visible', { visible: false });
+        app._states[host(2)].emit('focus', { focus: true });
+        reset();
+        ["Don't use Wi-Fi", 'Scan'].forEach(tap);
+        eq(sent.map(secretless), [{ op: 'wifi-enable', on: false }, { op: 'wifi-scan' }]);
+        // the uplink's refusal shows on the page
+        app._client.emit('reply-error', 'Wi-Fi needs uplink = auto', 'wifi-scan');
+        eq(app._drawnModel().uplinkNote, 'Wi-Fi needs uplink = auto');
+        // the preferred connection
+        reset();
+        tap('Preferred: Automatic');
+        eq([states, drawn.top().name], [[`open ${host(3)}`], 'prefer']);
+        app._states[host(3)].emit('visible', { visible: true });
+        tap('USB');
+        eq(sent.map(secretless), [{ op: 'uplink-prefer', kind: 'usb' }]);
+        // back to Settings
+        drawn.pop();
+        app._states[host(3)].emit('visible', { visible: false });
+        drawn.pop();
+        app._states[host(2)].emit('visible', { visible: false });
+        app._states[host(1)].emit('focus', { focus: true });
+    }).then(() => {
+        if (HMI === 'ID7') {
+            return null;
+        }
+        // the HMI showing host state d over d - 1, and closing it back to d - 1
+        const enter = (d) => {
+            app._states[host(d - 1)].emit('focus', { focus: false });
+            app._states[host(d)].emit('visible', { visible: true });
+            app._states[host(d)].emit('focus', { focus: true });
+        };
+        const leave = (d) => {
+            app._states[host(d)].emit('focus', { focus: false });
+            app._states[host(d)].emit('visible', { visible: false });
+            app._states[host(d - 1)].emit('focus', { focus: true });
+        };
+        const names = () => drawn.stack.map((p) => p.name);
+        const tokensSent = () => sent.map(secretless).filter((m) => m.op === 'token-add');
+        // the repo's page on the third level: the keyboard takes its place while the token is typed and gives it
+        // back after OK, the repo still being added
+        reset();
+        app._act({ do: 'open', page: { name: 'accounts' } });
+        enter(2);
+        app._startPick('o/deep');
+        app._client.emit('probe', { type: 'probe', repo: 'o/deep', status: 'auth-needed' });
+        return tick().then(() => {
+            eq([names(), states], [['main', 'accounts', 'pick'], [`open ${host(2)}`, `open ${host(3)}`]], 'the repo\'s page third');
+            enter(3);
+            app._act(drawn.items.find((i) => i.label === 'Add token').act);
+            eq([names(), states.length], [['main', 'accounts', 'type'], 2], 'the keyboard in its place');
+            return tick(HIDE_MS + 100);
+        }).then(() => {
+            eq(app._pick && app._pick.repo, 'o/deep', 'the repo still being added while the token is typed');
+            ['g', 'h', 'p', '_', 'x', 'OK'].forEach(tap);
+            eq([names(), states.length], [['main', 'accounts', 'pick'], 2], 'OK: the repo\'s page back');
+            eq(drawn.items.some((i) => i.label === 'Add token'), true, 'its keys pressable again');
+            return tick(HIDE_MS + 100);
+        }).then(() => {
+            eq([app._pick && app._pick.repo, tokensSent()], ['o/deep', [{ op: 'token-add', token: 'ghp_x' }]],
+                'the token sent, the repo still being added');
+            // the keyboard's back button: the same, nothing typed sent
+            reset();
+            app._act(drawn.items.find((i) => i.label === 'Add token').act);
+            eq(names(), ['main', 'accounts', 'type']);
+            ['a', 'Back'].forEach(tap);
+            eq([names(), states], [['main', 'accounts', 'pick'], []], 'its back button: the repo\'s page back in its host state');
+            eq(drawn.items.some((i) => i.label === 'Add token'), true, 'its keys pressable again');
+            return tick(HIDE_MS + 100);
+        }).then(() => {
+            eq([app._pick && app._pick.repo, tokensSent()], ['o/deep', []], 'its back button: nothing sent, the repo still being added');
+            // the HMI's BACK closes host state 3 with the keyboard's page: the repo's page opens there again once the
+            // focus is back on Accounts
+            app._act(drawn.items.find((i) => i.label === 'Add token').act);
+            reset();
+            leave(3);
+            eq([names(), states], [['main', 'accounts', 'pick'], [`open ${host(3)}`]], 'BACK: the repo\'s page opens again');
+            enter(3);
+            return tick(HIDE_MS + 100);
+        }).then(() => {
+            eq([app._pick && app._pick.repo, names(), tokensSent()], ['o/deep', ['main', 'accounts', 'pick'], []],
+                'BACK: nothing sent, the repo still being added');
+            app._endPick();
+            app._endTokenAdd(null);
+            drawn.setTab('settings');
+            leave(3);
+            leave(2);
+            // Add source again while the first repo is checked: its page waits for the keyboard's page; after BACK
+            // there it opens, and Add token on it types over it
+            reset();
+            app._act({ do: 'add-source' });
+            enter(2);
+            ['o', '/', 'a', 'OK'].forEach(tap);
+            leave(2);
+            return tick();
+        }).then(() => {
+            eq(sent.map(secretless).slice(-1), [{ op: 'source-probe', repo: 'o/a' }]);
+            app._act({ do: 'add-source' });
+            enter(2);
+            app._client.emit('probe', { type: 'probe', repo: 'o/a', status: 'auth-needed' });
+            return tick();
+        }).then(() => {
+            eq(names(), ['main', 'type'], 'the repo\'s page waits for the keyboard');
+            tap('Back');
+            leave(2);
+            return tick();
+        }).then(() => {
+            eq(names(), ['main', 'pick'], 'then opens');
+            enter(2);
+            app._act(drawn.items.find((i) => i.label === 'Add token').act);
+            enter(3);
+            ['g', 'h', 'p', '_', 'y', 'OK'].forEach(tap);
+            leave(3);
+            eq(names(), ['main', 'pick'], 'no keyboard page left behind');
+            return tick();
+        }).then(() => {
+            eq([app._pick && app._pick.repo, tokensSent()], ['o/a', [{ op: 'token-add', token: 'ghp_y' }]]);
+            app._endPick();
+            drawn.setTab('settings');
+            leave(2);
+        });
+    }).then(() => {
+        reset();
         app._client.emit('state', st);
         app._endTokenAdd(null);
         // embed: FrontCCU's dial moves the focus and its push presses (the template's buttons get neither)

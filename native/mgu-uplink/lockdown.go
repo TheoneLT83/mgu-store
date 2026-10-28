@@ -31,8 +31,8 @@ const (
 	lockdownTO    = 10 * time.Second
 )
 
-// plistEncode writes v (map[string]any, []any, string, bool, int, int64,
-// uint64, []byte) as an XML property list document.
+// plistEncode writes v (map[string]any, string, bool, []byte: what the
+// requests carry) as an XML property list document.
 func plistEncode(v any) ([]byte, error) {
 	var b bytes.Buffer
 	b.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n" +
@@ -63,14 +63,6 @@ func plistValue(b *bytes.Buffer, v any) error {
 			}
 		}
 		b.WriteString("</dict>\n")
-	case []any:
-		b.WriteString("<array>\n")
-		for _, e := range v {
-			if err := plistValue(b, e); err != nil {
-				return err
-			}
-		}
-		b.WriteString("</array>\n")
 	case string:
 		b.WriteString("<string>")
 		xml.EscapeText(b, []byte(v))
@@ -81,12 +73,6 @@ func plistValue(b *bytes.Buffer, v any) error {
 		} else {
 			b.WriteString("<false/>\n")
 		}
-	case int:
-		fmt.Fprintf(b, "<integer>%d</integer>\n", v)
-	case int64:
-		fmt.Fprintf(b, "<integer>%d</integer>\n", v)
-	case uint64:
-		fmt.Fprintf(b, "<integer>%d</integer>\n", v)
 	case []byte:
 		fmt.Fprintf(b, "<data>%s</data>\n", base64.StdEncoding.EncodeToString(v))
 	default:
@@ -368,10 +354,9 @@ func (l *lockdownClient) startSession(id *hostIdentity) error {
 // pair asks the phone to pair with this host, with the device certificate
 // made for it. On the first request the phone shows "Trust This Computer?"
 // and answers PairingDialogResponsePending; once its owner taps Trust and
-// enters the passcode the same request succeeds. The answer's EscrowBag is
-// returned.
-func (l *lockdownClient) pair(id *hostIdentity, deviceCert []byte) ([]byte, error) {
-	resp, err := l.call(map[string]any{
+// enters the passcode the same request succeeds.
+func (l *lockdownClient) pair(id *hostIdentity, deviceCert []byte) error {
+	_, err := l.call(map[string]any{
 		"Request":         "Pair",
 		"ProtocolVersion": "2",
 		"PairRecord": map[string]any{
@@ -383,9 +368,5 @@ func (l *lockdownClient) pair(id *hostIdentity, deviceCert []byte) ([]byte, erro
 		},
 		"PairingOptions": map[string]any{"ExtendedPairingErrors": true},
 	})
-	if err != nil {
-		return nil, err
-	}
-	bag, _ := resp["EscrowBag"].([]byte)
-	return bag, nil
+	return err
 }

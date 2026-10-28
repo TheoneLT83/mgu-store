@@ -4,7 +4,9 @@ package main
 // firewall and lease files in line with the lease and the allowed uids. A
 // reconcile every few seconds re-resolves app uids (a reinstall can move an
 // app to a new uid) and restores anything another component removed (the
-// unit's firewall reloads its ruleset at mode changes).
+// unit's firewall reloads its ruleset at mode changes). With uplink = auto
+// the Wi-Fi provider (wifi.go) runs beside it, and ctl.sock (ctl.go) takes
+// requests.
 
 import (
 	"context"
@@ -12,7 +14,10 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -34,6 +39,10 @@ type service struct {
 	lease      *Lease
 	dhcp       *dhcpClient
 	lastErr    string
+	wifi       *wifiProvider // nil unless uplink = auto
+	guards     string        // the interfaces the firewall was last applied for
+	kick       chan struct{} // reconcile now
+	ctlMu      sync.Mutex    // one request writes settings_conf at a time
 }
 
 type openResult struct {
@@ -76,17 +85,31 @@ func runService(c config, up Uplink) error {
 	if err != nil {
 		return fmt.Errorf("hook socket: %v", err)
 	}
-	s := &service{cfg: c, up: up, self: self}
+	s := &service{cfg: c, up: up, self: self, kick: make(chan struct{}, 1)}
 	statusInit(c.statusFile())
 	setStatus(nil, stateSearching, "")
+	setStatusPreferred(c.Preferred)
+	if su, ok := up.(*scanUplink); ok {
+		s.wifi = newWiFiProvider(c, filepath.Join(filepath.Dir(self), "wpa_supplicant"))
+		s.wifi.notify = s.kickReconcile
+		su.wifi = s.wifi
+		s.wifi.start()
+	}
+	var ctl net.Listener
 	// shutdown before closing the socket: udhcpc reports its release on it.
 	defer func() {
+		if ctl != nil {
+			ctl.Close()
+		}
 		s.shutdown()
 		conn.Close()
 		statusClear(c.statusFile())
 	}()
-	logf("mgu-uplink %s: uplink %s, apps %v, uids %v, table %d, rules %d-%d",
-		version, up, c.Apps, c.UIDs, c.Table, c.Pref, c.Pref+rulePrefs-1)
+	if ctl, err = listenCtl(c.ctlSocket(), s.request); err != nil {
+		return fmt.Errorf("control socket: %v", err)
+	}
+	logf("mgu-uplink %s: uplink %s, preferred %q, wifi %s, apps %v, uids %v, table %d, rules %d-%d",
+		version, up, c.Preferred, onOff(c.WiFi), c.Apps, c.UIDs, c.Table, c.Pref, c.Pref+rulePrefs-1)
 	s.reconcile(true)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -163,7 +186,16 @@ func runService(c config, up Uplink) error {
 			s.onHook(e)
 		case <-tick.C:
 			s.reconcile(false)
+		case <-s.kick:
+			s.reconcile(false)
 		}
+	}
+}
+
+func (s *service) kickReconcile() {
+	select {
+	case s.kick <- struct{}{}:
+	default:
 	}
 }
 
@@ -216,6 +248,13 @@ func (s *service) setLease(l *Lease) {
 		clearAddress(prev.Interface, prev.IP, prev.Prefix)
 	}
 	s.lease = l
+	if s.wifi != nil {
+		ip := ""
+		if l != nil && l.Interface == s.wifi.iface {
+			ip = l.IP
+		}
+		s.wifi.setOnline(ip)
+	}
 	s.reconcile(false)
 	switch {
 	case l != nil && (prev == nil || prev.IP != l.IP || prev.Router != l.Router || strings.Join(prev.DNS, ",") != strings.Join(l.DNS, ",")):
@@ -239,6 +278,9 @@ func (s *service) detach() {
 
 func (s *service) shutdown() {
 	s.detach()
+	if s.wifi != nil {
+		s.wifi.stop()
+	}
 	cleanup(s.cfg)
 }
 
@@ -282,10 +324,15 @@ func (s *service) reconcile(force bool) {
 	fail(err)
 	_, err = syncRules(c, uids, leaseIP)
 	fail(err)
-	if force || uidsChanged || !firewallPresent(c) {
-		fail(applyFirewall(c, s.guarded(), uids))
+	guarded := s.guarded()
+	if guards := strings.Join(guarded, " "); force || uidsChanged || guards != s.guards || !firewallPresent(c) {
+		err := applyFirewall(c, guarded, uids)
+		fail(err)
+		if err == nil {
+			s.guards = guards
+		}
 	} else {
-		fail(ensureUnitAccept(c, s.guarded()))
+		fail(ensureUnitAccept(c, guarded))
 	}
 	fail(syncAppState(c, byApp, s.lease))
 	msg := strings.Join(errs, "; ")
@@ -295,16 +342,21 @@ func (s *service) reconcile(force bool) {
 	s.lastErr = msg
 }
 
-// guarded is the interface the firewall guards: the link's, or before the link
-// is open, the one the uplink will present.
-func (s *service) guarded() string {
-	if s.link != nil {
-		return s.link.Ifname()
-	}
+// guarded lists the interfaces the firewall guards: the one the uplink
+// presents, the link's, and the Wi-Fi interface while the Wi-Fi provider
+// has it.
+func (s *service) guarded() []string {
+	out := []string{Ifname}
 	if n, ok := s.up.(*netdevUplink); ok {
-		return n.name
+		out[0] = n.name
 	}
-	return Ifname
+	if s.link != nil && !slices.Contains(out, s.link.Ifname()) {
+		out = append(out, s.link.Ifname())
+	}
+	if s.wifi != nil && s.wifi.guarding() && !slices.Contains(out, s.wifi.iface) {
+		out = append(out, s.wifi.iface)
+	}
+	return out
 }
 
 // publishStatus writes status.json for an open link: online with a lease,
@@ -349,6 +401,11 @@ func cleanup(c config) {
 	syncAppState(c, nil, nil)
 	deleteVethPair()
 	restoreLinkState(c.linkFile())
+	killOwnSupplicants("/proc", c.wpaConf())
+	restoreWiFi(c.wifiFile(), false)
+	os.RemoveAll(c.wpaCtrl())
+	os.Remove(c.wpaLocal())
 	os.Remove(c.statusFile())
 	os.Remove(c.hookSocket())
+	os.Remove(c.ctlSocket())
 }

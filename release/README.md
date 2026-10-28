@@ -145,7 +145,8 @@ gh workflow run release.yml -f components="mgu-deploy robertn_store"  # some com
 ```
 
 The workflow checks out the tagged (or chosen) commit with its history,
-installs the build toolchain (Node 22.12.0; Go 1.27.2 for `mgu-uplink`),
+installs the build toolchain (Node 22.12.0; Go 1.27.2 for `mgu-uplink`;
+the runner's Docker builds `mgu-render` and `mgu-uplink`'s wpa_supplicant),
 and runs `release.js publish` with the workflow's own `GITHUB_TOKEN`
 (contents: write). No other token, and no developer machine, is involved.
 `publish` to GitHub refuses to run outside Actions; `--dry-run` runs
