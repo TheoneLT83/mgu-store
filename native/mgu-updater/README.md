@@ -733,7 +733,7 @@ each request, and whenever it changes (at most every 250 ms):
     "build": null, "optional": false, "uninstallable": true, "revision": null,
     "description": "…", "author": "…", "icon": "/var/opt/mgu-updater/state/icons/…png",
     "mguHmi": ["ID7"], "compat": "yes", "provides": null, "service": null,
-    "listedId": null, "installAs": "doom", "blocked": null, "pendingReboot": false, "queued": false, "error": null } ] }
+    "listedId": null, "installAs": "doom", "blocked": null, "pendingReboot": false, "problem": null, "queued": false, "error": null } ] }
 ```
 
 - `components`: each origin's component of an id (Sources, "Ids"); `id`
@@ -745,7 +745,9 @@ each request, and whenever it changes (at most every 250 ms):
   `build` is `"unit"` for what is built on the unit; `revision` the short
   commit a branch would install; `size` null where the source states none;
   `description` and `author` its source's (`''` when it gives none);
-  `icon` the kept icon's path, or null (Sources, "Icons").
+  `icon` the kept icon's path, or null (Sources, "Icons"); `problem` what
+  an installed tool says is wrong, the string `problem` of its
+  `/var/opt/<id>/status.json` (mgu-render's page template), else null.
 - `unit`: the head unit (`hmi` `ID7`, `ID8` or null, `firmware` its build
   string), null until the deploy tool says. `allProviders`: the installed tools
   providing each capability; `providers`: the first of them each, for the

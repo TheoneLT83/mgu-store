@@ -44,7 +44,7 @@ var cp = require('child_process');
 
 /* deploy/component.json's version; bumped when a file under deploy/unit/
  * changes. */
-var VERSION = '0.6.0';
+var VERSION = '0.6.1';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -87,6 +87,7 @@ var CFG = {
     inplaceReportMs: Number(env('MGU_DEPLOY_INPLACE_REPORT_MS', '15000')),
     bounceTimeoutMs: Number(env('MGU_DEPLOY_BOUNCE_TIMEOUT_MS', '30000')),
     healthMs: Number(env('MGU_DEPLOY_HEALTH_MS', '10000')),
+    postInstallMs: Number(env('MGU_DEPLOY_POST_INSTALL_MS', '300000')),
     bounceMinUpS: Number(env('MGU_DEPLOY_BOUNCE_MIN_UP_S', '60')),
     lockWaitMs: Number(env('MGU_DEPLOY_LOCK_WAIT_MS', '3600000')),
     migrateSettleMs: Number(env('MGU_DEPLOY_MIGRATE_SETTLE_MS', '45000'))
@@ -1139,6 +1140,11 @@ function validateTool(file, dir, c) {
         throw refuse(file + ': mguProvides is one lower-case name, e.g. "renderer"');
     }
     if (c.keepRunning !== undefined && typeof c.keepRunning !== 'boolean') throw refuse(file + ': keepRunning is true or false');
+    if (c.postInstall !== undefined && (!Array.isArray(c.postInstall) || !c.postInstall.length ||
+        !c.postInstall.every(function (x) { return typeof x === 'string'; }) ||
+        !c.files.some(function (f) { return f.path === c.postInstall[0]; }))) {
+        throw refuse(file + ': postInstall is a list: one of its files, then its arguments');
+    }
     return { kind: 'tool', file: file, dir: dir, component: c, id: c.id, version: c.version,
         hmi: hmiList(c.mguHmi, file + ' component.json'), hmiFrom: c.mguHmi ? 'declared' : null,
         provides: c.mguProvides || null };
@@ -1806,10 +1812,26 @@ function installTool(a, state, tx) {
         var pr = privacyApplyAndBounce(state);
         if (!pr.ok) { e = fail('app-privacy ' + c.version + ': ' + pr.why); e.privacy = true; throw e; }
     }
+    if (c.postInstall) postInstall(c, root);
     fs.readdirSync(versions).forEach(function (v) {
         if (v !== c.version && v !== before) rmrf(path.join(versions, v));
     });
     say(c.id + ' ' + c.version + ' installed');
+}
+/* A tool's postInstall: its script (one of its files) with the arguments
+ * after it, run by sh as root from current/ once the install is in place,
+ * at every install, for at most postInstallMs. Its output is shown; the
+ * install stands whatever it does. */
+function postInstall(c, root) {
+    var cur = path.join(root, 'current');
+    say(c.id + ': ' + c.postInstall.join(' '));
+    var r = cp.spawnSync(CFG.sh, [path.join(cur, c.postInstall[0])].concat(c.postInstall.slice(1)), {
+        cwd: cur, encoding: 'utf8', timeout: CFG.postInstallMs, killSignal: 'SIGKILL', maxBuffer: 1 << 20
+    });
+    ((r.stdout || '') + (r.stderr || '')).split('\n').forEach(function (l) { if (l.trim()) say('  ' + l); });
+    if (r.error || r.status !== 0) {
+        warn(c.id + ': ' + c.postInstall[0] + (r.error ? ': ' + r.error.message : ' exited ' + (r.status === null ? r.signal : r.status)));
+    }
 }
 /* Undoes one failed tool install. With no version to return to, a tool
  * that failed its health check or its app-privacy apply stays current,

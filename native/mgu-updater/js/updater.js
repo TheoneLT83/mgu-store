@@ -324,6 +324,17 @@ function installedTool(conf, id) {
     }
 }
 
+/* What an installed tool says is wrong, one line from its status.json
+ * ({ "problem": "..." }, mgu-render's page template), else null. */
+function toolProblem(conf, id) {
+    try {
+        const p = readJson(path.join(conf.tool_root, id, 'status.json')).problem;
+        return typeof p === 'string' && p ? p.slice(0, 200) : null;
+    } catch (e) {
+        return null;
+    }
+}
+
 /* The deploy tool's status --json, or null when it does not answer with it. */
 function deployStatus(conf) {
     return new Promise((resolve) => {
@@ -1156,6 +1167,7 @@ class Updater {
                 // why it cannot be installed: another origin's component has its id
                 blocked: entry.blocked || null,
                 pendingReboot: !!row.installed && this.pending.indexOf(entry.installAs || entry.id) >= 0,
+                problem: row.installed && entry.kind === 'tool' ? toolProblem(this.conf, entry.installAs || entry.id) : null,
                 queued: this.queue.some((q) => q.id === row.id),
                 error: this.errors[row.id] || null
             });

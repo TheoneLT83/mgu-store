@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.11
+
+From robertnisipeanu/mgu-store's 0.9.7: an installed tool's page shows what the tool says is wrong (the updater's
+`problem`, mgu-updater 0.8.2): the Renderer's `In-page drawing unavailable:
+<reason>` when it could not make its HMI page template (mgu-render 0.4.1).
+
 ## 0.9.10
 
 Updates show the version number, not a commit: "Update to 1.2.0", Available 1.2.0. A new build of the installed version reads "1.2.0 · new build" on Installed. The app page has no commit chip, and its history rows show the date.

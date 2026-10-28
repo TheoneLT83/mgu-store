@@ -192,8 +192,8 @@ tool itself):
 - the artifact's `component.json` is `{id, kind, version, title,
   description, files[{path, mode, sha256}], units[{name}], enable, recmgr,
   restart}`, `dropins[{unit, name}]` (each read from `from`), and `internet`
-  with `uids`, `mguHmi`, `mguProvides`, `keepRunning` and `crashNames` when
-  the tool declares them;
+  with `uids`, `mguHmi`, `mguProvides`, `keepRunning`, `crashNames` and
+  `postInstall` when the tool declares them;
 - members are sorted, owned 0:0, with the listed modes (`component.json` and
   units 0644) and one mtime: `SOURCE_DATE_EPOCH` when set, else the packer's
   fixed one (`tools/oap_pack.js`, which also writes the gzip header's OS byte
@@ -670,6 +670,14 @@ when its service is stopped (and recmgr has its entry), else it changes
 with the next boot (pending). `restart: []`
 starts or restarts nothing. `oapcontroller` is never stopped or restarted: an
 artifact naming it is refused.
+
+**Post-install.** `"postInstall": ["<script>", "<arg>", ...]` names one of
+the tool's files and its arguments: once the install is in place (after the
+health check), `sh <root>/current/<script> <arg>...` runs as root from
+`current/`, at every install of the tool, the same version again included,
+for at most 5 minutes (`MGU_DEPLOY_POST_INSTALL_MS`). Its output is shown; a
+failure or the time limit is a warning, and the install stands. mgu-render
+makes its HMI page template this way.
 
 **Health check.** Every unit the tool restarts or starts is read with
 `systemctl show -p ActiveState -p NRestarts` right after, and again

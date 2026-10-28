@@ -193,6 +193,11 @@ f = screen('app-renderer');
 eq(own(f), ['Install', 'Back'], 'a second renderer installs beside the first');
 eq(f.items[0].act, { do: 'install', id: 'mgu-render' });
 eq([text(f, 'note1'), f.values.facts.items.map((c) => c.text).pop()], ['', 'renderer']);
+const broken = fixture.state();
+broken.components = broken.components.map((c) => c.id === 'mgu-render' ? Object.assign({}, c, { installed: '0.1.0', status: 'installed',
+    problem: 'In-page drawing unavailable: no identifier table in HmiMain3D' }) : c);
+f = screen('app-renderer', {}, broken);
+eq([text(f, 'problem'), text(f, 'note1')], ['In-page drawing unavailable: no identifier table in HmiMain3D', ''], 'an installed tool\'s problem');
 f = screen('app-downloading');
 eq(own(f), ['Back'], 'nothing to press while it downloads');
 eq([f.values.progress.label, f.values.progress.right, f.values.icon.progress], ['Downloading', '42 %', 0.42]);

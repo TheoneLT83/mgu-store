@@ -1,5 +1,9 @@
 # Updater changelog
 
+## 0.8.2
+
+- A component's `problem`: what an installed tool says is wrong, the `problem` line of its `/var/opt/<id>/status.json` (mgu-render 0.4.1: `In-page drawing unavailable: <reason>`), else null.
+
 ## 0.8.1
 
 - `history`: a component's update history for its Store page: a GitHub branch source's commits that changed the component's folder (or the shared code it is built with), or the versions of the CHANGELOG.md a catalog entry names in `changelog`; what is not installed yet is marked new.

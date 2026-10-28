@@ -913,6 +913,8 @@ function testDaemon(certs, pubDir) {
     c.version = '0.1.0';
     fs.writeFileSync(path.join(v1, 'component.json'), JSON.stringify(c));
     fs.symlinkSync('versions/0.1.0', path.join(opt, 'mgu-updater', 'current'));
+    // what an installed tool says is wrong (mgu-render's page template)
+    fs.writeFileSync(path.join(opt, 'mgu-updater', 'status.json'), JSON.stringify({ template: 'failed', problem: 'In-page drawing unavailable: x' }));
     const d1 = path.join(opt, 'mgu-deploy', 'versions', '1.0.0');
     mkdirp(d1);
     fs.writeFileSync(path.join(d1, 'mgu-deploy.sh'), DEPLOY_SH, { mode: 0o755 });
@@ -1015,6 +1017,10 @@ function testDaemon(certs, pubDir) {
             ok('daemon: clearing them runs as the fetch uid (root\'s own files stay)',
                 fs.existsSync(path.join(planted, 'rootdir', 'rootfile')));
             ok('daemon: online while the uplink lease exists', st.online === true);
+            ok('daemon: an installed tool\'s problem from its status.json, none for an app',
+                row(st, 'mgu-updater').problem === 'In-page drawing unavailable: x' && row(st, 'demo_app').problem === null,
+                JSON.stringify(st.components.map((c) => [c.id, c.problem])));
+            fs.unlinkSync(path.join(opt, 'mgu-updater', 'status.json'));
             const files = (pid) => fs.readdirSync(`/proc/${pid}/fd`).map((fd) => {
                 try {
                     return fs.readlinkSync(`/proc/${pid}/fd/${fd}`);

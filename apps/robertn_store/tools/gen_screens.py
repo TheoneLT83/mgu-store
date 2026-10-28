@@ -30,8 +30,11 @@ BACK = copy.deepcopy(get(S['app'], 'back'))
 screens = []
 # store: his, filter Apps / Tools
 st = copy.deepcopy(S['store']); get(st, 'filter')['opts']['items'] = 'All,Apps,Tools'; screens.append(st)
-# app: his
-screens.append(copy.deepcopy(S['app']))
+# app: his; under the description its update history, then what an installed tool says is wrong
+st = copy.deepcopy(S['app']); get(st, 'desc')['h'] = 104
+st['components'].insert(st['components'].index(get(st, 'desc')) + 1,
+    comp('history', 'appList', 480, 590, 1560, 132, {'items': [], 'rowH': 108, 'empty': ''}))
+st['components'].append(text('problem', 480, 730, 1560, 90, '', 36, 'label', '#ffb020', wrap=True)); screens.append(st)
 # confirm: his restart sheet, for every confirm step
 st = copy.deepcopy(S['restart']); st['name'] = 'confirm'; screens.append(st)
 # installed: his, tools for system services

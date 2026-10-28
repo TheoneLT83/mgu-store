@@ -48,7 +48,7 @@ mgu_render_client.js             gfx.c: GLES2, one shader, analytic AA, cached l
                            <---  TOUCH / CLOSED (touch.c, nft divert of UDP 30567)        wl_shm on HmiMain3D's
                            <---  X_STATE, CCU                                              compositor (wayland-1)
 foreground_gate.js (child, root:root) -> which uids are in front
-mgu-render-hmi.sh (before hmi.service) -> page template mounted into the HMI's widgets
+mgu-render-hmi.sh --build (install) -> page template; mgu-render-hmi.sh (before hmi.service) -> mounted into the HMI's widgets
 ```
 
 The sources come from both renderers this replaces:
@@ -61,7 +61,7 @@ The sources come from both renderers this replaces:
 
 The ivi protocol files (`protocol/*.xml`) are COVESA wayland-ivi-extension's,
 MIT (DENSO CORPORATION, BMW Car IT GmbH, notice in each file). Nothing from the
-firmware is in this folder: the page template is made on the unit, at boot,
+firmware is in this folder: the page template is made on the unit, at install,
 from the installed HmiMain3D.
 
 ## Install, files, units
@@ -74,12 +74,22 @@ from the installed HmiMain3D.
   0660, group `tm_oap_app`; once it listens, `mgu-render --share` links the
   community socket to it (below). The first app that connects starts
   `mgu-render.service` (root:mgu_wayland; waits for Winston's socket).
-- `mgu-render-hmi.service` (before `hmi.service`): generates the page
-  template from the installed HmiMain3D (again whenever that binary changes),
-  mounts a tmpfs copy of `bmw/widget/` with it over the original, and writes
-  `/run/mgu-render/hmi-template`. Embed is offered from the next HMI start:
-  after the first install, the next head-unit start. Any failure leaves the
-  stock widgets; `umount /mnt/dataro/data/hmi/bmw/widget` undoes it.
+- The page template is made at install (`mgu-render-hmi.sh --build`, the
+  deploy tool's `postInstall`) from the installed HmiMain3D into
+  `/var/opt/mgu-render/hmi/`, for its stamp (HmiMain3D's size and mtime, the
+  generator, `embed_surface_id`), at low priority for at most 120 s.
+  `/var/opt/mgu-render/status.json` says how it went: `template` (`ok`,
+  `building`, `failed`), `stamp`, `reason`, `retry`, and `problem`
+  (`In-page drawing unavailable: <reason>`), which the Store shows on the
+  Renderer's page. HmiMain3D lacking what the template needs is not tried
+  again until the stamp changes; any other failure (the time limit, a
+  signal, memory or disk) is tried again at the next install.
+- `mgu-render-hmi.service` (before `hmi.service`, at most 30 s) generates
+  nothing: with a template for the current stamp it mounts a copy of
+  `bmw/widget/` in `/run` with it over the original and writes
+  `/run/mgu-render/hmi-template`, else the stock widgets stay. Embed is
+  offered from the next HMI start: after the first install, the next
+  head-unit start. `umount /mnt/dataro/data/hmi/bmw/widget` undoes it.
 - Drop-ins `/etc/systemd/system/display-bridge{.socket,.service,-hmi.service}.d/mgu-render.conf`:
   display-bridge's units stand down while mgu-render is installed ("display-bridge's apps").
 - Logs: `journalctl -u mgu-render -u mgu-render-hmi`.
@@ -270,7 +280,7 @@ HMI only where the HMI's controller gate is loaded (`info.controller`).
 |---|---|
 | `make target` | `build/target/mgu-render`: x86-64, glibc 2.27, loader `/lib/ld-linux-x86-64.so.2`, built in Ubuntu 18.04 (Docker, linux/amd64) |
 | `make check-target` | the binary's architecture, loader, libraries (`libwayland-client`, `libwayland-egl`, `libEGL`, `libGLESv2`, libc, libm) and glibc versions |
-| `make test` | in Ubuntu 24.04 with Mesa's llvmpipe (Docker): `test/test_dialect.c`, `test/test_touch.c` (routing; our table and ports only, in while claimed, out when not and when the renderer dies), `test/test_share.c` (the community socket beside a fake second renderer: handover, restart, take-back, the drop race, foreign sockets kept), `test/test_video.c` (a frame file shorter than its header, the frame file's owner, the video limits), and `test/replay.sh`: every session in `test/sessions/` (recorded from upstream's and IterioDev's kits, `test/sessions/README.md`) and the synthetic ones (`test/gen_sessions.js`) replayed through the original daemons (`test/reference/`) and mgu-render, every frame compared byte for byte; native pixmaps compared with the same pictures sent as IterioDev pictures; video sessions read frame files in `/dev/shm` and their last frame is checked for the videos' colours; a frame file of another uid is refused |
+| `make test` | in Ubuntu 24.04 with Mesa's llvmpipe (Docker): `test/test_dialect.c`, `test/test_touch.c` (routing; our table and ports only, in while claimed, out when not and when the renderer dies), `test/test_share.c` (the community socket beside a fake second renderer: handover, restart, take-back, the drop race, foreign sockets kept), `test/test_video.c` (a frame file shorter than its header, the frame file's owner, the video limits), `test/test_hmi.sh` (the page-template script: built at install, only mounted at boot, a refused build not retried, a timeout or signal retried), and `test/replay.sh`: every session in `test/sessions/` (recorded from upstream's and IterioDev's kits, `test/sessions/README.md`) and the synthetic ones (`test/gen_sessions.js`) replayed through the original daemons (`test/reference/`) and mgu-render, every frame compared byte for byte; native pixmaps compared with the same pictures sent as IterioDev pictures; video sessions read frame files in `/dev/shm` and their last frame is checked for the videos' colours; a frame file of another uid is refused |
 | `deploy/hu install mgu-render` | build and install on a unit or the emulator (deploy/README.md) |
 
 `mgu-render --replay FILE --out F.pam [--raw F.rgba]` draws a recorded

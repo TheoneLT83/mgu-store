@@ -295,7 +295,7 @@ function appView(m, page) {
     const c = rowOf(m, page);
     if (!c) {
         return { name: { text: 'Not listed' }, author: { text: '' }, facts: { items: [] }, desc: { text: '' }, icon: { letter: '?' },
-            instValue: { text: '' }, availLabel: { text: '' }, availValue: { text: '' }, note1: { text: '' }, note2: { text: '' },
+            instValue: { text: '' }, availLabel: { text: '' }, availValue: { text: '' }, problem: { text: '' }, note1: { text: '' }, note2: { text: '' },
             note3: { text: '' }, progress: hidden, primary: hidden, secondary: hidden, history: { items: [], empty: '' } };
     }
     const busy = busyOf(m);
@@ -314,6 +314,8 @@ function appView(m, page) {
             c.provides && { text: c.provides }].filter(Boolean) },
         desc: { text: c.description || '' },
         history: historyView(m, c),
+        // what an installed tool says is wrong (the updater's problem: mgu-render's page template)
+        problem: { text: c.problem || '' },
         instLabel: { text: 'Installed' },
         instValue: { text: c.installed || '–' },
         availLabel: { text: avail ? 'Available' : '' },

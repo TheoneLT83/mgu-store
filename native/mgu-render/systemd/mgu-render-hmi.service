@@ -7,7 +7,8 @@ RequiresMountsFor=/var/opt/mgu-render /mnt/dataro/data/hmi
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-# On any failure, or after 30 s, the stock widgets stay and the HMI starts as usual.
+# Mounts the template made at install, nothing more: without one for this HmiMain3D, on any failure,
+# or after 30 s, the stock widgets stay and the HMI starts as usual.
 TimeoutStartSec=30
 ExecStart=-/bin/sh /var/opt/mgu-render/current/mgu-render-hmi.sh /var/opt/mgu-render/current /var/opt/mgu-render/hmi
 

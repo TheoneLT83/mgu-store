@@ -4012,6 +4012,42 @@ function testProvides() {
         root.status().components.filter((c) => c.provides === 'renderer').map((c) => c.id).join() === 'mgu-renderd', un.out);
 }
 
+/* postInstall (mgu-render's page template): the tool's script runs from current/ after each
+ * install; what it does never undoes the install */
+function testPostInstall() {
+    const root = fakeRoot({ recmgr: ['fixture-tool'] });
+    const art = (version, exit, cmd) => {
+        const dir = fixtureCopy(version, (c) => {
+            c.files.push({ path: 'post.sh', from: 'post.sh', mode: '0644' });
+            c.postInstall = cmd || ['post.sh', 'one arg', '--two'];
+        });
+        fs.writeFileSync(path.join(dir, 'post.sh'), `printf '%s|%s|%s|%s\\n' "$PWD" "$0" "$1" "$2" >> "$(dirname "$(dirname "$0")")/post.log"; echo said ${version}; exit ${exit}\n`);
+        const out = fs.mkdtempSync(path.join(T, 'art-'));
+        const r = hu(['artifact', dir, '--out', out]);
+        if (r.status !== 0) {
+            throw new Error(`deploy/hu artifact failed: ${r.stderr}`);
+        }
+        return path.join(out, `fixture-tool@${version}.tgz`);
+    };
+    const log = () => (fs.existsSync(root.p('var/opt/fixture-tool/post.log')) ? fs.readFileSync(root.p('var/opt/fixture-tool/post.log'), 'utf8') : '')
+        .split('\n').filter(Boolean);
+    const a = art('0.2.0', 0);
+    const r = root.run(['install', '--artifact', a, '--yes']);
+    const cur = root.p('var/opt/fixture-tool/current');
+    check('postInstall: kept by deploy/hu artifact; its script runs from current/ with its arguments, its output shown', r.status === 0 &&
+        readJson(root.p('var/opt/fixture-tool/current/component.json')).postInstall.join() === 'post.sh,one arg,--two' &&
+        log().join() === `${fs.realpathSync(cur)}|${cur}/post.sh|one arg|--two` && r.out.includes('  said 0.2.0'), `${r.out}\n${log()}`);
+    const again = root.run(['install', '--artifact', a, '--yes']);
+    check('postInstall: runs at every install, the same version again too', again.status === 0 && log().length === 2, again.out);
+    const bad = root.run(['install', '--artifact', art('0.3.0', 3), '--yes']);
+    check('postInstall: a script that fails leaves the install in place, with a warning', bad.status === 0 &&
+        fs.readlinkSync(cur) === 'versions/0.3.0' && log().length === 3 && bad.out.includes('warning: fixture-tool: post.sh exited 3'), bad.out);
+    const refused = root.run(['install', '--artifact', art('0.4.0', 0, ['nope.sh']), '--yes']);
+    check('postInstall: a script that is not one of its files is refused', refused.status !== 0 &&
+        refused.out.includes('postInstall is a list: one of its files, then its arguments') && fs.readlinkSync(cur) === 'versions/0.3.0' &&
+        log().length === 3, refused.out);
+}
+
 /* keepRunning (mgu-render, a renderer package): an update leaves the running service running */
 function testKeepRunning() {
     const root = fakeRoot({ recmgr: ['fixture-tool'] });
@@ -4598,6 +4634,7 @@ const SUITES = [
     testDropins,
     testI7Takeover,
     testKeepRunning,
+    testPostInstall,
     testId8Apps,
     testAppManager,
     testId8Complete
