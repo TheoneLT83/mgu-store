@@ -47,7 +47,7 @@ ok(I8.scale > 1 && I8.scale < 1.02 && !I8.layout, 'iDrive 8: the design scaled i
             `${unit} ${def.name}.${c.name} inside the box: ${JSON.stringify([c.x, c.y, c.w, c.h])}`));
     });
     const grid = p.layout.screens.find((s) => s.name === 'store').components.find((c) => c.name === 'grid');
-    eq(Math.floor(grid.h / grid.opts.tileH), 3, `${unit}: three rows of tiles`);
+    eq([grid.opts.cols, grid.h / grid.opts.tileH > 2.3 && grid.h / grid.opts.tileH < 2.5], [4, true], `${unit}: four tiles a row, under two and a half rows in view`);
     // the iDrive 7 look's layout: the same elements, in the box, the menu along the bottom under everything else
     SCREENS.screens.forEach((def) => {
         const own = p.layout.id7.screens.find((s) => s.name === def.name);

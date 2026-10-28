@@ -48,8 +48,9 @@ function compact(W, H, look) {
     const back = () => el('back', 'vbutton', X, M, 64, 64, { text: '', vicon: 'back', style: 'round', color: '#f4f7fb' }, 'event:back');
     const BTN_H = 76;
     const GRID_Y = HEAD + 10;
-    const grid = () => el('grid', 'appGrid', X - 8, GRID_Y, CW + 8, B - GRID_Y, { items: '', cols: 5, tileH: Math.floor((B - GRID_Y) / 3),
-        iconK: 0.46, titleSize: 28, subSize: 22, empty: '' });
+    // four big tiles a row, under two and a half rows in view: the part-shown row says the page scrolls on
+    const grid = () => el('grid', 'appGrid', X - 8, GRID_Y, CW + 8, B - GRID_Y, { items: '', cols: 4, tileH: Math.floor((B - GRID_Y) / 2.4),
+        iconK: 0.6, titleSize: 32, subSize: 24, empty: '' });
     const LIST = { rowH: 92, titleSize: 28, subSize: 22, ctlK: 0.85 };
     const list = (name, x, y, w, h, extra) => el(name, 'appList', x, y, w, h, Object.assign({ items: '' }, LIST, extra || {}));
     const label = (name, x, y, t) => text(name, x, y, 400, 26, t, 20, 'bold', DIM);

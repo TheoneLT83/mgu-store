@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.18
+
+- The tile's name is in every language the head unit may use (the English texts, as the idrive7-apps apps ship them): with only en_GB the name was sometimes missing from the app list.
+- iDrive 7: the Store page's tiles are bigger, four a row with a part-shown row under them, and the page scrolls on.
+
 ## 0.9.17
 
 The controller moving or pressing on the top page counts as that page having the HMI's focus again: after another app was updated in place, the HMI did not say the page had its focus back, and the drawn picture stayed hidden behind the page's empty rows.
