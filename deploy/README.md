@@ -818,7 +818,8 @@ The app manager installs our apps itself.
   the output), its copy rebuilt and bound; then the running manager installs
   it in place (below), or else one bounce and the restarted manager installs
   it because the fallback lists it. The installer then waits (up to 10
-  minutes) for the manager's registry entry with an `installationSource`, the
+  minutes) for the manager's registry entry with an `installationSource`
+  (MainApp 8.1.1 records none), the
   source at the new version and the keychain, and records the uid the manager
   chose. The tool writes no registry entry, app folder or credentials of its
   own.
@@ -830,7 +831,8 @@ The app manager installs our apps itself.
   package, keeping the uid, the data and the keychain: in place (below), or
   else the entry's `installationSource` is re-seeded as null (uid and
   provisioning cache kept) and one bounce lets the restarted manager update
-  it. A running manager on older bundles than `main.js` (the copy, when
+  it. MainApp 8.1.1 updates no app at its start: after the bounce, the
+  restarted manager updates it in place. A running manager on older bundles than `main.js` (the copy, when
   bound) and `AppManagement.js` hold is bounced before the new package is
   placed, and the restarted one updates the app in place. The package of
   an update is placed only once the manager has been up the bounce minimum,

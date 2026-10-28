@@ -12,7 +12,8 @@
  * (CRASH_GATE_JS), never wiped, reinstalled or disabled. iDrive 7 runs
  * /usr/lib/oap-mainapp, iDrive 8 MainApp-21 (/usr/lib/oap-mainapp21), each
  * with its own edits (UNITS); the unit is the one the kernel command line
- * names (unitOf).
+ * names (unitOf). A unit's MainApp releases each have their edits; the
+ * bundles take those of the release whose edits fit both of them.
  *
  * An app is local-only when its installed package.json carries
  * "mguLocalOnly": true (stamped by this repository's packaging, see
@@ -39,15 +40,17 @@
  * refuse (mismatch; nothing written) and 1 on an error while writing.
  * boot is apply for the boot unit and always exits 0. With --json the last
  * stdout line is one JSON object: {version, command, state, changed,
- * restartNeeded, files, unit}; restartNeeded is true while a running
- * MainApp started before the bundles were last written.
+ * restartNeeded, files, unit, mainapp}; restartNeeded is true while a
+ * running MainApp started before the bundles were last written, and
+ * mainapp names the MainApp release whose edits the bundles take (null on
+ * a mismatch).
  */
 const childProcess = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-const VERSION = '1.5.0';
+const VERSION = '1.6.0';
 const MARKER_KEY = 'mguLocalOnly';
 const OAP_ROOT = '/var/opt/public/oap/';
 const OVERRIDE_FILE = OAP_ROOT + 'oap_12201/data/local-only-apps.json';
@@ -147,8 +150,11 @@ const CRASH_RESTARTS = 5;
 const CRASH_WINDOW_MS = 10 * 60 * 1000;
 const CRASH_GATE_BEFORE =
     'appCorruptInfo=_.defaults(this._appIdToCorruptAppInfo[appId],{recoveryAttemptsSinceCorruption:0});';
-/* giveUp: MainApp code run just before the app is left stopped. */
-function crashGateJs(logPrefix, giveUp) {
+/* giveUp: MainApp code run just before the app is left stopped. The gate
+ * ends in `else `, so a local-only app skips the stock statement it
+ * precedes (the APP_CRASH analytics event); after replaces that ending
+ * where the gate precedes nothing to skip. */
+function crashGateJs(logPrefix, giveUp, after) {
     return 'if(appCorruptInfo.localOnlyRestarts||isLocalOnlyApp(appId)){const now=Date.now(),' +
         'restarts=appCorruptInfo.localOnlyRestarts=(appCorruptInfo.localOnlyRestarts||[])' +
         '.filter(at=>now-at<' + CRASH_WINDOW_MS + ');' +
@@ -157,7 +163,7 @@ function crashGateJs(logPrefix, giveUp) {
         'return log.warn(`' + logPrefix + ' ${appId} is local-only ' +
         'and was restarted ' + CRASH_RESTARTS + ' times in ' + CRASH_WINDOW_MS / 60000 + ' minutes; ' +
         'left stopped until it is started again.`),Promise.resolve()}' +
-        'appCorruptInfo.recoveryAttemptsSinceCorruption=0}else ';
+        'appCorruptInfo.recoveryAttemptsSinceCorruption=0}' + (after === undefined ? 'else ' : after);
 }
 const CRASH_GATE_JS = crashGateJs('CorruptAppsHandler::_tryRecoverApp');
 // At the restart, after MainApp's head-unit-shutdown check.
@@ -223,9 +229,11 @@ const APPMANAGEMENT_PATCHES = [
 // 120 s and, when it gives up, says why on stderr, which MainApp puts in
 // the install's error.
 const CERT_KILL_S = 125;
-const CERT_EDIT = ins('config.get("certificateManagerGids")),', 'isLocalOnlyApp(appId)?' + CERT_KILL_S + ':', '35)', 2);
+function certEdit(n) {
+    return ins('config.get("certificateManagerGids")),', 'isLocalOnlyApp(appId)?' + CERT_KILL_S + ':', '35)', n);
+}
 const APPMANAGEMENT_PATCHES_1_4_0 = APPMANAGEMENT_PATCHES.slice();
-APPMANAGEMENT_PATCHES.push(CERT_EDIT);
+APPMANAGEMENT_PATCHES.push(certEdit(2));
 
 const PATCH_SETS = { main: MAIN_PATCHES, appmanagement: APPMANAGEMENT_PATCHES };
 
@@ -248,6 +256,31 @@ const EARLIER_PATCH_SETS = [
     { version: '1.1.0', main: withHelper(MAIN_PATCHES_1_2_2, HELPER_JS_1_1_0),
         appmanagement: withHelper(APPMANAGEMENT_PATCHES_1_4_0, HELPER_JS_1_1_0) }
 ];
+
+// oap-mainapp 8.1.1 (HU software 16.20.4). It has no platform analytics, no
+// update-availability sweep and no DiagOap provider, so those edits, and the
+// predicate copies only they use, have no counterpart. Its updateAllApps, its
+// autonomous update of every app and its crash recovery read differently
+// around the same insertion points; the crash gate precedes no analytics
+// event. Its install and update share one CertificateManager call.
+const KNOWN_SHA256_8_1_1 = {
+    main: '23d24905391f87bd81036aba39aec16d4dd577fef5dfc6bc310db5216d18391b',
+    appmanagement: '93b3df8b7dd00e5ae7529b2409d7a7afb062e6f18c2ab3c0344bb9efa06accf0'
+};
+const MAIN_PATCHES_8_1_1 = [
+    helperInjection('class AppManagementFfProviderImpl{'),
+    helperInjection('class CorruptAppsHandler{'),
+    helperInjection('class AppsAutoupdater{'),
+    helperInjection('class MainApp{'),
+    ins('installedApps=this._appRegistry.getAll()', KEEP_APP, ';', 1),
+    ins('getAllAppIds()', KEEP_APP_ID, ';const resultArgs=', 1),
+    ins(CRASH_GATE_BEFORE, crashGateJs('CorruptAppsHandler::_tryRecoverApp', '', ''), 'let recoveryAction=', 1),
+    CRASH_EDITS[1],
+    ins('()=>', 'isLocalOnlyApp(appId)?Promise.resolve():', 'this._backendTransport.reportCorruptApp(appId,version', 1),
+    ins('getAllAppIds()', KEEP_APP_ID, '.forEach(appId=>{this._appManager.update(appId,', 1),
+    ins('getAllAppIds()', KEEP_APP_ID, ';return logger.info(`${logPrefix} Trying', 1)
+];
+const PATCH_SETS_8_1_1 = { main: MAIN_PATCHES_8_1_1, appmanagement: APPMANAGEMENT_PATCHES_1_4_0.concat([certEdit(1)]) };
 
 // MainApp-21 (iDrive 8). Its predicate decides an app MainApp-21 is
 // installing by MainApp-21's own preinstalled_apps; registry, app folders
@@ -333,14 +366,21 @@ const APPMANAGEMENT_PATCHES_21 = [
 
 const PATCH_SETS_21 = { main: MAIN_PATCHES_21, appmanagement: APPMANAGEMENT_PATCHES_21 };
 
-// MainApp-21 has no earlier release's edits.
 function bundlePaths(root) {
     return { main: root + '/src/main.js', appmanagement: root + '/src/AppManagement/AppManagement.js' };
 }
+/* Each unit's MainApp releases, as { version, sets: { current, earlier },
+ * known }, the first the one problems are reported for when no release's
+ * edits fit. Only 8.3.2's bundles can carry an earlier app-privacy
+ * release's edits. */
 const UNITS = {
-    ID7: { paths: DEFAULT_PATHS, sets: { current: PATCH_SETS, earlier: EARLIER_PATCH_SETS }, known: KNOWN_SHA256 },
-    ID8: { paths: bundlePaths('/usr/lib/oap-mainapp21'), sets: { current: PATCH_SETS_21, earlier: [] },
-        known: KNOWN_SHA256_21 }
+    ID7: { paths: DEFAULT_PATHS, mainapps: [
+        { version: '8.3.2', sets: { current: PATCH_SETS, earlier: EARLIER_PATCH_SETS }, known: KNOWN_SHA256 },
+        { version: '8.1.1', sets: { current: PATCH_SETS_8_1_1, earlier: [] }, known: KNOWN_SHA256_8_1_1 }
+    ] },
+    ID8: { paths: bundlePaths('/usr/lib/oap-mainapp21'), mainapps: [
+        { version: '9.3.4', sets: { current: PATCH_SETS_21, earlier: [] }, known: KNOWN_SHA256_21 }
+    ] }
 };
 
 /* The head unit whose MainApp oapcontroller starts: iDrive 8's MainApp-21
@@ -614,10 +654,9 @@ function overallState(files) {
     return files.every((f) => f.state === 'patched') ? 'patched' : 'unpatched';
 }
 
-/* Prepares every file before writing any: a problem in one file leaves
- * both untouched. */
-function runCommand(command, paths, log, sets, known) {
-    const jobs = Object.keys(paths).map((kind) => {
+/* Every file's job for one MainApp release's edits. */
+function prepare(command, paths, sets, known) {
+    return Object.keys(paths).map((kind) => {
         const file = paths[kind];
         const patches = sets.current[kind];
         const job = { kind, path: file, sha256: null, reference: false,
@@ -659,6 +698,29 @@ function runCommand(command, paths, log, sets, known) {
         }
         return job;
     });
+}
+
+/* Prepares every file before writing any: a problem in one file leaves
+ * both untouched. The files take the edits of the first MainApp release
+ * whose edits fit both; when none fit, the problems reported are those of
+ * the release with the fewest, the first of them on a tie. */
+function runCommand(command, paths, log, mainapps) {
+    let chosen = null;
+    let jobs = null;
+    let fewest = Infinity;
+    for (let i = 0; i < mainapps.length; i += 1) {
+        const tried = prepare(command, paths, mainapps[i].sets, mainapps[i].known);
+        const problems = tried.reduce((n, j) => n + j.problems.length, 0);
+        if (problems < fewest) {
+            chosen = mainapps[i];
+            jobs = tried;
+            fewest = problems;
+        }
+        if (!problems) {
+            break;
+        }
+    }
+    const known = chosen.known;
 
     jobs.forEach((job) => {
         log(job.path + ' (' + job.kind + '): ' +
@@ -671,6 +733,7 @@ function runCommand(command, paths, log, sets, known) {
     });
 
     const result = { version: VERSION, command, state: overallState(jobs), changed: false,
+        mainapp: fewest ? null : chosen.version,
         files: jobs.map((j) => ({ kind: j.kind, path: j.path, sha256: j.sha256,
             reference: j.reference, state: j.state, patchedBy: j.patchedBy, problems: j.problems })) };
     if (command === 'check') {
@@ -727,7 +790,7 @@ function runCommand(command, paths, log, sets, known) {
  * its next start). r.written: this call wrote the files. */
 function run(command, paths, log, procRoot, sets, unit) {
     const u = UNITS[unit || 'ID7'];
-    const r = runCommand(command, paths, log, sets || u.sets, u.known);
+    const r = runCommand(command, paths, log, sets ? [{ version: null, sets, known: u.mainapps[0].known }] : u.mainapps);
     const stale = restartNeeded(r.result.files.map((f) => f.path), procRoot || '/proc', u.paths.main);
     r.written = r.result.changed;
     r.result.unit = unit || 'ID7';
@@ -899,7 +962,8 @@ function main(argv) {
 
 module.exports = {
     VERSION, MARKER_KEY, OVERRIDE_FILE, PREINSTALLED_DIR, HELPER_JS, PATCH_SETS, EARLIER_PATCH_SETS, KNOWN_SHA256,
-    PREINSTALLED_DIR_21, HELPER_JS_21, PATCH_SETS_21, KNOWN_SHA256_21, UNITS, unitOf,
+    PATCH_SETS_8_1_1, KNOWN_SHA256_8_1_1, PREINSTALLED_DIR_21, HELPER_JS_21, PATCH_SETS_21, KNOWN_SHA256_21,
+    UNITS, unitOf,
     classify, applyPatches, removePatches, run, stampPackage, checkApps, main
 };
 

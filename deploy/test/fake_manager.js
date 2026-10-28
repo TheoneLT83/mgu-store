@@ -26,7 +26,9 @@
  * provisioning pass (startupPass) on its own, as MainApp does once
  * provisioning reaches it.
  * With $FAKE_MGR_STAY_DOWN_AT set to n, the n-th kill respawns nothing.
- * With $FAKE_MGR_NO_KEYCHAIN set, a fresh install writes no keychain. The
+ * With $FAKE_MGR_NO_KEYCHAIN set, a fresh install writes no keychain. With
+ * $FAKE_MGR_NO_SOURCE set it is MainApp 8.1.1: an install or update records
+ * no installationSource. The
  * JSON object in $FAKE_MGR_SECTIONS, when that file exists, holds
  * provisioning's own sections by app id: such an app's provisioningCache
  * is that section, not the fallback's flags.
@@ -108,9 +110,10 @@ function install(id, how, source) {
         write(path.join(h, 'security', 'joynrKeyChain.json'), '{"fake":true}\n');
     }
     fs.appendFileSync(path.join(mgr, 'security', 'uids.txt'), `${uid}=${id}\n`);
-    write(path.join(appsDir, `${id}.json`), JSON.stringify({ userId: uid,
-        installationSource: source === undefined ? 'PREINSTALLED' : source,
-        provisioningCache: sectionsOf()[id] || customApps()[id], configStateQueueIndex: null }));
+    const e = { userId: uid, installationSource: source === undefined ? 'PREINSTALLED' : source,
+        provisioningCache: sectionsOf()[id] || customApps()[id], configStateQueueIndex: null };
+    if (env.FAKE_MGR_NO_SOURCE) delete e.installationSource;
+    write(path.join(appsDir, `${id}.json`), JSON.stringify(e));
     log(`install ${id} ${pkg.version} uid ${uid}${how || ''}`);
     return uid;
 }
@@ -125,7 +128,7 @@ function update(id, how) {
     const have = readJson(path.join(source, 'package.json'));
     if (!have || !newer(pkg.version, have.version)) return false;
     unpack(pkg.file, source);
-    fs.writeFileSync(e.file, JSON.stringify(Object.assign(e.entry, { installationSource: 'PREINSTALLED' })));
+    if (!env.FAKE_MGR_NO_SOURCE) fs.writeFileSync(e.file, JSON.stringify(Object.assign(e.entry, { installationSource: 'PREINSTALLED' })));
     log(`update ${id} ${pkg.version} uid ${e.entry.userId}${how || ''}`);
     return true;
 }

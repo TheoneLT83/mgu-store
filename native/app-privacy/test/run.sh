@@ -1,7 +1,7 @@
 #!/bin/sh
 # Runs the app-privacy tests on the head unit's Node (8.16.2), in Docker,
 # with the repository's apps and, when present, the decoded oap-mainapp
-# (iDrive 7) and MainApp-21 (iDrive 8).
+# (iDrive 7, 8.3.2 and 8.1.1) and MainApp-21 (iDrive 8).
 set -e
 cd "$(dirname "$0")/../../.."
 FIRMWARE=${FIRMWARE_MAINAPP_DIR:-}
@@ -11,6 +11,10 @@ fi
 FIRMWARE21=${FIRMWARE_MAINAPP21_DIR:-}
 if [ -n "$FIRMWARE21" ] && [ -d "$FIRMWARE21/src" ]; then
     set -- "$@" -v "$FIRMWARE21:/firmware21:ro" -e FIRMWARE_MAINAPP21_DIR=/firmware21
+fi
+FIRMWARE811=${FIRMWARE_MAINAPP_8_1_1_DIR:-}
+if [ -n "$FIRMWARE811" ] && [ -d "$FIRMWARE811/src" ]; then
+    set -- "$@" -v "$FIRMWARE811:/firmware811:ro" -e FIRMWARE_MAINAPP_8_1_1_DIR=/firmware811
 fi
 docker run --rm -v "$PWD:/w:ro" -w /w "$@" node:8.16.2-stretch \
     node native/app-privacy/test/test_patch_mainapp.js

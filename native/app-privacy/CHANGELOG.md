@@ -1,5 +1,10 @@
 # app-privacy changelog
 
+## 1.6.0
+
+- iDrive 7: MainApp 8.1.1 is patched too, with the same effect as on 8.3.2: our apps are left out of its backend app inventory, backend-triggered and autonomous updates, app-repository queries and downloads and corrupt-app reports, and a crashed one is only restarted. 8.1.1 has no platform analytics or DiagOap readout to filter. The tool's JSON names the MainApp release in `mainapp`. MainApp 8.3.2 is patched exactly as before.
+- Requires the deploy tool 0.6.3, which installs apps on MainApp 8.1.1.
+
 ## 1.5.0
 
 - iDrive 7: MainApp gives a local-only app's keychain creation (`CertificateManager.js`) 125 s instead of 35 s, so the deploy tool's longer wait and its diagnosis can finish. Stock apps are unchanged. iDrive 8 is unchanged.

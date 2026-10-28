@@ -288,6 +288,8 @@ function fakeRoot(opts) {
         mainAppSourceFolder: '/usr/lib/oap-mainapp/',
         appManagement: { ignoreSignatureFailure: false }
     }, null, 2) + '\n');
+    // opts.mainapp811: MainApp 8.1.1, whose AppManagement.js names no installationSource
+    if (opts.mainapp811) write(p('usr/lib/oap-mainapp/src/AppManagement/AppManagement.js'), 'class AppManager{}\n');
     write(p('usr/lib/oap-mainapp/preinstalled_apps/stock_app@2.0.0.tgz'), 'stock package\n');
     write(p(`var/opt/public/oap/oap_${MGR}/data/apps/stock_app.json`), JSON.stringify({ userId: 13000,
         provisioningCache: { '-enabled': 'true', '-allowed': 'true' }, installationSource: 'PREINSTALLED' }), 0o660);
@@ -335,6 +337,7 @@ function fakeRoot(opts) {
         // opts.privacy false: app-privacy is whatever tool is installed
         MGU_DEPLOY_PRIVACY: opts.privacy === false ? '' : path.join(HERE, 'fake_privacy.js'),
         FAKE_MGR_NO_KEYCHAIN: opts.noKeychain ? '1' : '',
+        FAKE_MGR_NO_SOURCE: opts.mainapp811 ? '1' : '',
         FAKE_MGR_SECTIONS: `${R}.sections.json`,
         MGU_DEPLOY_BRIDGE_SOCKET: p('dev/shm/display-bridge/bridge.sock'),
         FAKE_SYSTEMCTL_LOG: log,
@@ -1207,6 +1210,61 @@ function testCertCopy() {
         readJson(stuck.entry('fixture_app')).userId > 0, sr.out);
     const off = root.run(['fallback', 'off', '--yes']);
     check('certificate wait: fallback off removes the copy', off.status === 0 && !fs.existsSync(copy), off.out);
+    // MainApp 8.1.1's script binds the keychain handle with let
+    const old = fakeRoot({ mainapp811: true });
+    write(old.p('usr/lib/oap-mainapp/src/scripts/CertificateManager.js'), stockCertManager([]).replace('const handle=', 'let handle='));
+    const lr = old.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
+    const ltext = fs.existsSync(old.p('var/opt/mgu-deploy/CertificateManager.js')) ?
+        fs.readFileSync(old.p('var/opt/mgu-deploy/CertificateManager.js'), 'utf8') : '';
+    check('certificate wait: MainApp 8.1.1\'s script takes the same copy', lr.status === 0 &&
+        lr.out.includes('keychain wait of MainApp\'s installs: 115 s') && ltext.includes('TIMEOUT=115e3') &&
+        ltext.includes('let handle=certmgr.useKeychain(keyChainPath,(state,_chain)=>{__mgu.states.length<30&&'), lr.out);
+}
+
+/* MainApp 8.1.1: its AppManagement.js names no installationSource; its
+ * installs and updates record none, and its start updates no app. */
+function testMainApp811() {
+    const { root, first, mgr } = inplaceRoot(undefined, { mainapp811: true });
+    check('MainApp 8.1.1: a fresh install through a bounce is done without an installationSource', first.status === 0 &&
+        first.out.includes('fixture_app 1.0.0 installed by the app manager as uid 13001 (source not recorded)') &&
+        !('installationSource' in readJson(root.entry('fixture_app'))), first.out);
+    const fresh = root.run(['install', '--artifact', appArtifact('second_app', '1.0.0', true), '--yes']);
+    check('MainApp 8.1.1: a fresh install in place, no bounce', fresh.status === 0 && root.kills().length === 1 &&
+        fresh.out.includes(`installed in place by the app manager (pid ${mgr.pid}) as uid 13002 (source not recorded)`),
+    `${fresh.out}\n${root.managerLog().join('\n')}`);
+    const up = root.run(['install', '--artifact', appArtifact('fixture_app', '1.1.0', true), '--yes']);
+    check('MainApp 8.1.1: an update in place, uid kept, no re-seed, no bounce', up.status === 0 && root.kills().length === 1 &&
+        up.out.includes('updated in place') && !up.out.includes('re-seeded') &&
+        readJson(path.join(root.home(13001), 'source/package.json')).version === '1.1.0', `${up.out}\n${root.managerLog().join('\n')}`);
+
+    // a running manager without the hook: one bounce, then the restarted manager updates in place
+    const installed = (opts) => {
+        const r0 = fakeRoot(opts);
+        const i0 = r0.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
+        if (i0.status !== 0) throw new Error(`first install failed: ${i0.out}`);
+        return r0;
+    };
+    const b = installed({ mainapp811: true });
+    const k0 = b.kills().length;
+    const r = b.run(['install', '--artifact', appArtifact('fixture_app', '1.1.0', true), '--yes'], { FAKE_MGR_HOOK: '1' });
+    const log = b.managerLog();
+    let killAt = -1;
+    log.forEach((l, i) => { if (l.startsWith('kill ')) killAt = i; });
+    check('MainApp 8.1.1: an update through a bounce is made in place by the restarted manager, no re-seed',
+        r.status === 0 && b.kills().length === k0 + 1 && r.out.includes('through a bounce') && r.out.includes('updated in place') &&
+        !r.out.includes('re-seeded') && killAt >= 0 && log.indexOf('update fixture_app 1.1.0 uid 13001 in place') > killAt &&
+        !('installationSource' in readJson(b.entry('fixture_app'))), `${r.out}\n${log.join('\n')}`);
+    stopHooked(b);
+
+    // the restarted manager fails the update: said so, no second bounce
+    const f = installed({ mainapp811: true });
+    const fk = f.kills().length;
+    const fr = f.run(['install', '--artifact', appArtifact('fixture_app', '1.1.0', true), '--yes'],
+        { FAKE_MGR_HOOK: '1', FAKE_INPLACE: 'fail' });
+    check('MainApp 8.1.1: an update the restarted manager fails is reported, one bounce',
+        fr.status !== 0 && fr.out.includes('the app manager could not update fixture_app 1.1.0 after its restart') &&
+        f.kills().length >= fk + 1, fr.out);
+    stopHooked(f);
 }
 
 /* The certification service in the app's SOME/IP manifest: MainApp's install gets its keychain through it. */
@@ -2453,7 +2511,8 @@ function testRestoreAfterBootstrap() {
 
 /* ---- the retired installer's leftovers ---------------------------------------------------- */
 
-const AM_STOCK = 'AppManagement stock\n';
+/* MainApp 8.3.2's AppManagement.js records each install's installationSource. */
+const AM_STOCK = 'AppManagement stock app.setPersistentProperty("installationSource",installationSource)\n';
 /* The retired edit names the apps it lists as string literals; with
  * opts.dropApp it also lists drop_app, built from two literals. */
 const retiredEdit = (ids, dropApp) => stockMain().replace('module.exports=',
@@ -4843,6 +4902,7 @@ const SUITES = [
     testFallback,
     testInplace,
     testCertCopy,
+    testMainApp811,
     testCertificationProxy,
     testInterrupted,
     testInplaceKeepCopy,

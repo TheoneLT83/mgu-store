@@ -44,7 +44,7 @@ var cp = require('child_process');
 
 /* deploy/component.json's version; bumped when a file under deploy/unit/
  * changes. */
-var VERSION = '0.6.2';
+var VERSION = '0.6.3';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -2036,7 +2036,9 @@ function selfInstall() {
  * fallback copy's in-place hook (installInPlace), so only that app stops
  * and starts; otherwise a bounce makes the restarted manager run it: the
  * install when the fallback lists the app, the update when the registry
- * entry's installationSource is null. */
+ * entry's installationSource is null. MainApp 8.1.1 records no
+ * installationSource and updates no app at its start: the restarted
+ * manager makes the update in place. */
 
 var APP_FLAGS = { '-enabled': 'true', '-allowed': 'true', '-appStartType': 'manually',
     '-userLoginRequired': 'false', '-updateMechanism': 'PLATFORM' };
@@ -2192,19 +2194,33 @@ function placePreinstalled(a) {
     rootfsWindow(ops);
     if (sha256File(dest) !== sha) throw fail('preinstalled package checksum mismatch at ' + dest);
 }
+/* Whether the app manager records where it installed an app from (its
+ * registry entry's installationSource) and
+ * updates an app whose record is null at its start: its AppManagement.js
+ * names installationSource. MainApp 8.3.2 and MainApp-21 do; MainApp 8.1.1
+ * does neither. An unreadable AppManagement.js counts as recording. */
+var recordsSource = null;
+function managerRecordsSource() {
+    if (recordsSource === null) {
+        try { recordsSource = isId8() || fs.readFileSync(appManagementJs(), 'utf8').indexOf('"installationSource"') >= 0; }
+        catch (e) { recordsSource = true; }
+    }
+    return recordsSource;
+}
 /* The manager's install of the artifact as it stands: done when its
- * registry entry names a uid and an installationSource, that uid's source
- * is the new version, and its keychain exists (a fresh install writes it
- * last; an update keeps what the app had, so an app installed without one,
- * as idrive7-apps' installer installs them, is updated without one). */
+ * registry entry names a uid and an installationSource (where the manager
+ * records one), that uid's source is the new version, and its keychain
+ * exists (a fresh install writes it last; an update keeps what the app
+ * had, so an app installed without one, as idrive7-apps' installer
+ * installs them, is updated without one). */
 function keychainFile(uid) { return path.join(appHome(uid), 'security', 'joynrKeyChain.json'); }
 function installState(a) {
     var entry = readJsonOrNull(appEntryFile(a.id));
     if (!entry || !entry.userId) return { done: false, seen: 'no registry entry' };
     var pkg = readJsonOrNull(path.join(appHome(entry.userId), 'source', 'package.json'));
     var keychain = lstatOrNull(keychainFile(entry.userId));
-    return { uid: entry.userId, source: entry.installationSource,
-        done: !!(entry.installationSource && pkg && pkg.name === a.id && pkg.version === a.version &&
+    return { uid: entry.userId, source: entry.installationSource || 'not recorded',
+        done: !!((entry.installationSource || !managerRecordsSource()) && pkg && pkg.name === a.id && pkg.version === a.version &&
             ((keychain && keychain.size > 0) || (a.noKeychain && entry.userId === a.noKeychain))),
         seen: 'uid ' + entry.userId + ', installationSource ' + entry.installationSource +
             ', source ' + (pkg ? pkg.version : 'absent') + ', keychain ' + (keychain ? 'present' : 'absent') };
@@ -2444,6 +2460,15 @@ function installInPlace(a, existing) {
         st = inplaceAnswer(id) || st;
     }
 }
+/* The update of an app by the restarted manager in place, for a manager
+ * that updates no app at its start (MainApp 8.1.1). */
+function updateAfterBounce(a, existing) {
+    waitStartedUp('updating ' + a.id + ' ' + a.version);
+    var r = installInPlace(a, existing);
+    if (r.uid) return r.uid;
+    throw fail('the app manager could not update ' + a.id + ' ' + a.version + ' after its restart: ' +
+        (r.ranFailed ? managerReason(r.error) : r.why));
+}
 /* The uid when the manager has installed or updated the app by itself: a
  * manager restarted during this run (app-privacy's bounce, say) installs
  * it from custom_apps.json at its start, and a provisioning pass updates
@@ -2479,8 +2504,8 @@ var CERT_EDITS = [
     ['TIMEOUT=3e4', 'TIMEOUT=' + CERT_WAIT_S + 'e3'],
     ['function requestKeyChain(process){', 'var __mgu;function requestKeyChain(process){'],
     ['certmgr.setupKeychain(appName,keyChainPath);', CERT_PROBE + 'certmgr.setupKeychain(appName,keyChainPath);'],
-    ['const handle=certmgr.useKeychain(keyChainPath,(state,_chain)=>{',
-        'const handle=certmgr.useKeychain(keyChainPath,(state,_chain)=>{__mgu.states.length<30&&' +
+    ['handle=certmgr.useKeychain(keyChainPath,(state,_chain)=>{',
+        'handle=certmgr.useKeychain(keyChainPath,(state,_chain)=>{__mgu.states.length<30&&' +
         '__mgu.states.push(Math.round((Date.now()-__mgu.t0)/1e3)+"s "+state);'],
     ['logger.error(`${logPrefix} Error while requesting keyChain due to ${e}.`),',
         '__mgu.tell("not written ("+e+")"),logger.error(`${logPrefix} Error while requesting keyChain due to ${e}.`),'],
@@ -2672,7 +2697,7 @@ function installApp(a, state, decision) {
     if (!uid) {
         say('installing ' + a.id + ' through a bounce: ' + r.why);
         if (kept) rebuildFallback(false);
-        entry = existing ? readJsonOrNull(appEntryFile(a.id)) : null;
+        entry = existing && managerRecordsSource() ? readJsonOrNull(appEntryFile(a.id)) : null;
         if (entry) {
             entry.installationSource = null;
             /* written in place, not renamed: the manager owns the file */
@@ -2680,7 +2705,7 @@ function installApp(a, state, decision) {
             say('registry entry re-seeded for the update (uid ' + entry.userId + ')');
         }
         bounceManager();
-        uid = watchInstall(a);
+        uid = existing && !managerRecordsSource() ? updateAfterBounce(a, existing) : watchInstall(a);
         if (existing && uid !== existing.uid) warn(a.id + ' runs as uid ' + uid + ' now; its data stays in ' + appHome(existing.uid));
     }
     var tf = tileFlags(readJsonOrNull(appEntryFile(a.id)));

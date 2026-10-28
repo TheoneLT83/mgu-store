@@ -1,5 +1,10 @@
 # Deploy tool changelog
 
+## 0.6.3
+
+- iDrive 7 with MainApp 8.1.1: app installs and updates work. MainApp 8.1.1 records no install source for an app, so an install counts as done once the app's registry entry, its files at the new version and its keychain are there. It does not update apps when it starts, so an update that cannot be made in place restarts the app manager once and then has it update the app in place.
+- The keychain wait (`CertificateManager.js` copy) works with MainApp 8.1.1's script too.
+
 ## 0.6.2
 
 - iDrive 8: app installs, updates and uninstalls happen live, with no head-unit restart. MainApp-21 installs, updates or removes the one app itself, and its tile appears or goes at once. It turns itself on after the update: from the next start of the head unit every change is live, and until then changes are applied at the next start, as before.
