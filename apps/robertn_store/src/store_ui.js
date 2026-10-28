@@ -278,12 +278,25 @@ function settingsView(m) {
 
 /* ---- pages ---- */
 
+/* The update history on a component's page (the updater's history answer,
+ * newest first): a commit's message with its date and commit, or a
+ * version with its notes; what is newer than the installed one marked New. */
+function historyView(m, c) {
+    const h = m.history && m.history.id === c.id ? m.history : null;
+    const empty = !h || h.status === 'loading' ? 'Loading history' : h.status === 'offline' ? 'History needs internet'
+        : h.status === 'error' ? 'History not available' : 'No history';
+    return { empty, items: (h ? h.items : []).map((it, i) => ({ id: `h${i}`, plain: true,
+        title: it.rev ? it.title : `Version ${it.title}`,
+        sub: it.rev ? [it.date, it.rev].filter(Boolean).join(' · ') : it.text || '',
+        subColor: DIM, right: it.new ? 'chip:New' : '', chipColor: BLUE })) };
+}
+
 function appView(m, page) {
     const c = rowOf(m, page);
     if (!c) {
         return { name: { text: 'Not listed' }, author: { text: '' }, facts: { items: [] }, desc: { text: '' }, icon: { letter: '?' },
             instValue: { text: '' }, availLabel: { text: '' }, availValue: { text: '' }, note1: { text: '' }, note2: { text: '' },
-            note3: { text: '' }, progress: hidden, primary: hidden, secondary: hidden };
+            note3: { text: '' }, progress: hidden, primary: hidden, secondary: hidden, history: { items: [], empty: '' } };
     }
     const busy = busyOf(m);
     const s = tileState(c, busy);
@@ -300,6 +313,7 @@ function appView(m, page) {
             { text: isTool(c) ? 'Tool' : 'App', color: isTool(c) ? TEAL : BLUE }, c.mguHmi && c.mguHmi.length && { text: hmiNames(c.mguHmi) },
             c.provides && { text: c.provides }].filter(Boolean) },
         desc: { text: c.description || '' },
+        history: historyView(m, c),
         instLabel: { text: 'Installed' },
         instValue: { text: c.installed || '–' },
         availLabel: { text: avail ? 'Available' : '' },

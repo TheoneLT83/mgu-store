@@ -245,6 +245,7 @@ class Store extends OnlineApp {
         this._spelling = false;         // the HMI's speller is up
         this._typing = null;            // the drawn keyboard's page up: { page, resolve, under (the page it took the place of) }
         this._uplinkNote = null;        // the refusal of the last Wi-Fi or preferred-connection request
+        this._history = null;           // the open app page's update history ({ id, status, items }, the updater's history answer)
         this._qr = { login: { key: null, file: null, chain: Promise.resolve() },
             phone: { key: null, file: null, chain: Promise.resolve() }, app: { key: null, file: null, chain: Promise.resolve() } };
         this._hmi = 'ID7';
@@ -281,6 +282,12 @@ class Store extends OnlineApp {
             this._render();
         });
         this._client.on('probe', (answer) => this._probed(answer));
+        this._client.on('history', (answer) => {
+            if (this._history && answer.id === this._history.id) {
+                this._history = { id: answer.id, status: answer.status, items: Array.isArray(answer.items) ? answer.items : [] };
+                this._render();
+            }
+        });
         this._client.on('down', () => {
             if (this._connected) {
                 logger.info('updater unreachable; reconnecting');
@@ -305,6 +312,10 @@ class Store extends OnlineApp {
                 this._sendSource({ type: 'github', repo });
             } else if (forOp === 'source-probe' && this._pick && !this._pick.probe) {
                 this._probed({ type: 'probe', repo: this._pick.repo, status: 'refused', error: String(msg) });
+            } else if (forOp === 'history' && this._history && this._history.status === 'loading') {
+                // an updater before 0.8.1 has no history
+                this._history = Object.assign({}, this._history, { status: 'none' });
+                this._render();
             } else if (UPLINK_OPS.indexOf(forOp) >= 0) {
                 this._uplinkNote = String(msg);
                 this._render();
@@ -626,7 +637,7 @@ class Store extends OnlineApp {
             version: this._version(), note: this._sourcesNote, login: this._login, look: this._look,
             webText: web && web.enabled ? readFile(WEB_URL_FILE) : '', accountsNote: this._accountsNote,
             pick: this._pick && { repo: this._pick.repo, probe: this._pick.probe, tokenNote: !!this._pick.tokenNote },
-            uplinkNote: this._uplinkNote };
+            uplinkNote: this._uplinkNote, history: this._history };
     }
 
     /* A press on the drawn screens (src/store_ui.js acts). */
@@ -652,6 +663,11 @@ class Store extends OnlineApp {
                 if (w && w.enabled && !w.scanning) {
                     this._uplink({ op: 'wifi-scan' });
                 }
+            }
+            if (act.page.name === 'app') {
+                // the component's update history, asked for each time its page opens
+                this._history = { id: act.page.id, status: 'loading', items: [] };
+                this._send({ op: 'history', id: act.page.id });
             }
             this._drawn.push(act.page);
             break;

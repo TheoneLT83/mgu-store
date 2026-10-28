@@ -216,12 +216,26 @@ module.exports = {
      "x": 480,
      "y": 470,
      "w": 1560,
-     "h": 340,
+     "h": 104,
      "opts": {
       "text": "",
       "size": 40,
       "wrap": true,
       "color": "text"
+     }
+    },
+    {
+     "name": "history",
+     "rtype": "gpu",
+     "gpu": "appList",
+     "x": 480,
+     "y": 590,
+     "w": 1560,
+     "h": 230,
+     "opts": {
+      "items": [],
+      "rowH": 108,
+      "empty": ""
      }
     },
     {

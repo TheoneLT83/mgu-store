@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.9
+
+An app's or tool's page lists its update history under the description, newest first: for an app from a repository's branch, the commits that changed it, with their date and commit; for this Store's own components, their changelog's versions with their notes. What the installed one does not have yet is marked New. With an updater before 0.8.1 the list says No history.
+
 ## 0.9.8
 
 From robertnisipeanu/mgu-store's 0.9.5 and 0.9.6.
