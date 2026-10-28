@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.23
+
+The controller pushed up, down, left or right moves the focus to the nearest item that way; pushed left with nothing there goes back a page, or out of the Store from its top page.
+
 ## 0.9.22
 
 The Installed page's Update chip only says an update is there: the row opens the app's page, whose button updates it (Update all updates them all).
