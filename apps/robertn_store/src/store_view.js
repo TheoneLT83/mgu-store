@@ -76,7 +76,7 @@ function rowState(row, busy) {
         return 'Failed, retry';
     }
     switch (row.status) {
-    case 'update': return `Update ${row.revision && row.version === row.installed ? row.revision : row.version}`;
+    case 'update': return `Update ${row.version}`;
     case 'available': return `Install ${row.version}`;
     default: return row.pendingReboot ? 'Restart pending' : `Installed ${row.installed}`;
     }

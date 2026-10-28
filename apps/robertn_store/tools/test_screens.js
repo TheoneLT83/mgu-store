@@ -80,7 +80,7 @@ eq(f.labels.length, 7 + fixture.state().components.length - 1, 'a tile per compo
 ok(f.labels.indexOf('Car Data') < 0, 'Car Data (iDrive 8 only, not installed) is not listed');
 eq(f.items[7].act, { do: 'open', page: { name: 'app', id: 'robertn_store', source: 'mgu-store', listed: 'robertn_store' } });
 const subs = f.values.grid.items.map((t) => t.sub);
-['Downloading 42 %', 'Update a1b2c3d', 'Waiting', 'Restart pending', 'Failed', 'Installed', '2.1.0 · 402 KB']
+['Downloading 42 %', 'Update 1.2.0', 'Waiting', 'Restart pending', 'Failed', 'Installed', '2.1.0 · 402 KB']
     .forEach((s) => ok(subs.indexOf(s) >= 0, `a tile says ${s}`));
 eq(f.values.nav.items.map((i) => i.badge), ['', '3', '1', ''], 'badges: updates, new on the stick (not one for another head unit)');
 eq(f.values.online.items[0].text, 'Online');
@@ -112,11 +112,11 @@ ok(g.max % 1 !== 0, 'the grid scrolls to its last row flush with the bottom');
 
 // a component's page: its install, update, or nothing; Remove
 f = screen('app-update');
-eq(own(f), ['Update to a1b2c3d', 'Remove', 'Back'], 'a page: its buttons, Back, the side menu');
-eq(text(f, 'author'), 'by robertn · from cauliflower/idrive7-apps');
+eq(own(f), ['Update to 1.2.0', 'Remove', 'Back'], 'a page: its buttons, Back, the side menu');
+eq(text(f, 'author'), 'by robertn · from TheoneLT83/idrive7-apps');
 eq(f.items[1].act, { do: 'open', page: { name: 'confirm', kind: 'remove', id: 'gauges' } });
 ok(/^Speed, revs/.test(text(f, 'desc')), 'the description');
-eq(f.values.facts.items.map((c) => c.text), ['Version 1.2.0', 'Commit a1b2c3d', 'App', 'iDrive 7 and iDrive 8']);
+eq(f.values.facts.items.map((c) => c.text), ['Version 1.2.0', 'App', 'iDrive 7 and iDrive 8']);
 f = screen('app-incompatible');
 eq(own(f), ['Back'], 'not for this unit: nothing to press');
 eq([text(f, 'note1'), text(f, 'note2')], ['Not for this head unit', 'For iDrive 8']);
@@ -204,7 +204,7 @@ eq(text(f, 'title'), 'Remove Gauges 1.2.0?');
 eq(screen('confirm-restart').items[1].act, { do: 'restart' });
 f = screen('confirm-account');
 eq(f.items[1].act, { do: 'account-remove', id: '3f9a01c2' });
-eq(text(f, 'text'), 'robertn · robertnisipeanu/mgu-store');
+eq(text(f, 'text'), 'robertn · TheoneLT83/mgu-store');
 
 // Installed: Update all for what can update now; a row's chip updates it
 f = screen('installed');
@@ -212,7 +212,7 @@ eq(f.labels[4], 'Update all (1)', 'DOOM downloads and Extended dashboard waits: 
 eq(f.items.find((i) => i.label === 'Update').act, { do: 'install', id: 'gauges' });
 ok(f.labels.indexOf('Display bridge') >= 0 && f.labels.indexOf('M Vitals') < 0, 'installed ones only');
 eq(f.values.apps.items.filter((i) => i.id === 'gauges' || i.id === 'robertn_store').map((i) => i.sub),
-    ['1.2.0 > a1b2c3d · idrive7-apps', '0.7.0 · mgu-store'], 'a row names its source (an update first)');
+    ['1.2.0 · new build · idrive7-apps', '0.7.0 · mgu-store'], 'a row names its source (an update first)');
 
 // a tile's three lines (title, source, state) stay inside it, in either unit's box
 const { DRAW } = require(path.join(__dirname, '..', 'src', 'am_store_widgets.js'));
@@ -248,7 +248,7 @@ eq(text(f, 'subtitle'), 'USB STICK · 2 packages');
 
 // Settings: sources, Add source, Wi-Fi, Accounts, Phone access, the unit; no restart while busy
 f = screen('settings');
-eq(f.labels.slice(4), ['iDrive 7', 'iDrive 8', 'robertnisipeanu/mgu-store', 'cauliflower/idrive7-apps', 'IterioDev/car-apps', 'USB STICK',
+eq(f.labels.slice(4), ['iDrive 7', 'iDrive 8', 'TheoneLT83/mgu-store', 'TheoneLT83/idrive7-apps', 'IterioDev/car-apps', 'USB STICK',
     'Add source', 'Wi-Fi', 'Internet', 'Accounts', 'Phone access', 'Check now']);
 // the look: the head unit's own until one is picked; each pick is a press
 eq(f.items.filter((i) => /^iDrive/.test(i.label)).map((i) => i.act), [{ do: 'look', look: 'id7' }, { do: 'look', look: 'id8' }]);

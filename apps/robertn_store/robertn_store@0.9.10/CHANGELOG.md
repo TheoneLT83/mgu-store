@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.10
+
+Updates show the version number, not a commit: "Update to 1.2.0", Available 1.2.0. A new build of the installed version reads "1.2.0 · new build" on Installed. The app page has no commit chip, and its history rows show the date.
+
 ## 0.9.9
 
 An app's or tool's page lists its update history under the description, newest first: for an app from a repository's branch, the commits that changed it, with their date and commit; for this Store's own components, their changelog's versions with their notes. What the installed one does not have yet is marked New. With an updater before 0.8.1 the list says No history.

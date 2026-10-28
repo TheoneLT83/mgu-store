@@ -65,7 +65,7 @@ function colors(id) {           // a steady colour per component for its letter 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const isTool = (c) => c.kind !== 'app';
 /* The version a row would install: a branch's new commit, else its version. */
-const target = (c) => (c.revision && c.version === c.installed ? c.revision : c.version);
+const target = (c) => c.version;
 
 const rawComps = (m) => (m.connected && m.st && Array.isArray(m.st.components) ? m.st.components : []);
 /* The components the Store lists (store_view.js listed). */
@@ -197,7 +197,7 @@ function installedView(m) {
         const up = c.status === 'update' && s.badge === 'update';
         const open = { do: 'open', page: pageOf(c) };
         return Object.assign(iconOf(c), { id: c.id, title: c.title, act: open,
-            sub: [up ? `${c.installed} > ${target(c)}` : `${c.installed}${isTool(c) ? ' · tool' : ''}`, srcName(m, c)].filter(Boolean).join(' · '), subColor: up ? BLUE : DIM,
+            sub: [up ? (c.installed === c.version ? `${c.installed} · new build` : `${c.installed} > ${target(c)}`) : `${c.installed}${isTool(c) ? ' · tool' : ''}`, srcName(m, c)].filter(Boolean).join(' · '), subColor: up ? BLUE : DIM,
             right: up ? 'chip:Update' : s.sub !== 'Installed' ? `chip:${s.sub}` : 'chevron', chipColor: up ? BLUE : s.subColor,
             chipAct: up ? { do: 'install', id: c.id } : null });
     };
@@ -279,7 +279,7 @@ function settingsView(m) {
 /* ---- pages ---- */
 
 /* The update history on a component's page (the updater's history answer,
- * newest first): a commit's message with its date and commit, or a
+ * newest first): a commit's message with its date, or a
  * version with its notes; what is newer than the installed one marked New. */
 function historyView(m, c) {
     const h = m.history && m.history.id === c.id ? m.history : null;
@@ -287,7 +287,7 @@ function historyView(m, c) {
         : h.status === 'error' ? 'History not available' : 'No history';
     return { empty, items: (h ? h.items : []).map((it, i) => ({ id: `h${i}`, plain: true,
         title: it.rev ? it.title : `Version ${it.title}`,
-        sub: it.rev ? [it.date, it.rev].filter(Boolean).join(' · ') : it.text || '',
+        sub: it.rev ? it.date : it.text || '',
         subColor: DIM, right: it.new ? 'chip:New' : '', chipColor: BLUE })) };
 }
 
@@ -307,7 +307,7 @@ function appView(m, page) {
         icon: Object.assign(iconOf(c), { badge: mine ? '' : s.badge, progress: s.progress }),
         name: { text: c.title },
         author: { text: [c.author && `by ${c.author}`, c.source && `from ${src ? sourceLabel(src) : c.source}`].filter(Boolean).join(' · ') },
-        facts: { items: [{ text: `Version ${c.version}` }, c.revision && { text: `Commit ${c.revision}` }, c.size && { text: size(c.size) },
+        facts: { items: [{ text: `Version ${c.version}` }, c.size && { text: size(c.size) },
             // installed under another id than its source's
             c.listedId && !c.blocked && (c.installAs || c.id) !== c.listedId && { text: `Id ${c.installAs || c.id}` },
             { text: isTool(c) ? 'Tool' : 'App', color: isTool(c) ? TEAL : BLUE }, c.mguHmi && c.mguHmi.length && { text: hmiNames(c.mguHmi) },
