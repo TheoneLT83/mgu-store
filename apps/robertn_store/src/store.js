@@ -642,6 +642,7 @@ class Store extends OnlineApp {
 
     /* A press on the drawn screens (src/store_ui.js acts). */
     _act(act) {
+        if (!act) return;                // a row with nothing to press (a changelog line)
         logger.info(`press ${act.do}${act.id ? ` ${act.id}` : ''}`);
         switch (act.do) {
         case 'tab': this._drawn.setTab(act.tab); break;
@@ -664,7 +665,7 @@ class Store extends OnlineApp {
                     this._uplink({ op: 'wifi-scan' });
                 }
             }
-            if (act.page.name === 'app') {
+            if (act.page.name === 'app' || (act.page.name === 'changelog' && !(this._history && this._history.id === act.page.id))) {
                 // the component's update history, asked for each time its page opens
                 this._history = { id: act.page.id, status: 'loading', items: [] };
                 this._send({ op: 'history', id: act.page.id });

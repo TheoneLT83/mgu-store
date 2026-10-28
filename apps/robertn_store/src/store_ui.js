@@ -294,6 +294,41 @@ function historyView(m, c) {
         subColor: DIM, right: it.new ? 'chip:New' : '', chipColor: BLUE })) };
 }
 
+/* Text cut into lines of at most n characters (at spaces; longer words split). */
+function lines(text, n) {
+    const out = [];
+    String(text || '').split('\n').forEach((para) => {
+        const p = para.replace(/\s+$/, '');
+        if (!p.trim()) return;
+        const bullet = /^\s*[-*] /.test(p), words = p.replace(/^\s*[-*] /, '').split(/\s+/).filter(Boolean);
+        let line = bullet ? '- ' : '';           // ('•' is not in the baked fonts)
+        const lead = bullet ? '  ' : '';
+        words.forEach((w) => {
+            while (w.length > n) { if (line.trim()) { out.push(line); line = lead; } out.push(lead + w.slice(0, n)); w = w.slice(n); }
+            if ((line + w).length > n && line.trim()) { out.push(line); line = lead; }
+            line += (line.trim() ? ' ' : '') + w;
+        });
+        if (line.trim()) out.push(line);
+    });
+    return out;
+}
+
+/* The changelog page: the component's update history, newest first, each entry in
+ * full (a version with all its notes, or a commit with its date). */
+function changelogView(m, page) {
+    const c = rowOf(m, page);
+    const h = c && m.history && m.history.id === c.id ? m.history : null;
+    const status = !h || h.status === 'loading' ? 'Loading' : h.status === 'offline' ? 'Needs internet'
+        : h.status === 'error' ? 'Not available' : h.items.length ? `Installed ${c.installed || 'none'}` : 'No changelog';
+    const n = m.look === 'id7' ? 96 : 110, items = [];
+    (h ? h.items : []).forEach((it, i) => {
+        items.push({ id: `v${i}`, plain: true, title: it.rev ? it.title : `Version ${it.title}`, sub: it.rev ? it.date : '',
+            subColor: DIM, right: it.new ? 'chip:New' : '', chipColor: BLUE });
+        lines(it.rev ? '' : it.text, n).forEach((l, j) => items.push({ id: `v${i}.${j}`, note: true, title: l, color: 'dim' }));
+    });
+    return { title: { text: c ? `${c.title} changelog` : 'Changelog' }, status: { text: status, color: DIM }, list: { items, empty: '' } };
+}
+
 function appView(m, page) {
     const c = rowOf(m, page);
     if (!c) {
@@ -310,7 +345,8 @@ function appView(m, page) {
         icon: Object.assign(iconOf(c), { badge: mine ? '' : s.badge, progress: s.progress }),
         name: { text: c.title },
         author: { text: [c.author && `by ${c.author}`, c.source && `from ${src ? sourceLabel(src) : c.source}`].filter(Boolean).join(' · ') },
-        facts: { items: [{ text: `Version ${c.version}` }, c.size && { text: size(c.size) },
+        // the version opens the changelog (every entry of the update history, in full)
+        facts: { items: [{ text: `Version ${c.version}`, act: { do: 'open', page: { name: 'changelog', id: c.id } } }, c.size && { text: size(c.size) },
             // installed under another id than its source's
             c.listedId && !c.blocked && (c.installAs || c.id) !== c.listedId && { text: `Id ${c.installAs || c.id}` },
             { text: isTool(c) ? 'Tool' : 'App', color: isTool(c) ? TEAL : BLUE }, c.mguHmi && c.mguHmi.length && { text: hmiNames(c.mguHmi) },
@@ -667,6 +703,7 @@ function view(m) {
     case 'confirm': values = confirmView(m, page); break;
     case 'source': values = sourceView(m, page.id); break;
     case 'accounts': values = accountsView(m); break;
+    case 'changelog': values = changelogView(m, page); break;
     case 'pick': values = pickView(m); break;
     case 'login': values = loginView(m); break;
     case 'phone': values = phoneView(m); break;

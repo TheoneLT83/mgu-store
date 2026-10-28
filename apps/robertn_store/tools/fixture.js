@@ -96,6 +96,10 @@ function screens() {
             { title: '0.4.0', text: 'Video for third-party apps: a player writes decoded frames, the app draws them where its picture goes.',
                 date: '', rev: '', new: true },
             { title: '0.3.3', text: 'Another renderer\'s apps are no longer hidden by the foreground gate.', date: '', rev: '', new: false }] } }],
+        // the version pressed on its page: every entry in full
+        ['changelog-renderer', { stack: main.concat([{ name: 'app', id: 'mgu-render' }, { name: 'changelog', id: 'mgu-render' }]), history: { id: 'mgu-render', status: 'ok', items: [
+            { title: '0.4.0', text: '- Video for third-party apps: a player writes decoded frames, the app draws them where its picture goes, and the renderer draws the newest frame each time it draws the app.\n- Another line.', date: '', rev: '', new: true },
+            { title: '0.3.3', text: 'Another renderer\'s apps are no longer hidden by the foreground gate.', date: '', rev: '', new: false }] } }],
         ['confirm-remove', { stack: main.concat([{ name: 'app', id: 'gauges' }, { name: 'confirm', kind: 'remove', id: 'gauges' }]),
             focus: 0 }],
         ['installed', { tab: 'installed', stack: main }],

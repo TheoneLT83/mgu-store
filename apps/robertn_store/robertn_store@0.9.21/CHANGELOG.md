@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.21
+
+An app or tool's page: its version opens its changelog, every entry of its update history in full (each version with all its notes, or each commit with its date), newest first, scrolled by a finger or the controller.
+
 ## 0.9.20
 
 The tile keeps the name and icon the app manager gave it at install: the Store no longer sets its text at start, which the HMI at times showed as no name at all.
