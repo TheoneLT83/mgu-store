@@ -1,5 +1,10 @@
 # mgu-uplink changelog
 
+## 0.7.1
+
+- Our wpa_supplicant is installed as `mgu-wpa`, and the tool names `mgu-uplink` and `mgu-wpa` in `crashNames`: with deploy tool 0.6.0 a crash of either does not reboot the head unit.
+- Whether the car's D-Bus wpa_supplicant has `wlan1` is asked over the system bus directly, with the same 3 s limit; the uplink runs no `dbus-send`.
+
 ## 0.7.0
 
 - Wi-Fi: the unit joins a phone's hotspot or another access point through its own radio (`wlan1`, iDrive 7 and iDrive 8), and the uplink uses it like a plugged-in device, with the same DHCP, routing, uid rules, firewall and lease. Our own wpa_supplicant does the association: upstream 2.10 with a patch for the head unit's driver, built with the tool and shipped beside it. Off until switched on (`wifi = on`, or the `wifi-enable` request); off leaves the radio and the car's own Wi-Fi, hotspot and wireless CarPlay as they are. Switched on, `wlan1` is taken only while the car does not use it (an access point or P2P mode, hostapd, another or the D-Bus wpa_supplicant, connman); otherwise Wi-Fi is `unavailable`, and `wlan1` is given back when the car starts using it (not when a check only fails), and taken again no sooner than 60 s later, doubling. A wpa.conf wpa_supplicant can't read is moved to `wpa.conf.bad`. A failure to take `wlan1` or run wpa_supplicant is tried again after 30 s, doubling, and after 5 in a row not until Wi-Fi is switched on again. Saved networks are kept in `/var/opt/mgu-uplink/wifi/wpa.conf` (root only), each once it was joined with its password. From IterioDev mgu-wifi 1.0.0.

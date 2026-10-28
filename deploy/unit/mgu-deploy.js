@@ -44,7 +44,7 @@ var cp = require('child_process');
 
 /* deploy/component.json's version; bumped when a file under deploy/unit/
  * changes. */
-var VERSION = '0.5.10';
+var VERSION = '0.6.0';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -54,6 +54,7 @@ var CFG = {
     varOpt: env('MGU_DEPLOY_VAR_OPT', '/var/opt'),
     systemd: env('MGU_DEPLOY_SYSTEMD', '/etc/systemd/system'),
     recmgr: env('MGU_DEPLOY_RECMGR', '/etc/recmgr-restartlist.conf'),
+    crashList: env('MGU_DEPLOY_CRASHLIST', '/etc/crashhandler-restartlist.conf'),
     mainapp: env('MGU_DEPLOY_MAINAPP', '/usr/lib/oap-mainapp'),
     mainapp21: env('MGU_DEPLOY_MAINAPP21', '/usr/lib/oap-mainapp21'),
     // Hmi8's built-in applets: its RHMI applets' manifests (its -ro data) and its native applets
@@ -97,6 +98,7 @@ var BACKUPS_DIR = path.join(DEPLOY_DIR, 'backups');
 var KEEP_BACKUPS = 10;
 var LOCK_FILE = path.join(DEPLOY_DIR, 'lock');
 var RECMGR_AT_BOOT = path.join(DEPLOY_DIR, 'recmgr-at-boot.json');
+var CRASH_OWNED = path.join(DEPLOY_DIR, 'crash-names.json');
 var FALLBACK_UNIT = 'mgu-app-fallback.service';
 var FALLBACK_NAME = 'mgu-app-fallback';
 var FALLBACK_COPY = path.join(DEPLOY_DIR, 'main.js');
@@ -385,7 +387,7 @@ function groupExists(name) {
 }
 function systemctl(args, opts) { return run(CFG.systemctl, args, opts || { allowFail: true }); }
 function unitState(unit, verb) {
-    var r = systemctl([verb, unit]);
+    var r = systemctl(unit ? [verb, unit] : [verb]);
     return (r.stdout || '').trim() || 'unknown';
 }
 /* Full command lines: busybox's "ps w" cuts them at 131 columns, before
@@ -570,6 +572,166 @@ function recmgrWith(text, addNames, removeNames) {
     return out.join('\n');
 }
 
+/* ---- crash handler's restart whitelist ------------------------------------ */
+/* Every core dump goes to the crash handler (dlt-cdh), which reboots the
+ * unit unless the crashed program's file name is a line of [Whitelist] in
+ * its restart list (exact, case-sensitive). The crash handler reads the
+ * list when it starts, so a change counts from the next boot. A tool's
+ * crashNames go in there while it is installed; a tool whose
+ * component.json has no crashNames gets the names CRASH_NAMES_BUILTIN
+ * gives its id. Only names this tool added (CRASH_OWNED) are ever removed,
+ * and other lines and sections round-trip unchanged. A unit without the
+ * list has nothing written. A name is a file name of letters, digits and
+ * ._+-; a manifest's other entries are passed over. */
+
+var CRASH_NAMES_BUILTIN = {
+    'mgu-uplink': ['mgu-uplink'],
+    'mgu-render': ['mgu-render'],
+    'mgu-python': ['python3']
+};
+var CRASH_NAME = /^[A-Za-z0-9._+-]{1,255}$/;
+function crashNamesOf(c) {
+    var builtin = Object.prototype.hasOwnProperty.call(CRASH_NAMES_BUILTIN, c.id) ? CRASH_NAMES_BUILTIN[c.id] : [];
+    return (Array.isArray(c.crashNames) ? c.crashNames : builtin).filter(function (n) {
+        return typeof n === 'string' && CRASH_NAME.test(n);
+    });
+}
+function crashOwned() {
+    var o = readJsonOrNull(CRASH_OWNED);
+    return o && Array.isArray(o.names) ? o.names : [];
+}
+/* text with addNames after [Whitelist]'s last entry (in a new section at
+ * the end when it has none) and removeNames' lines out of it. */
+function crashListWith(text, addNames, removeNames) {
+    var lines = text.split('\n'), out = [], current = null, at = -1, eol = '';
+    lines.forEach(function (line) {
+        var m = /^\s*\[([^\]]+)\]\s*$/.exec(line), name = line.trim();
+        if (m) {
+            current = m[1]; out.push(line);
+            if (current === 'Whitelist' && at < 0) at = out.length;
+            return;
+        }
+        if (current === 'Whitelist' && name && removeNames.indexOf(name) >= 0) return;
+        out.push(line);
+        if (current === 'Whitelist' && name && name[0] !== '#' && name[0] !== ';') {
+            at = out.length; eol = /\r$/.test(line) ? '\r' : '';
+        }
+    });
+    if (!addNames.length) return out.join('\n');
+    var add = addNames.map(function (n) { return n + eol; });
+    if (at < 0) {
+        if (out.length && out[out.length - 1] !== '') out.push('');
+        out.push('[Whitelist]');
+        return out.concat(add).join('\n') + '\n';
+    }
+    return out.slice(0, at).concat(add, out.slice(at)).join('\n');
+}
+/* What keeps the list as the given tools want it: the rootfs op (null
+ * when the list is unchanged) and the names this tool then owns there;
+ * null on a unit without the list. */
+function crashListPlan(tools) {
+    var st = lstatOrNull(CFG.crashList);
+    if (!st || !st.isFile()) return null;
+    var text = fs.readFileSync(CFG.crashList, 'utf8'), want = [], owned = crashOwned();
+    tools.forEach(function (t) {
+        crashNamesOf(t.component).forEach(function (n) { if (want.indexOf(n) < 0) want.push(n); });
+    });
+    var have = recmgrSections(text).Whitelist || [];
+    var add = want.filter(function (n) { return have.indexOf(n) < 0; });
+    var remove = owned.filter(function (n) { return want.indexOf(n) < 0 && have.indexOf(n) >= 0; });
+    var next = crashListWith(text, add, remove);
+    return {
+        op: next === text ? null : { type: 'copy', data: next, path: CFG.crashList, mode: st.mode & 0o7777, uid: st.uid, gid: st.gid },
+        owned: owned.filter(function (n) { return want.indexOf(n) >= 0 && have.indexOf(n) >= 0; }).concat(add).sort(),
+        add: add, remove: remove
+    };
+}
+/* After the plan's op went through (remounted: / was remounted for it):
+ * the names this tool owns recorded, and one line for a change. */
+function crashListDone(plan, remounted) {
+    if (!plan) return null;
+    if (JSON.stringify(plan.owned) !== JSON.stringify(crashOwned().slice().sort())) {
+        mkdirp(DEPLOY_DIR);
+        writeAtomic(CRASH_OWNED, JSON.stringify({ names: plan.owned }) + '\n', 0o644);
+    }
+    if (!plan.op) return null;
+    var parts = [];
+    if (plan.add.length) parts.push('added ' + plan.add.join(', '));
+    if (plan.remove.length) parts.push('removed ' + plan.remove.join(', '));
+    if (remounted) parts.push('/ remounted read-write for it and back to read-only');
+    var line = parts.join('; ');
+    say('crash handler whitelist: ' + line);
+    return line;
+}
+/* What keeps the status sync from remounting /: another writer may be
+ * at work on it. app-privacy's boot run remounts / itself, without this
+ * tool's lock. Its run is done once the unit is active (RemainAfterExit)
+ * or failed, or inactive after the boot has started its units (an
+ * install enables it without starting it); any other state, or none
+ * readable, counts as ahead. Null when / is free to remount. */
+function rootBusy() {
+    var mode = rootMountMode();
+    if (mode !== 'ro') return '/ is ' + (mode === 'unknown' ? 'in an unknown mount state' : 'read-write') + ': another writer may be at work';
+    var privacy = 'app-privacy.service';
+    if (lstatOrNull(path.join(CFG.systemd, 'multi-user.target.wants', privacy))) {
+        var st = unitState(privacy, 'is-active');
+        var done = st === 'active' || st === 'failed' ||
+            st === 'inactive' && ['initializing', 'starting'].indexOf(unitState('', 'is-system-running')) < 0;
+        if (!done) return privacy + ' is ' + st + ': its boot run may remount /';
+    }
+    return null;
+}
+/* status's step: brings the crash handler's list to what the installed
+ * tools want, so a deploy tool update (which the version before it
+ * installs) writes it at the updater's status check after it, and a
+ * firmware update that put the stock list back is undone. It remounts /
+ * only for a change, only while / is read-only and no other writer can be
+ * at work (rootBusy), under this tool's lock, with a snapshot first; the
+ * window puts / back read-only on any exit. It says one line on stderr
+ * for a change. Returns { state: ok | changed | pending | error, reason }: pending is
+ * tried again at the next status. */
+function syncCrashList() {
+    var out = process.stdout.write, locked = false, mine = LOCK_FILE + '.' + process.pid;
+    function ownedChanges(p) { return JSON.stringify(p.owned) !== JSON.stringify(crashOwned().slice().sort()); }
+    // status --json keeps stdout for its JSON; the step's one line goes to stderr
+    process.stdout.write = function () { return true; };
+    try {
+        if (!FAKE && process.getuid() !== 0) return { state: 'pending', reason: 'status not run as root' };
+        var plan = crashListPlan(installedTools());
+        if (!plan) return { state: 'ok', reason: 'no crash handler list on this unit' };
+        if (!plan.op && !ownedChanges(plan)) return { state: 'ok', reason: 'up to date' };
+        var busy = plan.op && rootBusy();
+        if (busy) return { state: 'pending', reason: busy };
+        var held = lockState();
+        if (!held.free && !held.live) breakStaleLock();
+        fs.writeFileSync(mine, process.pid + ' ' + bootId() + '\n', { mode: 0o600 });
+        try { fs.linkSync(mine, LOCK_FILE); locked = true; } catch (e) { if (e.code !== 'EEXIST') throw e; }
+        rmrf(mine);
+        if (!locked) return { state: 'pending', reason: 'another mgu-deploy run holds the lock' };
+        plan = crashListPlan(installedTools());
+        if (!plan || !plan.op && !ownedChanges(plan)) return { state: 'ok', reason: 'up to date' };
+        if (!plan.op) {
+            crashListDone(plan, false);
+            return { state: 'ok', reason: 'the record of names this tool added is up to date' };
+        }
+        busy = rootBusy();
+        if (busy) return { state: 'pending', reason: busy };
+        takeSnapshot('crash-list', [CFG.crashList, CRASH_OWNED]);
+        var remounts = rootMountMode() === 'ro';
+        rootfsWindow([plan.op]);
+        var line = crashListDone(plan, remounts);
+        process.stderr.write('crash handler whitelist: ' + line + '\n');
+        pruneBackups();
+        return { state: 'changed', reason: line };
+    } catch (e) {
+        process.stderr.write('mgu-deploy: crash handler whitelist not updated: ' + e.message + '\n');
+        return { state: 'error', reason: e.message };
+    } finally {
+        rmrf(mine);
+        if (locked) releaseLock();
+        process.stdout.write = out;
+    }
+}
 
 /* ---- backups ------------------------------------------------------------ */
 /* A snapshot covers every file an operation touches: unit files,
@@ -621,9 +783,10 @@ function writeSnapshot(dir, command, paths) {
 }
 /* Every snapshot also records the files any command may leave changed:
  * this tool's state, the fallback's unit, link, copy and app list, the
- * recmgr list. The updater owns its sources and credentials. */
+ * recmgr list, the crash handler's list and the names this tool added to
+ * it. The updater owns its sources and credentials. */
 function alwaysSnapshotted() {
-    return [STATE_FILE, CFG.recmgr, customAppsFile(), FALLBACK_COPY,
+    return [STATE_FILE, CFG.recmgr, CFG.crashList, CRASH_OWNED, customAppsFile(), FALLBACK_COPY,
         path.join(CFG.systemd, FALLBACK_UNIT),
         path.join(CFG.systemd, 'multi-user.target.wants', FALLBACK_UNIT)];
 }
@@ -967,6 +1130,11 @@ function validateTool(file, dir, c) {
         if (typeof n !== 'string' || !n) throw refuse(file + ': bad recmgr/restart entry');
         if (n === 'oapcontroller' || n === 'oapcontroller.service') throw refuse(file + ': oapcontroller is never restarted');
     });
+    if (c.crashNames !== undefined && (!Array.isArray(c.crashNames) || !c.crashNames.every(function (n) {
+        return typeof n === 'string' && CRASH_NAME.test(n);
+    }))) {
+        throw refuse(file + ': crashNames is a list of process names, each a file name of letters, digits or ._+-');
+    }
     if (c.mguProvides !== undefined && !PROVIDES.test(c.mguProvides)) {
         throw refuse(file + ': mguProvides is one lower-case name, e.g. "renderer"');
     }
@@ -1596,7 +1764,10 @@ function installTool(a, state, tx) {
     i7.units.forEach(function (u) { ops.push({ type: 'delete', path: path.join(CFG.systemd, u) }); unitChanged = true; });
     var rec = recmgrOp(recmgrWith(recmgrText(), c.recmgr || [], []));
     if (rec) { ops.push(rec); unitChanged = true; }
+    var crash = crashListPlan(installedTools()), remounts = rootMountMode() === 'ro';
+    if (crash && crash.op) ops.push(crash.op);
     if (ops.length) rootfsWindow(ops);
+    crashListDone(crash, remounts);
     if (unitChanged) runOk(CFG.systemctl, ['daemon-reload']);
     if (i7.paths.length) {
         i7.files.forEach(function (f) { rmrf(path.join(I7_DIR, f)); });
@@ -2537,8 +2708,12 @@ function uninstallTool(id, state) {
     (c.dropins || []).forEach(function (d) { ops.push({ type: 'delete', path: dropinPath(d) }); });
     var rec = recmgrOp(recmgrWith(recmgrText(), [], removeRec));
     if (rec) ops.push(rec);
+    var unitOps = ops.length;
+    var crash = crashListPlan(installedTools().filter(function (t) { return t.id !== id; })), remounts = rootMountMode() === 'ro';
+    if (crash && crash.op) ops.push(crash.op);
     if (ops.length) rootfsWindow(ops);
-    if (ops.length) runOk(CFG.systemctl, ['daemon-reload']);
+    crashListDone(crash, remounts);
+    if (unitOps) runOk(CFG.systemctl, ['daemon-reload']);
     pruneCreatedDirs(state);
     var own = fs.readdirSync(root).filter(function (n) { return ['versions', 'current', 'current.new'].indexOf(n) < 0; });
     if (own.length) say('removing ' + id + "'s own files beside its versions: " + own.sort().join(', '));
@@ -3798,9 +3973,11 @@ function collectStatus(state) {
         idrive7: { apps: i7Apps(state) },
         stock_backup: fs.existsSync(path.join(BACKUPS_DIR, 'stock')) };
 }
-function cmdStatus(args) {
+function cmdStatus(args, crashList) {
     var s = collectStatus(loadState());
+    s.crash_list = crashList;
     if (args.json) { say(JSON.stringify(s)); return 0; }
+    say('crash handler whitelist: ' + crashList.state + ' (' + crashList.reason + ')');
     say('mgu-deploy ' + VERSION);
     say('head unit: ' + (s.unit.hmi ? hmiName(s.unit.hmi) : 'unknown') + ' (' + unitInfo().basis + '), firmware ' +
         (s.unit.firmware || 'unknown'));
@@ -4591,7 +4768,7 @@ function runCommand() {
         if (args.command === 'help' || args.command === '--help') { say(HELP); return 0; }
         if (args.command === 'check') return cmdCheck(args);
         if (args.command === 'install') return cmdInstall(args);
-        if (args.command === 'status') return cmdStatus(args);
+        if (args.command === 'status') return cmdStatus(args, syncCrashList());
         if (args.command === 'uninstall') return cmdUninstall(args);
         if (args.command === 'rollback') return cmdRollback(args);
         if (args.command === 'restore') return cmdRestore(args);

@@ -2,8 +2,9 @@ package main
 
 // The Wi-Fi provider's wpa_supplicant (wifi.go): upstream 2.10 with
 // wpa/wpa-mgu-sme-connect.patch, built by `make target` and installed next
-// to mgu-uplink. It runs on the Wi-Fi interface only, with the saved
-// networks in wpa.conf (update_config: SAVE_CONFIG writes them), and all
+// to mgu-uplink as wpaBin, a name of our own that the crash handler's
+// restart whitelist can list (crashNames). It runs on the Wi-Fi interface
+// only, with the saved networks in wpa.conf (update_config: SAVE_CONFIG writes them), and all
 // talk goes over its control socket. Any other wpa_supplicant on the unit
 // (the stock one CarPlay uses) is never touched.
 
@@ -25,6 +26,8 @@ import (
 )
 
 const maxNetworks = 20 // rows of the scan list
+
+const wpaBin = "mgu-wpa" // our wpa_supplicant, next to mgu-uplink
 
 type supplicant struct {
 	bin   string // the program
@@ -488,8 +491,9 @@ func unescape(s string) string {
 
 // ---- other processes ----
 
-// supplicants lists the wpa_supplicant processes under proc (/proc) that
-// run on iface: pid -> whether its config is conf (ours).
+// supplicants lists the wpa_supplicant processes under proc (/proc), ours
+// (wpaBin) among them, that run on iface: pid -> whether its config is conf
+// (ours).
 func supplicants(proc, iface, conf string) map[int]bool {
 	out := map[int]bool{}
 	dirs, _ := os.ReadDir(proc)
@@ -503,7 +507,7 @@ func supplicants(proc, iface, conf string) map[int]bool {
 			continue
 		}
 		args := strings.Split(strings.TrimRight(string(b), "\x00"), "\x00")
-		if !strings.Contains(filepath.Base(args[0]), "wpa_supplicant") {
+		if base := filepath.Base(args[0]); !strings.Contains(base, "wpa_supplicant") && base != wpaBin {
 			continue
 		}
 		on, own := false, false

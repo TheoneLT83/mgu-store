@@ -6,12 +6,9 @@ package main
 
 import (
 	"bufio"
-	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -77,23 +74,16 @@ func nl80211Iftype(iface string) (uint32, error) {
 }
 
 // dbusSupplicantHas asks the D-Bus wpa_supplicant (fi.w1.wpa_supplicant1)
-// whether it has iface, with the unit's dbus-send, killed after 3 s.
+// whether it has iface, giving up after 3 s.
 func dbusSupplicantHas(iface string) (bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, "dbus-send", "--system", "--print-reply", "--reply-timeout=2000",
-		"--dest=fi.w1.wpa_supplicant1", "/fi/w1/wpa_supplicant1",
-		"fi.w1.wpa_supplicant1.GetInterface", "string:"+iface).CombinedOutput()
+	err := dbusCall(3*time.Second, "fi.w1.wpa_supplicant1", "/fi/w1/wpa_supplicant1",
+		"fi.w1.wpa_supplicant1", "GetInterface", iface)
+	var e *dbusErrorReply
 	switch {
-	case ctx.Err() != nil:
-		return false, errors.New("dbus-send: no answer")
 	case err == nil:
 		return true, nil
-	case bytes.Contains(out, []byte("fi.w1.wpa_supplicant1.InterfaceUnknown")):
+	case errors.As(err, &e) && e.name == "fi.w1.wpa_supplicant1.InterfaceUnknown":
 		return false, nil
-	case len(bytes.TrimSpace(out)) > 0:
-		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
-		return false, errors.New(line)
 	}
 	return false, err
 }

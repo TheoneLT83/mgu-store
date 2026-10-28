@@ -192,8 +192,8 @@ tool itself):
 - the artifact's `component.json` is `{id, kind, version, title,
   description, files[{path, mode, sha256}], units[{name}], enable, recmgr,
   restart}`, `dropins[{unit, name}]` (each read from `from`), and `internet`
-  with `uids`, `mguHmi`, `mguProvides` and `keepRunning` when the tool
-  declares them;
+  with `uids`, `mguHmi`, `mguProvides`, `keepRunning` and `crashNames` when
+  the tool declares them;
 - members are sorted, owned 0:0, with the listed modes (`component.json` and
   units 0644) and one mtime: `SOURCE_DATE_EPOCH` when set, else the packer's
   fixed one (`tools/oap_pack.js`, which also writes the gzip header's OS byte
@@ -370,12 +370,14 @@ first. `restore` needs `--yes`, or `YES` typed at a terminal.
 /var/opt/<id>/current -> versions/<v>    the version in use (switched by rename)
 /etc/systemd/system/<unit>               units; <target>.wants/<unit> for enable
 /etc/recmgr-restartlist.conf             recmgr's restart list
+/etc/crashhandler-restartlist.conf       the crash handler's restart list
 /var/opt/mgu-deploy/versions/<v>/        the deploy tool itself (mgu-deploy.js, .sh, fallback_build.js,
                                          mgu-app-fallback.service, oap_link.js, oap_pack.js)
 /var/opt/mgu-deploy/current -> versions/<v>
 /var/opt/mgu-deploy/mgu-deploy.sh        shim: runs current/mgu-deploy.sh
 /var/opt/mgu-deploy/state.json           pending reboots, apps' uids, the last bounce
 /var/opt/mgu-deploy/recmgr-at-boot.json  the recmgr list as it stood at this boot
+/var/opt/mgu-deploy/crash-names.json     the names this tool added to the crash handler's list
 /var/opt/mgu-deploy/lock                 the changing run's pid and boot
 /var/opt/mgu-deploy/backups/<time>-<command>/, backups/stock/   (0700)
 /var/opt/mgu-deploy/main.js              the fallback copy of the manager's main.js
@@ -1035,6 +1037,40 @@ and `apps.d/<id>` (the app id) for every installed component that declares
 it, and removes the ones of components that are gone; installing
 `mgu-uplink` writes them all. mgu-uplink reads both folders besides its
 conf. The files are in the component's snapshot.
+
+### The crash handler's whitelist
+
+A crashing process's core dump goes to the crash handler, which reboots the
+head unit unless the program's file name is a line of `[Whitelist]` in
+`/etc/crashhandler-restartlist.conf` (exact and case-sensitive; `node` is
+there). A tool lists the file names of the programs it runs in
+`component.json`:
+
+```json
+"crashNames": ["mgu-uplink", "mgu-wpa"]
+```
+
+each a file name of letters, digits or `._+-` (other names are refused). A name the
+car's own programs use (`sh`, `wpa_supplicant`, `dbus-send`) does not belong
+there: give the program a name of its own instead. A tool without
+`crashNames` gets the names this tool knows for it: `mgu-uplink`,
+`mgu-render`, and `python3` for `mgu-python`.
+
+Every tool install and uninstall puts the names of the installed tools into
+`[Whitelist]`, after its last entry, and takes out the ones it added that no
+installed tool still names; the change is in the install's snapshot. A name
+already in the list is left as it is and never removed. Other lines and
+sections stay byte for byte. `status`, run as root, does the same: a deploy
+tool update brings the names at the updater's check after it, and a firmware
+update that put back the stock list gets them again. It remounts `/` only for
+a change, under this tool's lock and with a snapshot of its own, and puts it
+back read-only on any exit. It waits while `/` is read-write, while
+app-privacy's boot run (which remounts `/` itself) has not finished, or while
+another run holds the lock, and tries again at the next `status`. `status
+--json` reports it as `crash_list: {state, reason}`, `state` being `ok`,
+`changed`, `pending` or `error`; a change is also one line on stderr. The
+crash handler reads the list when it starts: a change counts from the next
+boot. A unit without the file is left alone.
 
 ### One transaction per artifact
 

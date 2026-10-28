@@ -8,7 +8,8 @@
 # crash-loops while that link points at that target: each show then
 # finds its NRestarts one higher. A call whose arguments equal $FAKE_FAIL
 # exits 1. is-enabled answers "enabled" for a unit file present in
-# $MGU_DEPLOY_SYSTEMD.
+# $MGU_DEPLOY_SYSTEMD. is-system-running answers what $FAKE_UNITS/system holds,
+# else "running".
 echo "$*" >> "$FAKE_SYSTEMCTL_LOG"
 if [ -n "$FAKE_FAIL" ] && [ "$*" = "$FAKE_FAIL" ]; then echo "failing as asked" >&2; exit 1; fi
 S="$FAKE_UNITS"
@@ -30,6 +31,9 @@ is-active)
     a=$(active_of "$2"); echo "$a"
     [ "$a" = active ] && exit 0
     exit 3 ;;
+is-system-running)
+    if [ -n "$S" ] && [ -f "$S/system" ]; then cat "$S/system"; else echo running; fi
+    exit 0 ;;
 is-enabled)
     if [ -f "$MGU_DEPLOY_SYSTEMD/$2" ]; then echo enabled; exit 0; fi
     echo disabled; exit 1 ;;

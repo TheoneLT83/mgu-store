@@ -143,7 +143,7 @@ A check that fails (no answer from D-Bus, nl80211) is no reason to give
 - `wlan1` in any mode but station (an access point, P2P), read through nl80211
 - hostapd on `wlan1`
 - another wpa_supplicant on `wlan1`, or the unit's D-Bus wpa_supplicant
-  (`wpa_supplicant -u`) having `wlan1` (asked with `dbus-send`)
+  (`wpa_supplicant -u`) having `wlan1` (asked over the system bus)
 - connman managing `wlan1` (its `-i`/`-I` options and `main.conf`'s
   `NetworkInterfaceBlacklist`); on the 88W9098 units connman manages only
   the CarPlay interfaces (`connmand -i wfd0,p2p-wfd0-0,p2p-wfd0-1`)
@@ -158,7 +158,7 @@ nothing is looked at meanwhile); after
 service restarts. An iPhone's hotspot is seen with Settings → Personal
 Hotspot → Maximise Compatibility on (2.4 GHz).
 
-The association is our own wpa_supplicant (`wpa_supplicant`, beside
+The association is our own wpa_supplicant (`mgu-wpa`, beside
 `mgu-uplink`): upstream 2.10 with [`wpa/wpa-mgu-sme-connect.patch`](wpa/wpa-mgu-sme-connect.patch).
 The unit's driver (moal, `host_mlme=1`) reports the association that
 wpa_supplicant's SME asked for as a connect event, which upstream ignores in
@@ -278,12 +278,12 @@ restart; `preferred` and `wifi` set by a request take effect at once.
 ## Build, install, update
 
 ```sh
-make -C native/mgu-uplink target    # build/target/mgu-uplink (static linux/amd64) and build/target/wpa_supplicant
+make -C native/mgu-uplink target    # build/target/mgu-uplink (static linux/amd64) and build/target/mgu-wpa
 make -C native/mgu-uplink test      # Linux; on a Mac: test-docker
 deploy/hu install mgu-uplink        # build and install over SSH (deploy/README.md)
 ```
 
-`build/target/wpa_supplicant` is built with Docker (linux/amd64), in
+`build/target/mgu-wpa` is built with Docker (linux/amd64), in
 Ubuntu 18.04 ([`wpa/Dockerfile`](wpa/Dockerfile)): the unit's glibc 2.27 and
 loader `/lib/ld-linux-x86-64.so.2`, linked against the `libnl-3`,
 `libnl-genl-3` and `libcrypto` 1.1 the unit has. The image holds upstream's
@@ -321,7 +321,7 @@ there from the source listing it, of several the one listing it as
 
 | Path | What |
 |---|---|
-| `/var/opt/mgu-uplink/versions/<version>/` | `mgu-uplink`, `wpa_supplicant`, `mgu-uplink.conf`, `component.json` |
+| `/var/opt/mgu-uplink/versions/<version>/` | `mgu-uplink`, `mgu-wpa` (our wpa_supplicant), `mgu-uplink.conf`, `component.json` |
 | `/var/opt/mgu-uplink/current` | the version in use |
 | `/var/opt/mgu-uplink/mgu-uplink.local.conf` | the unit's settings |
 | `/var/opt/mgu-uplink/mgu-uplink.settings.conf` | what the Store set (`preferred`, `wifi`) |

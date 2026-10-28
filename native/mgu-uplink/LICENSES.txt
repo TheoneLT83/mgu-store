@@ -452,7 +452,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ==== wpa_supplicant 2.10, with wpa/wpa-mgu-sme-connect.patch ====
 
-The wpa_supplicant program shipped beside mgu-uplink, built from upstream's
+The wpa_supplicant program shipped beside mgu-uplink as mgu-wpa, built from upstream's
 release with mgu-store's patch, which is under the same licence.
 
 wpa_supplicant and hostapd

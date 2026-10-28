@@ -163,8 +163,9 @@ func TestStockUsers(t *testing.T) {
 	}
 }
 
-// Only a wpa_supplicant with our config is ours; one on the interface with
-// another config is someone else's; one on another interface is not seen.
+// Only a wpa_supplicant with our config is ours, under its own name (mgu-wpa)
+// or the stock one; one on the interface with another config is someone
+// else's; one on another interface is not seen.
 func TestSupplicants(t *testing.T) {
 	proc := t.TempDir()
 	conf := "/var/opt/mgu-uplink/wifi/wpa.conf"
@@ -173,11 +174,12 @@ func TestSupplicants(t *testing.T) {
 		"102": {"/usr/sbin/wpa_supplicant_nxp", "-iwlan1", "-c/etc/wpa.conf"},
 		"103": {"/usr/sbin/wpa_supplicant_nxp", "-iwfd0", "-Dnl80211"},
 		"104": {"/bin/sleep", "-i", "wlan1"},
+		"105": {"/var/opt/mgu-uplink/current/mgu-wpa", "-i", "wlan1", "-D", "nl80211", "-c", conf},
 	} {
 		writeFile(t, filepath.Join(proc, pid, "cmdline"), strings.Join(args, "\x00")+"\x00")
 	}
 	got := supplicants(proc, "wlan1", conf)
-	if len(got) != 2 || !got[101] || got[102] {
+	if len(got) != 3 || !got[101] || got[102] || !got[105] {
 		t.Fatalf("supplicants %v", got)
 	}
 }

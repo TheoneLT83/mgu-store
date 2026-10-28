@@ -90,7 +90,7 @@ func runService(c config, up Uplink) error {
 	setStatus(nil, stateSearching, "")
 	setStatusPreferred(c.Preferred)
 	if su, ok := up.(*scanUplink); ok {
-		s.wifi = newWiFiProvider(c, filepath.Join(filepath.Dir(self), "wpa_supplicant"))
+		s.wifi = newWiFiProvider(c, filepath.Join(filepath.Dir(self), wpaBin))
 		s.wifi.notify = s.kickReconcile
 		su.wifi = s.wifi
 		s.wifi.start()

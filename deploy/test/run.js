@@ -308,6 +308,7 @@ function fakeRoot(opts) {
         MGU_DEPLOY_VAR_OPT: p('var/opt'),
         MGU_DEPLOY_SYSTEMD: p('etc/systemd/system'),
         MGU_DEPLOY_RECMGR: p('etc/recmgr-restartlist.conf'),
+        MGU_DEPLOY_CRASHLIST: p('etc/crashhandler-restartlist.conf'),
         MGU_DEPLOY_MAINAPP: p('usr/lib/oap-mainapp'),
         MGU_DEPLOY_MAINAPP21: p('usr/lib/oap-mainapp21'),
         MGU_DEPLOY_PROV: p('usr/share/tm/prov'),
@@ -2901,6 +2902,159 @@ function namedTool(id, version, edit) {
     return path.join(out, `${id}@${version}.tgz`);
 }
 
+/* The crash handler's restart list, as iDrive 8 ships it (no newline at
+ * the end). */
+const CRASH_LIST = '\n[Whitelist]\nMonitor\nnode\n; a comment\nsocat\n\n[ForceRestartList]\ndbus-daemon\nNodeStateManager';
+
+/* Our tools' names go into the crash handler's [Whitelist] while they are
+ * installed (crashNames, or the built-in names of a tool that has none),
+ * idempotently and snapshotted, and come out with them; nothing else in
+ * the file changes, a stock name stays, and a unit without the list is
+ * left alone. status (as root, lock free) catches up a list written
+ * without them. */
+function testCrashList() {
+    const root = fakeRoot();
+    const list = root.p('etc/crashhandler-restartlist.conf');
+    const owned = root.p('var/opt/mgu-deploy/crash-names.json');
+    write(list, CRASH_LIST);
+    fs.chmodSync(list, 0o640);
+    const uplink = namedTool('mgu-uplink', '0.8.0', (c) => { c.crashNames = ['mgu-uplink', 'mgu-wpa', 'node']; });
+    let r = root.run(['install', '--artifact', uplink, '--yes']);
+    const after = CRASH_LIST.replace('socat\n', 'socat\nmgu-uplink\nmgu-wpa\n');
+    check('crash list: install adds the names after [Whitelist]\'s last entry, the rest byte for byte',
+        r.status === 0 && fs.readFileSync(list, 'utf8') === after && mode(list) === 0o640 &&
+        r.out.includes('crash handler whitelist: added mgu-uplink, mgu-wpa'), r.out + fs.readFileSync(list, 'utf8'));
+    check('crash list: only the names it added are recorded as its own (node is stock)',
+        JSON.stringify(readJson(owned).names) === JSON.stringify(['mgu-uplink', 'mgu-wpa']));
+    const backups = fs.readdirSync(root.p('var/opt/mgu-deploy/backups')).filter((b) => b !== 'stock').sort();
+    const manifest = readJson(root.p(`var/opt/mgu-deploy/backups/${backups[backups.length - 1]}/manifest.json`));
+    check('crash list: the install\'s snapshot holds the list as it was',
+        manifest.entries.some((e) => e.path === list && e.kind === 'file' && e.sha256 === sha256(Buffer.from(CRASH_LIST))));
+    r = root.run(['install', '--artifact', uplink, '--yes']);
+    check('crash list: a reinstall changes nothing', r.status === 0 && fs.readFileSync(list, 'utf8') === after &&
+        !r.out.includes('crash handler whitelist'), r.out);
+    r = root.run(['install', '--artifact', namedTool('mgu-render', '0.4.0'), '--yes']);
+    check('crash list: a tool without crashNames gets its built-in names',
+        r.status === 0 && fs.readFileSync(list, 'utf8') === after.replace('mgu-wpa\n', 'mgu-wpa\nmgu-render\n'), r.out);
+    r = root.run(['uninstall', 'mgu-uplink', '--yes']);
+    check('crash list: uninstalling removes its names, the stock one stays',
+        r.status === 0 && fs.readFileSync(list, 'utf8') === CRASH_LIST.replace('socat\n', 'socat\nmgu-render\n') &&
+        JSON.stringify(readJson(owned).names) === JSON.stringify(['mgu-render']) &&
+        r.out.includes('crash handler whitelist: removed mgu-uplink, mgu-wpa'), r.out);
+    r = root.run(['uninstall', 'mgu-render', '--yes']);
+    check('crash list: with none of ours left the file is as it was', r.status === 0 && fs.readFileSync(list, 'utf8') === CRASH_LIST, r.out);
+    r = root.run(['install', '--artifact', namedTool('mgu-uplink', '0.8.1', (c) => { c.crashNames = ['mgu uplink']; }), '--yes']);
+    check('crash list: a name that is not a plain file name is refused', r.status === 2 && r.out.includes('crashNames'), r.out);
+    // a manifest an older deploy tool installed as it came: its bad names are passed over
+    r = root.run(['install', '--artifact', namedTool('long-names', '0.1.0', (c) => { c.crashNames = ['robertn-logger-enet']; }), '--yes']);
+    const manifestFile = root.p('var/opt/long-names/current/component.json');
+    const m = readJson(manifestFile);
+    m.crashNames.push(' x', '[Other]');
+    fs.writeFileSync(manifestFile, JSON.stringify(m));
+    const r1 = root.run(['status', '--json']), text1 = fs.readFileSync(list, 'utf8');
+    const r2 = root.run(['status', '--json']);
+    check('crash list: a long file name is listed; bad names in an installed manifest are skipped, status settles',
+        r.status === 0 && r1.status === 0 && r2.status === 0 && text1 === CRASH_LIST.replace('socat\n', 'socat\nrobertn-logger-enet\n') &&
+        fs.readFileSync(list, 'utf8') === text1, r.out + r1.out + r2.out + text1);
+    root.run(['uninstall', 'long-names', '--yes']);
+    r = root.run(['install', '--artifact', namedTool('constructor', '0.1.0'), '--yes']);
+    check('crash list: a tool whose id is an Object property name has no built-in names',
+        r.status === 0 && fs.readFileSync(list, 'utf8') === CRASH_LIST, r.out);
+    root.run(['uninstall', 'constructor', '--yes']);
+
+    // a tool installed while the list was absent: nothing written; status catches up once it is there
+    const bare = fakeRoot();
+    const bareList = bare.p('etc/crashhandler-restartlist.conf');
+    r = bare.run(['install', '--artifact', namedTool('mgu-uplink', '0.7.0'), '--yes']);
+    check('crash list: a unit without the list gets none', r.status === 0 && !fs.existsSync(bareList) &&
+        !fs.existsSync(bare.p('var/opt/mgu-deploy/crash-names.json')), r.out);
+    write(bareList, '[Whitelist]\r\nnode\r\n');
+    const crashState = (res) => { try { return JSON.parse(res.stdout).crash_list; } catch (e) { return null; } };
+    const unchanged = () => fs.readFileSync(bareList, 'utf8') === '[Whitelist]\r\nnode\r\n';
+    write(bare.p('var/opt/mgu-deploy/lock'), `1 ${fs.readFileSync(bare.p('proc/boot_id'), 'utf8').trim()}\n`);
+    r = bare.run(['status', '--json']);
+    check('crash list: status leaves it while another run holds the lock, and says so',
+        r.status === 0 && unchanged() && crashState(r).state === 'pending' && /holds the lock/.test(crashState(r).reason), r.out);
+    // a lock from an earlier boot is stale
+    write(bare.p('var/opt/mgu-deploy/lock'), '1 boot-0\n');
+    // / read-write: another writer (app-privacy's boot run, someone's shell) may be at work
+    write(bare.p('proc/mounts'), 'rootfs / ext4 rw,relatime 0 0\n');
+    r = bare.run(['status', '--json']);
+    check('crash list: status does not touch it while / is read-write',
+        r.status === 0 && unchanged() && crashState(r).state === 'pending' && /read-write/.test(crashState(r).reason), r.out);
+    write(bare.p('proc/mounts'), 'rootfs / ext4 ro,relatime 0 0\n');
+    // app-privacy's boot run, which remounts / itself, has not finished
+    const units = `${bare.R}.units`;
+    write(bare.p('etc/systemd/system/app-privacy.service'), '[Service]\nType=oneshot\n');
+    fs.symlinkSync('../app-privacy.service', bare.p('etc/systemd/system/multi-user.target.wants/app-privacy.service'));
+    write(path.join(units, 'system'), 'starting\n');
+    write(path.join(units, 'app-privacy.service.active'), 'inactive\n');
+    r = bare.run(['status', '--json']);
+    check('crash list: status waits while the boot has app-privacy\'s run still ahead',
+        r.status === 0 && unchanged() && crashState(r).state === 'pending' && /app-privacy\.service is inactive/.test(crashState(r).reason), r.out);
+    write(path.join(units, 'app-privacy.service.active'), 'activating\n');
+    r = bare.run(['status', '--json']);
+    check('crash list: status waits while app-privacy\'s boot run is activating',
+        r.status === 0 && unchanged() && crashState(r).state === 'pending' && /is activating/.test(crashState(r).reason), r.out);
+    // both at once: app-privacy's boot run remounts / read-write, writes and puts / back, while the
+    // updater's status runs again and again; it finishes (active, boot done) only once the test says so
+    const release = `${bare.R}.privacy-done`;
+    const privacyRun = cp.spawn('sh', ['-c',
+        'echo activating > "$1/app-privacy.service.active"; sleep 0.2; ' +
+        'echo "rootfs / ext4 rw,relatime 0 0" > "$2"; sleep 0.4; echo "rootfs / ext4 ro,relatime 0 0" > "$2"; ' +
+        'while [ ! -f "$3" ]; do sleep 0.05; done; echo active > "$1/app-privacy.service.active"; echo running > "$1/system"',
+    'sh', units, bare.p('proc/mounts'), release], { stdio: 'ignore' });
+    const during = [];
+    for (let i = 0; i < 4; i += 1) {
+        during.push(crashState(bare.run(['status', '--json'])));
+        cp.spawnSync('sh', ['-c', 'sleep 0.25']);
+    }
+    write(release, '');
+    for (let i = 0; i < 40 && fs.readFileSync(path.join(units, 'system'), 'utf8').trim() !== 'running'; i += 1) {
+        cp.spawnSync('sh', ['-c', 'sleep 0.05']);
+    }
+    privacyRun.kill();
+    check('crash list: while app-privacy\'s boot run is at work, every status waits and writes nothing',
+        during.every((c) => c && c.state === 'pending') && unchanged(), JSON.stringify(during));
+    const before = fs.readdirSync(bare.p('var/opt/mgu-deploy/backups')).length;
+    r = bare.run(['status', '--json']);
+    check('crash list: once the boot is done, status adds the built-in names (in the file\'s line ending), snapshotted, one line, reported',
+        r.status === 0 && crashState(r) && crashState(r).state === 'changed' &&
+        crashState(r).reason === 'added mgu-uplink; / remounted read-write for it and back to read-only' &&
+        fs.readFileSync(bareList, 'utf8') === '[Whitelist]\r\nnode\r\nmgu-uplink\r\n' &&
+        fs.readdirSync(bare.p('var/opt/mgu-deploy/backups')).length === before + 1 &&
+        r.stderr === 'crash handler whitelist: added mgu-uplink; / remounted read-write for it and back to read-only\n' &&
+        !fs.existsSync(bare.p('var/opt/mgu-deploy/lock')), r.out);
+    r = bare.run(['status', '--json']);
+    check('crash list: status again changes nothing and says ok',
+        r.status === 0 && fs.readdirSync(bare.p('var/opt/mgu-deploy/backups')).length === before + 1 && !r.stderr &&
+        crashState(r).state === 'ok', r.out);
+    // a name this tool added that has left the list and that nothing wants: only the record changes, no remount
+    const ownedFile = bare.p('var/opt/mgu-deploy/crash-names.json');
+    write(ownedFile, JSON.stringify({ names: ['gone', 'mgu-uplink'] }) + '\n');
+    const listBefore = fs.readFileSync(bareList, 'utf8');
+    r = bare.run(['status', '--json']);
+    check('crash list: status drops a gone name from its record without touching the list',
+        r.status === 0 && crashState(r).state === 'ok' && JSON.stringify(readJson(ownedFile).names) === '["mgu-uplink"]' &&
+        fs.readFileSync(bareList, 'utf8') === listBefore && !r.stderr, r.out);
+    r = bare.run(['status']);
+    check('crash list: plain status prints the step\'s result', r.status === 0 && r.stdout.includes('crash handler whitelist: ok (up to date)'), r.out);
+    // a fresh app-privacy install enables the unit without starting it: after the boot that is not a run ahead
+    write(path.join(units, 'app-privacy.service.active'), 'inactive\n');
+    write(bareList, '[ForceRestartList]\ndbus-daemon\n');
+    r = bare.run(['status', '--json']);
+    check('crash list: a list without [Whitelist] gets one at the end (app-privacy enabled, not started, boot done)',
+        r.status === 0 && fs.readFileSync(bareList, 'utf8') === '[ForceRestartList]\ndbus-daemon\n\n[Whitelist]\nmgu-uplink\n', r.out);
+    // a list that cannot be read: status reports the error and still answers; an install fails before it changes anything
+    const unreadable = { MGU_DEPLOY_CRASHLIST: '/proc/self/mem' };
+    r = bare.run(['status', '--json'], unreadable);
+    check('crash list: an unreadable list is an error in status, which still answers',
+        r.status === 0 && crashState(r) && crashState(r).state === 'error', r.out);
+    r = bare.run(['install', '--artifact', namedTool('mgu-render', '0.4.0'), '--yes'], unreadable);
+    check('crash list: an install with an unreadable list fails at its snapshot, nothing installed',
+        r.status !== 0 && !fs.existsSync(bare.p('var/opt/mgu-render')), r.out);
+}
+
 function testInternet() {
     const root = fakeRoot();
     const uids = root.p('var/opt/mgu-uplink/uids.d/net-tool');
@@ -4418,6 +4572,7 @@ const SUITES = [
     testSourcePackages,
     testThirdParty,
     testInternet,
+    testCrashList,
     testSourcesAndDonor,
     testMguInstall,
     testMguInstallFrom,
