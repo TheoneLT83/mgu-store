@@ -1,5 +1,9 @@
 # mgu-render changelog
 
+## 0.5.1
+
+- iDrive 7 HmiMain3D builds whose page stays black with the template in place (MGU P18_23w44.2, MainApp 8.3.2 on a G20/G01) get no template and no marker: the Store and the apps draw in their own layer there. The list is NO_EMBED in mgu-render-hmi.sh.
+
 ## 0.5.0
 
 - Embed frames are drawn straight into GPU buffers the HMI's compositor shows (zero-copy): three linear XRGB8888 dmabufs from GBM (`libgbm.so.1`, loaded when needed), each the texture of an FBO, given to the compositor with `wl_drm`'s `create_prime_buffer`. Used when the compositor offers `wl_drm` v2 with PRIME and XRGB8888 and the renderer's EGL imports dmabufs; otherwise frames are read back into its shared memory as before, and so until mgu-render restarts once the compositor refused the buffers (a `wl_drm` protocol error; mgu-render reconnects at once) or they could not be made. The journal says `embed: zero-copy` or `embed: readback fallback (<why>)`, and lists the compositor's globals. `embed_zero_copy = 0` reads back always.

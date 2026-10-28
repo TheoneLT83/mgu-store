@@ -108,6 +108,15 @@ if [ -n "$BUILD" ]; then
 	exit 0
 fi
 
+# HmiMain3D builds whose page stays black with the template in place (seen on a G-series 330e/X3,
+# MGU P18_23w44.2, MainApp 8.3.2: the Store drawn there showed nothing): no template and no marker,
+# so the renderer draws the apps in their own layer instead. One "<size> <mtime>" per line.
+NO_EMBED='170125032 1695973224'
+if printf '%s
+' "$NO_EMBED" | grep -qx "$(stat -L -c '%s %Y' "$HMI")"; then
+	echo "mgu-render-hmi: this HmiMain3D shows no in-page drawing; the apps draw in their own layer"
+	exit 0
+fi
 if ! built; then
 	echo "mgu-render-hmi: no page template for this HmiMain3D; the stock widgets stay"
 	exit 0
