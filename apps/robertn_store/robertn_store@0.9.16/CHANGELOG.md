@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.16
+
+The widget screens also take over when the renderer takes the Store's picture off screen later while the Store still asks for it (it showed for a minute, then left the empty host page).
+
 ## 0.9.15
 
 When the renderer has been asked to show the Store for 6 s and never says its picture is on screen (an HMI build where it stays hidden), the Store goes on with its widget screens until it restarts, instead of leaving the empty host page up.

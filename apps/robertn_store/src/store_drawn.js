@@ -40,7 +40,7 @@ const ICONS_KEPT = 48;                  // decoded pictures kept, the most recen
 const FPS = 30;                         // frames a second at most: the screens move little
 const KEEPALIVE_MS = 1000;              // the renderer hides an app silent for 3 s
 const CLOSED_RESHOW_MS = 700;           // a touch outside that left the page where it was
-const STUCK_MS = 6000;                  // shown this long and never on screen: the widget screens instead
+const STUCK_MS = 6000;                  // asked to show and off screen this long: the widget screens instead
 const DRAG_PX = 14;
 // FrontCCU frontRotaryEncoderPushButton pushed (short, long): by name or ordinal
 const PUSHED = ['DREHGEBER_KURZ_GEDRUECKT', 'DREHGEBER_LANG_GEDRUECKT', 1, 2];
@@ -112,6 +112,8 @@ class Drawn extends EventEmitter {
             this.onScreen = !!(st && st.onScreen);
             if (this.onScreen) {
                 clearTimeout(this.stuckTimer);
+            } else if (this.on_) {
+                this._watchStuck();         // taken off screen while the Store still asks for it
             }
         });
     }
@@ -320,21 +322,27 @@ class Drawn extends EventEmitter {
             this.render();
         }
         this.gpu.show(on);
-        // a renderer that never puts the picture on screen (seen on some HMI builds) would leave the
+        // a renderer that does not put the picture on screen (seen on some HMI builds) would leave the
         // host state's empty page up: after STUCK_MS the Store goes on with its widget screens
         clearTimeout(this.stuckTimer);
         if (on && !this.onScreen) {
-            const ms = this.stuckMs || STUCK_MS;
-            this.stuckTimer = setTimeout(() => {
-                if (this.on_ && !this.onScreen && this.mode) {
-                    this.log.warn(`renderer: ${this.mode} shown for ${ms / 1000} s but never on screen; widget screens`);
-                    this.stuck = true;
-                    this._setMode(null);
-                }
-            }, ms);
+            this._watchStuck();
         }
         clearInterval(this.keepalive);
         this.keepalive = on ? setInterval(() => this.render(), KEEPALIVE_MS) : null;
+    }
+
+    /* Asked to show and not on screen for STUCK_MS: the widget screens until the Store restarts. */
+    _watchStuck() {
+        const ms = this.stuckMs || STUCK_MS;
+        clearTimeout(this.stuckTimer);
+        this.stuckTimer = setTimeout(() => {
+            if (this.on_ && !this.onScreen && this.mode) {
+                this.log.warn(`renderer: ${this.mode} asked to show, not on screen for ${ms / 1000} s; widget screens`);
+                this.stuck = true;
+                this._setMode(null);
+            }
+        }, ms);
     }
 
     /* Draws the frame (sent while the renderer is ready and the page is
