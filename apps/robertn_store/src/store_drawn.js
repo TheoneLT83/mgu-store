@@ -460,6 +460,7 @@ class Drawn extends EventEmitter {
         // the frames mgu-render gets: those RenderClient.frame() writes (false from it can also mean the socket's
         // buffer is full, the frame still on its way)
         const written = this.gpu.ready && this.gpu.native && !!this.gpu.placement;
+        const ts = this.timing.on ? usNow() : 0;      // before the write: mgu-render may have it before the write returns
         this.gpu.frame(rec);
         if (written) {
             const n = ++this.timing.sent;
@@ -467,7 +468,7 @@ class Drawn extends EventEmitter {
                 this.timing.trace('build-start', n, kind, b0);
                 this.timing.trace('build-end', n, kind, b1);
             }
-            this.timing.trace('send', n);
+            this.timing.trace('send', n, '', ts);
         }
         if (t1) { this.timing.frames++; this.timing.send += msNow() - t1; }
         this.retired.forEach((L) => {
