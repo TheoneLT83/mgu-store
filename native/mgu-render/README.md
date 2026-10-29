@@ -99,7 +99,9 @@ from the installed HmiMain3D.
   app's frames a second, render time and path are logged once a second (`stats <app>: ...`); an embed app's line
   adds the HMI's frame callbacks in that second and the time from each commit to its callback. The Store then
   appends its own line to `/dev/shm/robertn_store-stats.log` (`stats store: ...`: builds, frames sent, touch
-  events, CPU).
+  events, CPU). Each step of an app's frames and touches also goes to `/run/mgu-render/trace.log`, the Store's to
+  `/dev/shm/robertn_store-trace.log`; `node tools/car-test/trace.js <mgu-render's> <the Store's>` gives the time
+  each step takes.
 
 An update does not stop a running mgu-render (`keepRunning` in
 `component.json`): the files and units are replaced, the running daemon goes

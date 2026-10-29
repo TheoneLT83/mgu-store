@@ -963,8 +963,8 @@ function runDrawn() {
             'at rest: the frame built again, the drag\'s two layers dropped');
         const top = drawn.scroll[g.key], first = drawn.items.find((i) => i.label === 'DOOM');
         eq(Math.round(first.y), Math.round(g.y - top * g.step), 'items where the rows came to rest');
-        // the page built whole during a drag (a state change): the next drag frame draws from it, the old layers dropped
-        // (a frame pending at the renderer: the whole build waits for its TICK, the drag frame after it draws from it)
+        // a state change during a drag waits for its release: the drag frames keep their layers (a frame pending
+        // at the renderer: drawn at its TICK); the release builds the page from the new state
         gpu.emit('touch', 'down', x0, y0);
         gpu.emit('touch', 'move', x0, y0 - 40);
         const before = [...frames[frames.length - 1].layersUsed];
@@ -976,9 +976,11 @@ function runDrawn() {
         gpu.waiting = false;
         gpu.emit('tick');
         const after = [...frames[frames.length - 1].layersUsed];
-        eq([frames.length - n2, after.length, after.some((id) => before.indexOf(id) >= 0), dropped.slice(d1).sort()],
-            [1, 2, false, before.sort()], 'at the TICK: a drag frame of new layers from the new state, the old ones dropped');
+        eq([frames.length - n2, after.sort(), dropped.length - d1], [1, before.sort(), 0],
+            'at the TICK: a drag frame of the same layers, none dropped');
         gpu.emit('touch', 'up', x0, y0 - 80);
+        eq([dropped.slice(d1).sort(), drawn.items.some((i) => i.label === 'Extra 3')], [before.sort(), true],
+            'the release: the page built from the new state, the drag\'s layers dropped');
         // a drag the rows cannot follow (past the top) draws nothing
         drawn.scroll = {};
         drawn.render();
@@ -1492,23 +1494,31 @@ function runTiming() {
     const { Timing } = require(path.join(SRC, 'store_drawn.js'));
     const file = path.join(ROOT, 'stats-log');
     const out = path.join(ROOT, 'store-stats.log');
+    const traceOut = path.join(ROOT, 'store-trace.log');
     const lines = [];
-    const t = new Timing(file, out);
+    const t = new Timing(file, out, traceOut);
+    const traced = () => { try { return fs.readFileSync(traceOut, 'utf8').split('\n').filter(Boolean); } catch (e) { return []; } };
     const read = () => { lines.length = 0; try { lines.push(...fs.readFileSync(out, 'utf8').split('\n').filter(Boolean)); } catch (e) { /* none yet */ } };
     const second = () => new Promise((r) => { t._second(); setTimeout(() => { read(); r(); }, 50); });
     const busy = () => { Object.assign(t, { builds: 2, build: 3, buildMax: 2, model: 1, layout: 1.6, drags: 4, dragMs: 0.8, frames: 6, send: 1.2, touches: 5, touchMs: 4 }); };
     busy();
+    t.trace('send', 1);
     return second().then(() => {
-        eq([t.on, lines.length], [false, 0], 'no stats-log: off, nothing logged');
+        eq([t.on, lines.length, traced().length], [false, 0, 0], 'no stats-log: off, nothing logged or traced');
         fs.writeFileSync(file, '');
         busy();
         return second();
     }).then(() => {
         eq([t.on, lines.length], [true, 0], 'stats-log appeared: on from the next second');
         busy();
+        t.trace('build-start', 7, 'drag');
+        t.trace('send', 7);
         return second();
     }).then(() => {
         eq(lines.length, 1);
+        const tr = traced();
+        eq([tr.length, /^\d+ S build-start 7 drag$/.test(tr[0]), /^\d+ S send 7 $/.test(tr[1]), Number(tr[1].split(' ')[0]) >= Number(tr[0].split(' ')[0])],
+            [2, true, true, true], 'trace lines: monotonic microseconds, the step, its count');
         eq(/^\d{4}-\d\d-\d\dT[\d:.]+Z stats store: 2 builds avg 1\.5 ms max 2\.0 ms \(model 0\.5, layout 0\.8\), 4 drag frames avg 0\.2 ms, 6 frames sent avg 0\.2 ms, 5 touch events 4 ms, cpu \d+ %$/.test(lines[0]), true, lines[0]);
         fs.unlinkSync(file);
         busy();

@@ -58,6 +58,7 @@
 #include "gate.h"
 #include "gfx.h"
 #include "log.h"
+#include "trace.h"
 #include "proto.h"
 #include "share.h"
 #include "touch.h"
@@ -130,6 +131,7 @@ typedef struct client {
     int nclaim; float claim[16][4];
     /* frame cap (MI_FPS): at least min_us between two frames drawn; 0 = none */
     uint64_t min_us, last_draw;
+    uint32_t tr_frames, tr_touches, tr_drawn, tr_committed;   /* trace.h: frames and touches on this connection */
     /* controller grab: last time the app asked for it, 0 = not */
     uint64_t grab_t;
     /* native: the last X_STATE sent */
@@ -293,6 +295,7 @@ static void send_tick(client *c) {
     uint32_t p[2] = { ++c->ticks, (uint32_t)((now_us() - t_start) / 1000) };
     c->want_tick = 0;
     send_msg(c, E_TICK, p, sizeof p);
+    if (trace_on()) trace(now_us(), "tick", c->app, c->ticks);
 }
 
 /* ---------------- who shows ---------------- */
@@ -546,6 +549,8 @@ static void render_embed(void) {
     int b = draw ? embed_buffer(embed_zero_copy()) : -1;
     if (b >= 0) {
         c->last_draw = t0;
+        c->tr_drawn = c->tr_frames;
+        if (trace_on()) trace(t0, "draw-start", c->app, c->tr_drawn);
         int w = cfg.embed_area[2], h = cfg.embed_area[3];
         if (dbr) {
             int img[4] = { (int)c->dbr.img[0], (int)c->dbr.img[1], (int)c->dbr.img[2], (int)c->dbr.img[3] };
@@ -571,11 +576,14 @@ static void render_embed(void) {
         embed_filled();
         c->dirty = 0;
         dbr_drawn(c);
+        if (trace_on()) trace(now_us(), "draw-end", c->app, c->tr_drawn);
         stats(c, now_us() - t0);
     }
     if (embed_can_commit()) {
         embed_gl_resolve();
         embed_commit();
+        c->tr_committed = c->tr_drawn;
+        if (trace_on()) trace(now_us(), "commit", c->app, c->tr_committed);
         dbr_committed(c);
         if (c->frames_shown++ == 0) send_state(c);
     }
@@ -585,6 +593,7 @@ static void render_embed(void) {
 
 void embed_frame_done(void) {
     client *c = embed_owner;
+    if (c && trace_on()) trace(now_us(), "callback", c->app, c->tr_committed);
     if (c) dbr_presented(c);
     if (c && c->want_tick && !cfg.tick_early) send_tick(c);
 }
@@ -662,6 +671,7 @@ int touch_owner_at(int x, int y) {
 void touch_send(int slot, int phase, int x, int y) {
     client *c = clients[slot];
     if (!c) return;
+    uint64_t t_in = trace_on() ? now_us() : 0;
     float bx, by; origin(c, &bx, &by);
     uint32_t p[3] = { (uint32_t)phase };
     float lx = (x - bx - c->xf.ox) / c->xf.s, ly = (y - by - c->xf.oy) / c->xf.s;
@@ -675,6 +685,11 @@ void touch_send(int slot, int phase, int x, int y) {
     }
     memcpy(&p[1], &lx, 4); memcpy(&p[2], &ly, 4);
     send_msg(c, EI_TOUCH, p, sizeof p);
+    c->tr_touches++;
+    if (t_in) {
+        trace(t_in, "touch-in", c->app, c->tr_touches);
+        trace(now_us(), "touch-fwd", c->app, c->tr_touches);
+    }
 }
 
 /* the HMI was touched: layer apps that claim close (an embed app's page is the HMI's to leave) */
@@ -983,6 +998,8 @@ static int handle(client *c, uint32_t type, const uint8_t *p, uint32_t len) {
         c->frame_words = nw;
         c->dirty = 1;
         c->want_tick = 1;
+        c->tr_frames++;
+        if (trace_on()) trace(now_us(), "frame-rx", c->app, c->tr_frames);
         if (first && c->mode == MODE_EMBED) update_all();
         return 0;
     }
@@ -1481,6 +1498,7 @@ int main(int argc, char **argv) {
         render_embed();
         ctl_gate_update(tnow);
         if (touch_on) touch_tick(any_claim());
+        trace_check(now_us());
         if (tnow >= share_next) { share_next = tnow + SHARE_US; share_tick(); }
         if (cfg.foreground_gate[0] && gate_fd() < 0 && tnow > gate_retry) {
             gate_retry = tnow + 5000000;

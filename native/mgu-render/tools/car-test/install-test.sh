@@ -35,6 +35,8 @@ DROPIN_DIR=/run/systemd/system/mgu-render.service.d
 DROPIN=$DROPIN_DIR/car-test.conf
 STATS_FILE=/run/mgu-render/stats-log
 STORE_STATS=/dev/shm/robertn_store-stats.log    # the Store's own per-second line while stats-log is on
+RENDER_TRACE=/run/mgu-render/trace.log          # the per-frame trace (trace.js), mgu-render's and the Store's
+STORE_TRACE=/dev/shm/robertn_store-trace.log
 AB_KEYS="embed_zero_copy tick_early readback_pbo embed_finish verbose"
 # on the unit: what a pid runs (its binary, else its command line)
 # shellcheck disable=SC2016
@@ -215,7 +217,7 @@ cmd_install() {
 	show_renderer
 	[ $rc -eq 0 ] || die "the install failed (exit $rc); the deploy tool rolled it back. Run restore to check the versions" $rc
 	if [ -n "$pub_render" ]; then
-		say "Installed. mgu-render runs the test build from its next start, which is to be on a freshly started HMI: with no app on screen, run: $0 reboot --off-screen"
+		say "Installed. mgu-render runs the test build from its next start: with no app on screen, $0 restart --off-screen when the unit's mgu-render draws zero-copy (k status: embed: zero-copy), else $0 reboot --off-screen"
 	else
 		say "Installed. The Store runs the test build from its next opening; mgu-render stays as it is (no restart)"
 	fi
@@ -227,7 +229,7 @@ cmd_restore() {
 	open_link
 	say "== clearing the test settings"
 	ab_clear
-	on_unit "rm -f $STATS_FILE $STORE_STATS"
+	on_unit "rm -f $STATS_FILE $STORE_STATS $RENDER_TRACE $STORE_TRACE"
 
 	say "== uploading the published versions"
 	on_unit "rm -rf $UNIT_TMP && mkdir -p $UNIT_TMP"
@@ -276,7 +278,7 @@ cmd_restore() {
 	mv "$TEST" "$done_dir"
 	rm -rf "$d"
 	if grep -q '^mgu-render ' "$done_dir/installed"; then
-		say "Restored (record moved to $done_dir). Finish with a head-unit restart, so the published mgu-render starts on a fresh HMI: with no app on screen, run: $0 reboot --off-screen"
+		say "Restored (record moved to $done_dir). The published mgu-render runs from its next start: with no app on screen, $0 restart --off-screen (after a readback run in this HMI run: $0 reboot --off-screen)"
 	else
 		say "Restored (record moved to $done_dir). mgu-render was not changed: no restart"
 	fi
@@ -379,7 +381,7 @@ cmd_stats() {
 	open_link
 	case "$(arg 0)" in
 		on) on_unit "[ -d /run/mgu-render ] && touch $STATS_FILE" || die "/run/mgu-render is not there (mgu-render.socket not running)"; say "stats-log on" ;;
-		off) on_unit "rm -f $STATS_FILE $STORE_STATS"; say "stats-log off" ;;
+		off) on_unit "rm -f $STATS_FILE $STORE_STATS $RENDER_TRACE $STORE_TRACE"; say "stats-log off" ;;
 		*) die "usage: $0 stats on|off" 2 ;;
 	esac
 }
@@ -408,7 +410,7 @@ cmd_drag() {
 	upload "$KIT/probe.js" "$UNIT_PROBE"
 	say "measuring $secs s from the next line: the owner drags the Store's list now, without stopping"
 	on_unit "t0=\$(date '+%Y-%m-%d %H:%M:%S')
-		if [ -f $STORE_STATS ]; then : > $STORE_STATS; fi
+		for f in $STORE_STATS $RENDER_TRACE $STORE_TRACE; do if [ -f \$f ]; then : > \$f; fi; done
 		node $UNIT_PROBE cpu $secs --gpu-freq --json /tmp/mgu-probe-$name.json
 		journalctl -u mgu-render --since \"\$t0\" -o cat 2>/dev/null | grep -E ' stats | fps, render |embed: ' > /tmp/mgu-probe-$name.stats
 		cat $STORE_STATS >> /tmp/mgu-probe-$name.stats 2>/dev/null
@@ -417,6 +419,11 @@ cmd_drag() {
 	on_unit "cat /tmp/mgu-probe-$name.stats; rm -f /tmp/mgu-probe-$name.stats" >"$RESULTS/$name.stats"
 	say "journal stats lines ($RESULTS/$name.stats):"
 	if [ -s "$RESULTS/$name.stats" ]; then cat "$RESULTS/$name.stats"; else say "  none (stats-log off, or a renderer without it)"; fi
+	sleep 1                                   # the Store writes its trace once a second
+	on_unit "cat $RENDER_TRACE 2>/dev/null; true" >"$RESULTS/$name.render-trace"
+	on_unit "cat $STORE_TRACE 2>/dev/null; true" >"$RESULTS/$name.store-trace"
+	say "per-frame trace ($RESULTS/$name.render-trace, .store-trace):"
+	node "$KIT/trace.js" "$RESULTS/$name.render-trace" "$RESULTS/$name.store-trace" | tee "$RESULTS/$name.trace.txt"
 }
 
 cmd_sh() {

@@ -23,26 +23,31 @@ plays, and says what they see.
 | `probe.js` | runs on the unit (Node 8): Wayland globals, GPU, CPU per second; read-only |
 | `kit.js` | `install-test.sh`'s version checks, on the Mac |
 | `test_probe.js` | `node test_probe.js`: the probe against a fake compositor |
+| `trace.js` | the per-frame trace of a drag as a step-by-step breakdown, on the Mac (`node test_trace.js`) |
 
-## Short check: a Store-only change
+## Short check: one drag, traced
 
-When the branch changes only the Store (mgu-render's version is the
-published one), `install` puts on only the Store and nothing needs a
-head-unit restart. About 10 minutes:
+`install` puts on only what is newer on the branch. With the unit's
+mgu-render already drawing zero-copy, a renderer restart with nothing on
+screen starts a new mgu-render; no head-unit restart. About 15 minutes:
 
-1. `k status` (the published versions), `k stats on`.
+1. `k status` (the published versions, `embed: zero-copy`), `k stats on`.
 2. Owner: open the Store on its list. `k drag before` while the owner drags
    the list. Owner: close the Store.
-3. `k install` (the Store only).
+3. `k install`, then `k restart --off-screen` when it installed mgu-render.
 4. Owner: open the Store on its list. `k drag after`; the owner says whether
-   the list moves whole and smoothly. Then the Installed tab: `k drag
-   after-installed` while the owner drags its list. Owner: close the Store.
-5. `k restore`, `k status`.
+   the list moves whole and smoothly. Owner: close the Store.
+5. `k restore`, then `k restart --off-screen` when it put mgu-render back;
+   `k status`.
 
 Each `<name>.txt` has the probe's per-second table with the fastest core's
 clock (`cpu MHz`) and the clock policy; each `<name>.stats` has mgu-render's
-lines and the Store's (`stats store: N builds avg ... (model ..., layout
-...), N drag frames avg ... ms, ...`).
+lines and the Store's. With mgu-render 0.5.2 and the Store 0.9.11 or later,
+`<name>.trace.txt` has each step's median and p90 over the frames of the
+drag (`trace.js`, from `<name>.render-trace` and `<name>.store-trace`): what
+a frame waited for before its build, the build, the socket, the wait in
+mgu-render before its draw, the draw, the commit and the HMI's callback,
+and the time from one frame to the next.
 
 ## Before the car
 

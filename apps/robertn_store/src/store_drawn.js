@@ -45,19 +45,26 @@ const DRAG_ROWS_PX = 2048;                // a drag's cached rows: at most this 
 const STATS_LOG = '/run/mgu-render/stats-log';  // mgu-render's per-second stats switch: the Store's own then too
 const STATS_OUT = '/dev/shm/robertn_store-stats.log';   // where they go (an OAP app's own log goes to DLT)
 const STATS_OUT_MAX = 1024 * 1024;              // bytes kept; past it the file starts again
+const TRACE_OUT = '/dev/shm/robertn_store-trace.log';   // the per-frame trace beside mgu-render's (tools/car-test/trace.js)
+const TRACE_MAX = 8 * 1024 * 1024;
 // FrontCCU frontRotaryEncoderPushButton pushed (short, long): by name or ordinal
 const PUSHED = ['DREHGEBER_KURZ_GEDRUECKT', 'DREHGEBER_LANG_GEDRUECKT', 1, 2];
 const RELEASED = ['KEINE_BETAETIGUNG', 0];
 const DIAL_MAX_STEP = 24;
 
 const msNow = () => { const t = process.hrtime(); return t[0] * 1e3 + t[1] / 1e6; };
+const usNow = () => { const t = process.hrtime(); return t[0] * 1e6 + Math.floor(t[1] / 1e3); };   // CLOCK_MONOTONIC, as mgu-render's
 
 /* While mgu-render's stats-log is on, once a second a line into out: the frames built and sent, their build and send
  * times, the touch events and the time they took, and the process's CPU, so its share outside drawing shows. */
 class Timing {
-    constructor(file, out) {
+    constructor(file, out, traceOut) {
         this.file = file;
         this.out = out;
+        this.traceOut = traceOut;
+        this.lines = [];                    // trace lines since the last second
+        this.sent = 0;                      // frames sent and touches had on this connection
+        this.touchesIn = 0;
         this.on = false;
         this._reset();
         this.timer = setInterval(() => this._second(), 1000);
@@ -69,7 +76,26 @@ class Timing {
         this.cpu = process.cpuUsage();
         this.t0 = msNow();
     }
+    /* One step of the trace, "<us> S <step> <n> <kind>": n counts frames sent or touches had on this connection,
+     * as mgu-render does. */
+    trace(step, n, kind) {
+        if (this.on) {
+            this.lines.push(`${usNow()} S ${step} ${n} ${kind || ''}\n`);
+        }
+    }
+    connected() {
+        this.sent = 0;
+        this.touchesIn = 0;
+    }
     _second() {
+        if (this.lines.length) {
+            const text = this.lines.join('');
+            this.lines = [];
+            fs.stat(this.traceOut, (e, st) => {
+                const write = !e && st.size > TRACE_MAX ? fs.writeFile : fs.appendFile;
+                write(this.traceOut, text, () => { /* a full /dev/shm: the lines are lost */ });
+            });
+        }
         fs.access(this.file, (err) => {
             const was = this.on;
             this.on = !err;
@@ -104,7 +130,7 @@ class Drawn extends EventEmitter {
         this.log = host.log;
         this.gpu = (opts && opts.client) || new RenderClient('robertn_store', this.log, { kit, mode: 'layer' });
         this.gpu.fps(FPS);
-        this.timing = new Timing((opts && opts.statsLog) || STATS_LOG, (opts && opts.statsOut) || STATS_OUT);
+        this.timing = new Timing((opts && opts.statsLog) || STATS_LOG, (opts && opts.statsOut) || STATS_OUT, (opts && opts.traceOut) || TRACE_OUT);
         this.mode = null;
         this.w = 0;
         this.scale = 1;
@@ -133,9 +159,13 @@ class Drawn extends EventEmitter {
         this.embedProxies = false;          // the HMI routes presses to embed proxies
         this.pics = new Map();              // picture file -> { img, used }
         this.decoding = new Set();
-        this.gpu.on('ready', (screen, info) => this._ready(info));
+        this.gpu.on('ready', (screen, info) => {
+            this.timing.connected();
+            this._ready(info);
+        });
         this.gpu.on('close', () => this._setMode(null));
-        this.gpu.on('tick', () => {
+        this.gpu.on('tick', (n) => {
+            this.timing.trace('tick', n);
             if (this.dirty) {
                 if (this.touch && this.touch.drag) {
                     this._dragFrame();
@@ -377,6 +407,7 @@ class Drawn extends EventEmitter {
         if (!this.mode || !this.w) {
             return;
         }
+        this.timing.trace('build-start', this.timing.sent + 1, 'whole');
         const t0 = this.timing.on ? msNow() : 0;
         const m = this._model();
         const tm = t0 ? msNow() : 0;
@@ -392,6 +423,7 @@ class Drawn extends EventEmitter {
             const ms = msNow() - t0;
             this.timing.builds++; this.timing.build += ms; this.timing.buildMax = Math.max(this.timing.buildMax, ms);
         }
+        this.timing.trace('build-end', this.timing.sent + 1, 'whole');
         if (!this.on_) {
             return;
         }
@@ -405,6 +437,18 @@ class Drawn extends EventEmitter {
         this._send(rec);
     }
 
+    /* The model changed (the updater's state, pictures decoded): built again now, or, while a drag moves
+     * cached rows, once the drag ends (its release builds the page); decoded pictures redraw the rows. */
+    refresh(pictures) {
+        if (this.touch && this.touch.drag) {
+            if (pictures && this.drag) {
+                this.drag.rowsStale = true;
+            }
+            return;
+        }
+        this.render();
+    }
+
     _model() {
         return Object.assign(this.host.model(), { stack: this.stack, tab: this.tab, filter: this.filter });
     }
@@ -413,7 +457,9 @@ class Drawn extends EventEmitter {
      * drawn by it or any frame after). */
     _send(rec) {
         const t1 = this.timing.on ? msNow() : 0;
-        this.gpu.frame(rec);
+        if (this.gpu.frame(rec)) {
+            this.timing.trace('send', ++this.timing.sent);
+        }
         if (t1) { this.timing.frames++; this.timing.send += msNow() - t1; }
         this.retired.forEach((L) => {
             kit.dropLayer(L);
@@ -438,6 +484,7 @@ class Drawn extends EventEmitter {
             this.dirty = true;
             return;
         }
+        this.timing.trace('build-start', this.timing.sent + 1, 'drag');
         const t0 = this.timing.on ? msNow() : 0;
         if (this.drag && this.drag.key !== key) {
             this._dragEnd();
@@ -448,11 +495,12 @@ class Drawn extends EventEmitter {
             return;
         }
         const v = d.view, top = this.scroll[key] || 0;
-        if (!d.rowsLayer || top < d.from || top + v.shown > d.from + d.n + 1e-6) {
+        if (!d.rowsLayer || d.rowsStale || top < d.from || top + v.shown > d.from + d.n + 1e-6) {
             this._dragRows(d, top);
         }
         const r = dragFrame(v, d.baseLayer, d.rowsLayer, d.from, top, this.scale);
         if (t0) { this.timing.drags++; this.timing.dragMs += msNow() - t0; }
+        this.timing.trace('build-end', this.timing.sent + 1, 'drag');
         this.dirty = false;
         this.sentAt = now;
         this._send(r);
@@ -479,6 +527,7 @@ class Drawn extends EventEmitter {
             this.retired.push(d.rowsLayer);
         }
         d.rowsLayer = kit.makeLayer(v.box.w, n * v.step, (r) => r.append(rec), this.scale);
+        d.rowsStale = false;
         d.from = from;
         d.n = n;
     }
@@ -509,6 +558,7 @@ class Drawn extends EventEmitter {
     }
 
     _touch(phase, x, y) {
+        this.timing.trace('touch', ++this.timing.touchesIn, phase);
         const t0 = this.timing.on ? msNow() : 0;
         this._touchEvent(phase, x, y);
         if (t0) { this.timing.touches++; this.timing.touchMs += msNow() - t0; }
@@ -596,7 +646,7 @@ class Drawn extends EventEmitter {
                                 kit.dropImage(v.img);
                             }
                         });
-                    this.render();
+                    this.refresh(true);
                 });
             });
         });
