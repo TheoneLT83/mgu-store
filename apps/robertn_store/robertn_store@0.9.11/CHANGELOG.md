@@ -6,8 +6,10 @@ Dragging a list or grid moves its rows without building the page again:
 the page without them and the rows around the ones shown are drawn once
 and kept by the renderer, and each drag frame places the rows, which takes
 a fraction of a millisecond in place of a whole page build. They are drawn
-ahead once a page with a scrolling list has stayed for 0.3 s, and kept
-from one swipe to the next while the page shows the same. The rows stop on
+ahead once a page with a scrolling list has stayed for 0.3 s, kept from one
+swipe to the next while the page shows the same, and dropped while the
+Store is hidden. Another page ends a drag, and its first frame waits up to
+0.1 s for its pictures, so a page is shown whole. The rows stop on
 whole pixels, where a press then finds them. A new state from the updater
 or a picture decoded during a drag waits for its release (pictures redraw
 the cached rows); a state the page shows already builds nothing. While mgu-render's

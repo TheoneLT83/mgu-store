@@ -363,7 +363,7 @@ cmd_ab() {
 		k=${p%%=*}; v=${p#*=}
 		case " $AB_KEYS " in *" $k "*) ;; *) die "unknown setting $k (one of: $AB_KEYS)" 2 ;; esac
 		case "$k" in
-			fps|fps.*) case "$v" in ''|*[!0-9]*) die "$k takes frames a second (0: the app's own)" 2 ;; esac
+			fps|fps.*) case "$v" in 0|[1-9]|[1-9][0-9]|[1-9][0-9][0-9]|1000) ;; *) die "$k takes frames a second, 0..1000 (0: the app's own)" 2 ;; esac
 				keys="$keys 0..1000" ;;                    # the fps settings' own error text: only a renderer with them has it
 			*) case "$v" in 0|1) ;; *) die "$k takes 0 or 1" 2 ;; esac
 				keys="$keys $k" ;;

@@ -162,6 +162,7 @@ class Drawn extends EventEmitter {
         this.prebuild = null;
         this.pageAt = 0;                    // when the page last changed (_page)
         this.held = null;                   // a new page's frame held for its pictures
+        this.showing = false;               // _updateShow's frame: sent at once
         this.retired = [];                  // layers to drop once the next frame is sent
         this.ccu = null;
         this.fccu = null;
@@ -261,7 +262,7 @@ class Drawn extends EventEmitter {
     /* Another page: a gesture on the one before ends, and the new page's
      * first frame shows it whole (render: its pictures too). */
     _page() {
-        this.pageAt = Date.now();
+        this.pageAt = msNow();
         this.touch = null;
         this.settleKey = null;
     }
@@ -371,6 +372,7 @@ class Drawn extends EventEmitter {
         if (focus && depth < this.stack.length) {
             this.stack.length = depth;
             this._backTo();
+            this._page();
             this.render();
         }
         if (depth === this.stack.length) {
@@ -422,7 +424,10 @@ class Drawn extends EventEmitter {
         this.gpu.claim(on ? [this.viewport] : []);
         this.gpu.grab(on && !!this.controller);
         if (on) {
+            // the frame before it shows: at once (a frame the renderer had may draw layers dropped while hidden)
+            this.showing = true;
             this.render();
+            this.showing = false;
         }
         this.gpu.show(on);
         clearInterval(this.keepalive);
@@ -476,15 +481,16 @@ class Drawn extends EventEmitter {
         const now = Date.now();
         clearTimeout(this.held);
         this.held = null;
-        if (now - this.pageAt < PICTURES_MS && r.icons.some((f) => this.decoding.has(f))) {
+        const since = msNow() - this.pageAt;
+        if (!this.showing && since < PICTURES_MS && r.icons.some((f) => this.decoding.has(f))) {
             // a new page: shown once its pictures are decoded (refresh), or as it is at PICTURES_MS
             this.held = setTimeout(() => {
                 this.held = null;
                 this.render(true);
-            }, PICTURES_MS - (now - this.pageAt));
+            }, PICTURES_MS - since);
             return;
         }
-        if (this.gpu.waiting && now - this.sentAt < KEEPALIVE_MS) {
+        if (!this.showing && this.gpu.waiting && now - this.sentAt < KEEPALIVE_MS) {
             this.dirty = true;
             return;
         }
@@ -497,15 +503,18 @@ class Drawn extends EventEmitter {
      * moves cached rows, once the drag ends (its release builds the page); decoded pictures redraw the rows. A
      * state the page was built from already draws nothing; its proxies are written again where they differ. */
     refresh(pictures) {
-        if (!pictures && this.mode && this.focus === this.drawnFocus && JSON.stringify(this._model()) === this.drawn) {
-            this._proxies();                // cells the host asked to be written again
+        const same = !pictures && !!this.mode && JSON.stringify(this._model()) === this.drawn;
+        if (this.touch && this.touch.drag) {
+            if (!same) {
+                this.gen++;
+                if (pictures && this.drag) {
+                    this.drag.rowsStale = true;
+                }
+            }
             return;
         }
-        if (this.touch && this.touch.drag) {
-            this.gen++;
-            if (pictures && this.drag) {
-                this.drag.rowsStale = true;
-            }
+        if (same && this.focus === this.drawnFocus) {
+            this._proxies();                // cells the host asked to be written again
             return;
         }
         this.render();
@@ -763,6 +772,9 @@ class Drawn extends EventEmitter {
                 if (err || buf.length > ICON_BYTES) {
                     this.decoding.delete(f);
                     this.pics.set(f, { img: null, used: Date.now() });
+                    if (this.held) {
+                        this.render(true);          // a page held for its pictures: none of this one to wait for
+                    }
                     return;
                 }
                 png.decodeAsync(buf, (e, img) => {

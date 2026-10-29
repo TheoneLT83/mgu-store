@@ -1027,11 +1027,24 @@ function runDrawn() {
         app._forgetWritten();
         app._client.emit('state', app._st);
         eq([frames.length - n7, writes.slice(w0).some((w) => w.startsWith(proxy(1, 0)))], [0, true], 'proxies written again, nothing drawn');
+        // an unchanged state during a drag: the release keeps the layers, nothing built
+        const n8 = frames.length, d3 = dropped.length;
+        gpu.emit('touch', 'down', x0, y0);
+        gpu.emit('touch', 'move', x0, y0 - 40);
+        app._client.emit('state', app._st);
+        gpu.emit('touch', 'up', x0, y0 - 40);
+        eq([frames.length - n8, [...(frames[frames.length - 1].layersUsed || [])].sort(), dropped.length - d3], [1, ahead, 0],
+            'an unchanged state during a drag: one drag frame, the layers kept');
         // hidden: the kept layers dropped at once
         const d2 = dropped.length;
         drawn.suspend(true);
         eq(dropped.slice(d2).sort(), ahead, 'hidden: the drag\'s layers dropped');
         drawn.suspend(false);
+        // BACK (the HMI's focus back on the page below) ends a touch on the page left
+        drawn.push({ name: 'app', id: 'doom' });
+        gpu.emit('touch', 'down', 300, 300);
+        app._states[host(1)].emit('focus', { focus: true });
+        eq([drawn.stack.length, drawn.touch], [1, null], 'BACK: the touch on the page left ended');
         // another page during a drag, a frame pending: the frame at the TICK is the new page built whole, the
         // same as a build of it now (no drag frame of the page before)
         const whole = () => Array.from(require(path.join(SRC, 'store_frame.js')).frame(drawn._model(), { textScale: drawn.scale,
