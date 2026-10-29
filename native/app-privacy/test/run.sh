@@ -1,7 +1,7 @@
 #!/bin/sh
 # Runs the app-privacy tests on the head unit's Node (8.16.2), in Docker,
 # with the repository's apps and, when present, the decoded oap-mainapp
-# (iDrive 7, 8.3.2 and 8.1.1) and MainApp-21 (iDrive 8).
+# (iDrive 7, 8.3.2 and 8.1.1) and MainApp-21 (iDrive 8, 9.3.4 or 9.2.15).
 set -e
 cd "$(dirname "$0")/../../.."
 FIRMWARE=${FIRMWARE_MAINAPP_DIR:-}

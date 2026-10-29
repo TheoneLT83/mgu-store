@@ -50,7 +50,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-const VERSION = '1.6.0';
+const VERSION = '1.6.1';
 const MARKER_KEY = 'mguLocalOnly';
 const OAP_ROOT = '/var/opt/public/oap/';
 const OVERRIDE_FILE = OAP_ROOT + 'oap_12201/data/local-only-apps.json';
@@ -366,6 +366,36 @@ const APPMANAGEMENT_PATCHES_21 = [
 
 const PATCH_SETS_21 = { main: MAIN_PATCHES_21, appmanagement: APPMANAGEMENT_PATCHES_21 };
 
+// oap-mainapp 9.2.15-pr-867.1, an earlier iDrive 8 release. Its bundles are
+// minified without parentheses around a lone arrow parameter; its crash
+// recovery marks the app recovering and sends APP_CRASH first and checks
+// for a head-unit shutdown further down, so the gate goes before that mark
+// (a local-only app skips only the event); its corrupt-app report and
+// release-notes request read differently around the same insertion points.
+// Its other edits are 9.3.4's.
+const KNOWN_SHA256_21_9_2_15 = {
+    main: 'd5bb67a997a8c1e3f4bee9716356c2f0fa07b4788418d35d420425812aa43581',
+    appmanagement: 'd73a7e7a38c21eeba2ba0402090f39b43ccdc7d0279b05773b1928a542c95a16'
+};
+const CRASH_GATE_BEFORE_9_2_15 = '{recoveryAttemptsSinceCorruption:0});';
+const CRASH_EVENT_9_2_15 = 'appCorruptInfo.isRecovering=!0,';
+const MAIN_EDITS_21_9_2_15 = {
+    'this.appRegistry.getAll(),(app=>{const appId': ins('this.appRegistry.getAll()', KEEP_APP, ',app=>{const appId', 1),
+    'Promise.resolve();(0,AnalyticsServiceBuilders_1': [
+        CRASH_GATE_BEFORE_9_2_15 + CRASH_EVENT_9_2_15 + '(0,AnalyticsServiceBuilders_1',
+        CRASH_GATE_BEFORE_9_2_15 + crashGateJs('CorruptAppsHandler::tryRecoverApp',
+            'app.updateStartableCouncil(StartableCouncil_1.default.NOT_IN_CORRUPT_APPS_HANDLING,!0);', '') +
+        CRASH_EVENT_9_2_15 + 'appCorruptInfo.localOnlyRestarts||(0,AnalyticsServiceBuilders_1', 1],
+    'return this.backendTransport.reportCorruptApp(appId,version':
+        ins('then(()=>', 'isLocalOnlyApp(appId)?Promise.resolve():', 'this.backendTransport.reportCorruptApp(appId,version', 1),
+    'apps:updatedAppsMetadata.map(':
+        ins('apps:metadataAboutUpdates', '.filter(metadata=>!isLocalOnlyApp(metadata.appId))', '.map(', 1)
+};
+const PATCH_SETS_21_9_2_15 = {
+    main: MAIN_PATCHES_21.map((p) => MAIN_EDITS_21_9_2_15[p[0]] || p),
+    appmanagement: APPMANAGEMENT_PATCHES_21
+};
+
 function bundlePaths(root) {
     return { main: root + '/src/main.js', appmanagement: root + '/src/AppManagement/AppManagement.js' };
 }
@@ -379,7 +409,8 @@ const UNITS = {
         { version: '8.1.1', sets: { current: PATCH_SETS_8_1_1, earlier: [] }, known: KNOWN_SHA256_8_1_1 }
     ] },
     ID8: { paths: bundlePaths('/usr/lib/oap-mainapp21'), mainapps: [
-        { version: '9.3.4', sets: { current: PATCH_SETS_21, earlier: [] }, known: KNOWN_SHA256_21 }
+        { version: '9.3.4', sets: { current: PATCH_SETS_21, earlier: [] }, known: KNOWN_SHA256_21 },
+        { version: '9.2.15', sets: { current: PATCH_SETS_21_9_2_15, earlier: [] }, known: KNOWN_SHA256_21_9_2_15 }
     ] }
 };
 
@@ -963,6 +994,7 @@ function main(argv) {
 module.exports = {
     VERSION, MARKER_KEY, OVERRIDE_FILE, PREINSTALLED_DIR, HELPER_JS, PATCH_SETS, EARLIER_PATCH_SETS, KNOWN_SHA256,
     PATCH_SETS_8_1_1, KNOWN_SHA256_8_1_1, PREINSTALLED_DIR_21, HELPER_JS_21, PATCH_SETS_21, KNOWN_SHA256_21,
+    PATCH_SETS_21_9_2_15, KNOWN_SHA256_21_9_2_15,
     UNITS, unitOf,
     classify, applyPatches, removePatches, run, stampPackage, checkApps, main
 };

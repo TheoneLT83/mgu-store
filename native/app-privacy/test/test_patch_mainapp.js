@@ -5,8 +5,8 @@
  *
  * The firmware cases run when a decoded oap-mainapp is available
  * (FIRMWARE_MAINAPP_DIR names iDrive 7's folder, FIRMWARE_MAINAPP21_DIR
- * iDrive 8's MainApp-21, FIRMWARE_MAINAPP_8_1_1_DIR iDrive 7's MainApp 8.1.1);
- * each is skipped otherwise.
+ * iDrive 8's MainApp-21, 9.3.4 or 9.2.15, FIRMWARE_MAINAPP_8_1_1_DIR
+ * iDrive 7's MainApp 8.1.1); each is skipped otherwise.
  */
 const assert = require('assert');
 const childProcess = require('child_process');
@@ -288,15 +288,30 @@ test('the MainApp 8.1.1 patch set is recorded', () => {
         '(its UNITS.ID7.mainapps entry\'s sets.earlier) and bump the version; then record ' + sha + ' here');
 });
 
+// sha256 of JSON.stringify(PATCH_SETS_21_9_2_15) as shipped by 1.6.1, and of
+// MainApp-21 9.2.15's bundles as it patches them.
+const PATCH_SETS_21_9_2_15_SHA256 = '9ada4eaecdba9320ee00d699758d84960e59bee09a1b37aca29c0cb1d4cdc03f';
+const PATCHED_21_9_2_15_SHA256 = {
+    main: '223d7e196c9821651b2744b92b18643c46b7abb91683749712fd57ae031d230c',
+    appmanagement: '75f24a41ce95219e44e0bf913343302c90d3e2bba011a7201df83c0f65139f04'
+};
+
+test('the MainApp-21 9.2.15 patch set is recorded', () => {
+    const sha = setsSha(patcher.PATCH_SETS_21_9_2_15);
+    assert.strictEqual(sha, PATCH_SETS_21_9_2_15_SHA256,
+        'PATCH_SETS_21_9_2_15 differs from the released one: keep the released sets as 9.2.15\'s earlier release ' +
+        '(its UNITS.ID8.mainapps entry\'s sets.earlier) and bump the version; then record ' + sha + ' here');
+});
+
 /* Synthetic bundles of one release's anchors as the given MainApp release. */
-function withReleaseBundles(sets, fn) {
+function withReleaseBundles(unit, sets, fn) {
     const dir = tmpdir();
     const paths = {};
     Object.keys(sets).forEach((kind) => {
         paths[kind] = path.join(dir, kind + '.js');
         fs.writeFileSync(paths[kind], syntheticBundle(sets[kind]));
     });
-    const args = (command) => [command, '--json', '--unit', 'ID7', '--main', paths.main, '--appmanagement', paths.appmanagement];
+    const args = (command) => [command, '--json', '--unit', unit, '--main', paths.main, '--appmanagement', paths.appmanagement];
     const read = (kind) => fs.readFileSync(paths[kind], 'utf8');
     try {
         fn({ dir, paths, args, read });
@@ -305,20 +320,22 @@ function withReleaseBundles(sets, fn) {
     }
 }
 
-test('iDrive 7 bundles take the edits of the MainApp release they fit', () => {
+test('bundles take the edits of the MainApp release they fit', () => {
     assert.deepStrictEqual(patcher.UNITS.ID7.mainapps.map((m) => m.version), ['8.3.2', '8.1.1']);
-    [[patcher.PATCH_SETS, '8.3.2'], [patcher.PATCH_SETS_8_1_1, '8.1.1']].forEach((release) => withReleaseBundles(release[0], (b) => {
+    assert.deepStrictEqual(patcher.UNITS.ID8.mainapps.map((m) => m.version), ['9.3.4', '9.2.15']);
+    [['ID7', patcher.PATCH_SETS, '8.3.2'], ['ID7', patcher.PATCH_SETS_8_1_1, '8.1.1'], ['ID8', patcher.PATCH_SETS_21, '9.3.4'],
+        ['ID8', patcher.PATCH_SETS_21_9_2_15, '9.2.15']].forEach((release) => withReleaseBundles(release[0], release[1], (b) => {
         const stock = { main: b.read('main'), appmanagement: b.read('appmanagement') };
         let r = runTool(b.args('check'));
         assert.strictEqual(r.code, 1, r.stdout);
-        assert.strictEqual(lastJson(r.stdout).mainapp, release[1]);
+        assert.strictEqual(lastJson(r.stdout).mainapp, release[2]);
         r = runTool(b.args('apply'));
         assert.strictEqual(r.code, 0, r.stdout);
-        assert.strictEqual(lastJson(r.stdout).mainapp, release[1]);
-        Object.keys(stock).forEach((kind) => assert.strictEqual(b.read(kind), patcher.applyPatches(stock[kind], release[0][kind])));
+        assert.strictEqual(lastJson(r.stdout).mainapp, release[2]);
+        Object.keys(stock).forEach((kind) => assert.strictEqual(b.read(kind), patcher.applyPatches(stock[kind], release[1][kind])));
         r = runTool(b.args('check'));
         assert.strictEqual(r.code, 0, r.stdout);
-        assert.strictEqual(lastJson(r.stdout).mainapp, release[1]);
+        assert.strictEqual(lastJson(r.stdout).mainapp, release[2]);
         assert.strictEqual(runTool(b.args('revert')).code, 0);
         Object.keys(stock).forEach((kind) => assert.strictEqual(b.read(kind), stock[kind]));
     }));
@@ -1106,8 +1123,9 @@ test('reference firmware: a local-only app stays so through a failed read, and s
  * handler. The forced update ('update') and the 48 h reset timer are
  * recorded, not waited for. */
 function crashHandler21(root, apps, localOnly) {
-    const main = patcher.applyPatches(fs.readFileSync(path.join(root, 'src', 'main.js'), 'utf8'),
-        patcher.PATCH_SETS_21.main);
+    const stock = fs.readFileSync(path.join(root, 'src', 'main.js'), 'utf8');
+    const release = patcher.UNITS.ID8.mainapps.filter((m) => patcher.classify(stock, m.sets.current.main) === 'unpatched')[0];
+    const main = patcher.applyPatches(stock, (release ? release.sets.current : patcher.PATCH_SETS_21).main);
     const at = main.indexOf('let CorruptAppsHandler=class');
     const start = main.lastIndexOf('function(require,module,exports){', at) + 'function(require,module,exports){'.length;
     const source = main.slice(start, main.indexOf('\n},{', at));
@@ -1158,6 +1176,8 @@ function crashHandler21(root, apps, localOnly) {
             getLastStartArguments: () => [], getStartReason: () => 'AUTOSTART', getUpdateMechanism: () => 'PLATFORM',
             getAppVariant: () => undefined, on() {}, addListener() {}, removeListener() {},
             disableAllEntryPoints: () => log('disable')(id),
+            // 9.2.15 restarts the app itself, 9.3.4 through the start queue
+            start: () => { events.push(['start', id]); return apps[id].start(); }, stop: () => Promise.resolve(),
             appControl: { appEvents: { restoreEntryPoints: { next: () => events.push(['restore', id]) } } }
         };
     });
@@ -1191,7 +1211,7 @@ function crashHandler21(root, apps, localOnly) {
         return handler.handleAppTerminated(registry[id]);
     };
     const kinds = (id) => events.filter((e) => e[1] === id).map((e) => e[0]);
-    return { events, clock, state, crash, kinds, registry, handler };
+    return { events, clock, state, crash, kinds, registry, handler, mainapp: release ? release.version : null };
 }
 
 function firmware21Dir() {
@@ -1239,7 +1259,8 @@ test('MainApp-21: a local-only app is only restarted, a stock app keeps its reco
         assert.deepStrictEqual(stock.filter((k) => k !== 'wipe' && k !== 'create'), [
             'analytics', 'start', 'analytics', 'analytics', 'update', 'start', 'analytics', 'start',
             'analytics', 'disable', 'report']);
-        assert.strictEqual(stock.filter((k) => k === 'wipe').length, 4);
+        // 9.2.15 wipes the data again when it gives the app up
+        assert.strictEqual(stock.filter((k) => k === 'wipe').length, h.mainapp === '9.2.15' ? 8 : 4);
         assert.strictEqual(h.registry.stock.isStartable(), false);
         return h.crash('ours');
     }).then(() => {
@@ -1252,8 +1273,11 @@ test('MainApp-21: a local-only app is only restarted, a stock app keeps its reco
         h.handler.resetRecoveryAttemptsSinceCorruption();
         return new Promise((resolve) => setTimeout(resolve, 10));
     }).then(() => {
-        assert.strictEqual(h.registry.stock.isStartable(), true);
-        assert.deepStrictEqual(h.kinds('stock').slice(-1), ['restore']);
+        // 9.2.15's reset leaves a given-up stock app as it is
+        if (h.mainapp !== '9.2.15') {
+            assert.strictEqual(h.registry.stock.isStartable(), true);
+            assert.deepStrictEqual(h.kinds('stock').slice(-1), ['restore']);
+        }
         return h.crash('ours');
     }).then(() => {
         assert.strictEqual(h.kinds('ours').filter((k) => k === 'start').length, 5);
@@ -1324,15 +1348,20 @@ test('MainApp-21 reference bundles patch, parse and revert exactly', () => {
             main: fs.readFileSync(path.join(root, 'src', 'main.js'), 'utf8'),
             appmanagement: fs.readFileSync(path.join(root, 'src', 'AppManagement', 'AppManagement.js'), 'utf8')
         };
+        // FIRMWARE_MAINAPP21_DIR may hold any MainApp-21 release app-privacy knows
+        const release = patcher.UNITS.ID8.mainapps.filter((m) => sha256(stock.main) === m.known.main)[0];
+        assert.ok(release, 'MainApp-21 bundles of no known release');
+        const expected = { '9.3.4': PATCHED_21_SHA256, '9.2.15': PATCHED_21_9_2_15_SHA256 }[release.version];
         Object.keys(paths).forEach((kind) => {
             fs.writeFileSync(paths[kind], stock[kind]);
-            const patched = patcher.applyPatches(stock[kind], patcher.PATCH_SETS_21[kind]);
-            assert.strictEqual(sha256(patched), PATCHED_21_SHA256[kind], kind + ': the edits differ from the released ones');
+            const patched = patcher.applyPatches(stock[kind], release.sets.current[kind]);
+            assert.strictEqual(sha256(patched), expected[kind], kind + ': the edits differ from the released ones');
             helperPerModule(patched);
         });
         const args = ['--unit', 'ID8', '--main', paths.main, '--appmanagement', paths.appmanagement];
         let r = runTool(['check', '--json'].concat(args));
         assert.strictEqual(r.code, 1, r.stdout);
+        assert.strictEqual(lastJson(r.stdout).mainapp, release.version);
         lastJson(r.stdout).files.forEach((f) => assert.strictEqual(f.reference, true));
         assert.strictEqual(runTool(['check'].concat(args.slice(2))).code, 2, 'iDrive 7\'s edits must not fit');
         r = runTool(['apply'].concat(args));

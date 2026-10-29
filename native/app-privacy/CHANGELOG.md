@@ -1,5 +1,9 @@
 # app-privacy changelog
 
+## 1.6.1
+
+- iDrive 8: MainApp-21 9.2.15 is patched too, with the same effect as on 9.3.4: our apps are left out of its backend app inventory and updates, app-repository queries and downloads, release notes requests, platform analytics, corrupt-app reports and DiagOap readout, and a crashed one is only restarted. The tool's JSON names it `9.2.15` in `mainapp`. MainApp-21 9.3.4 is patched exactly as before.
+
 ## 1.6.0
 
 - iDrive 7: MainApp 8.1.1 is patched too, with the same effect as on 8.3.2: our apps are left out of its backend app inventory, backend-triggered and autonomous updates, app-repository queries and downloads and corrupt-app reports, and a crashed one is only restarted. 8.1.1 has no platform analytics or DiagOap readout to filter. The tool's JSON names the MainApp release in `mainapp`. MainApp 8.3.2 is patched exactly as before.
