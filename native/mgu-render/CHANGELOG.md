@@ -2,6 +2,7 @@
 
 ## 0.6.2
 
+- The HMI page template, its folder and the boot's copy of the HMI's widgets are made readable by the HMI's user (0644 files, 0755 folders) whatever umask the install or the boot runs with. An install that ran with umask 077 left the template readable by root only, and the HMI, which runs as its own user, showed the app's page empty. An install whose template is in place for its HmiMain3D makes it readable without making it again, and each boot copies it readable. (robertnisipeanu/mgu-store mgu-render 0.6.1, pull request #48.)
 - Runs beside idrive7-apps' renderer: that one draws the idrive7-apps apps, mgu-render the Store. The touch divert's table and ports come from `touch_table` and `touch_port` (ours `ip mgu_render`, 30570 in and 30571 out; idrive7-apps' `ip idrive7_render`, 30572 and 30573), and on `lo` each lets the other's re-injections through.
 - Other renderers are no longer set aside at install: unit files 0.5.3-0.6.1 moved to `/var/opt/mgu-renderd/retired/` go back (`mgu-render-restore.sh`, in place of `mgu-render-retire.sh`), so apps installed without the Store draw again from the next start.
 
