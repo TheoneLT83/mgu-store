@@ -1,5 +1,10 @@
 # mgu-render changelog
 
+## 0.6.2
+
+- Runs beside idrive7-apps' renderer: that one draws the idrive7-apps apps, mgu-render the Store. The touch divert's table and ports come from `touch_table` and `touch_port` (ours `ip mgu_render`, 30570 in and 30571 out; idrive7-apps' `ip idrive7_render`, 30572 and 30573), and on `lo` each lets the other's re-injections through.
+- Other renderers are no longer set aside at install: unit files 0.5.3-0.6.1 moved to `/var/opt/mgu-renderd/retired/` go back (`mgu-render-restore.sh`, in place of `mgu-render-retire.sh`), so apps installed without the Store draw again from the next start.
+
 ## 0.6.1
 
 - The kit's GPU renderer 2.x installed from the Store (idrive7-renderd 2.0, mgu-render itself under the old name, offered for a car whose screen does not show with this one) is no longer set aside at install: its owner chose it there. Uninstalling it in the Store gives the apps back to this renderer. The kit installer's `mgu-renderd.service` and an idrive7-renderd 1.x are still set aside.

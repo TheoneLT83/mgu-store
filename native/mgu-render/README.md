@@ -206,11 +206,12 @@ and serves those apps, unchanged.
 IterioDev's mgu-renderd (`mgu-renderd.service`, from his App Manager or as a
 service package through the Store) and upstream idrive7-apps' renderer
 (`mgu-renderd.service` from its installer, or the tool `idrive7-renderd`
-from its repository through the Store, `idrive7-renderd.service`) are set
-aside when mgu-render installs (`mgu-render-retire.sh`: their unit files move
-to `/var/opt/mgu-renderd/retired/`, nothing is stopped while the HMI runs):
-from the next start mgu-render serves their apps and the controller gate. One
-installed afterwards runs beside it as below. A tool that needs a renderer
+from its repository through the Store, `idrive7-renderd.service`) run beside
+mgu-render: they serve their apps on the community socket, mgu-render the
+Store on its own. idrive7-apps' renderer diverts touch in its own table and
+ports (`touch_table`, `touch_port`: `ip idrive7_render`, 30572 and 30573;
+ours `ip mgu_render`, 30570 and 30571). Unit files mgu-render 0.5.3-0.6.1 set
+aside go back at install (`mgu-render-restore.sh`). A tool that needs a renderer
 (upstream's controller gate) is satisfied by any.
 
 **Sockets.** Ours is `/run/mgu-render/render.sock`. The community socket

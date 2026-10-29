@@ -37,6 +37,8 @@ void cfg_defaults(struct cfg *c)
     c->touch = 1;
     snprintf(c->touch_iface, sizeof c->touch_iface, "auto");
     snprintf(c->touch_saddr, sizeof c->touch_saddr, "160.48.199.115");
+    c->touch_port = 30570;
+    snprintf(c->touch_table, sizeof c->touch_table, "mgu_render");
     snprintf(c->controller_gate, sizeof c->controller_gate, "/run/mgu-renderd/inputgate");
     snprintf(c->controller_lib, sizeof c->controller_lib, "mgu-inputgate");
 }
@@ -86,6 +88,7 @@ int cfg_set(struct cfg *c, const char *key, const char *value)
     STR("foreground_gate", foreground_gate);
     STR("touch_iface", touch_iface);
     STR("touch_saddr", touch_saddr);
+    STR("touch_table", touch_table);
     STR("controller_gate", controller_gate);
     STR("controller_lib", controller_lib);
     STR("record_dir", record_dir);
@@ -169,6 +172,7 @@ int cfg_set(struct cfg *c, const char *key, const char *value)
     else if (!strcmp(key, "embed_bridge_ms")) c->embed_bridge_ms = n < 0 ? 0 : n > 2000 ? 2000 : (int)n;
     else if (!strcmp(key, "gate_legacy")) c->gate_legacy = n != 0;
     else if (!strcmp(key, "touch")) c->touch = n != 0;
+    else if (!strcmp(key, "touch_port")) c->touch_port = (int)n;
     else if (!strcmp(key, "verbose")) c->verbose = n != 0;
     else {
         log_error("unknown setting '%s'", key);

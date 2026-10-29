@@ -78,7 +78,7 @@ int main(void)
     /* lo: our rule lets both renderers' re-injections through */
     const int area[4] = { 0, 0, 0, 0 };
     if (touch_init("lo", "", area) != 0) { printf("touch_init failed\n"); return 1; }
-    CHECK(strstr(rule, "iifname \"lo\" udp sport { 30569, 30571 } accept\n") &&
+    CHECK(strstr(rule, "iifname \"lo\" udp sport { 30569, 30571, 30573 } accept\n") &&
           strstr(rule, "iifname \"lo\" udp dport 30567 notrack udp dport set 30570") && !open_fw[0], "lo rule: %s", rule);
     CHECK(outs() == 1 && loads() == 0, "start: a leftover of ours is not removed");
     touch_tick(1);
