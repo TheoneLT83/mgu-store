@@ -2,6 +2,7 @@
 
 ## 0.5.2
 
+- `fps` and `fps.<app>` (0): the frames a second an app that asks for a rate (FPS) gets, in place of the rate it asks; for every such app, or for one (`fps.robertn_store = 60`). Display-bridge apps ask for none and are not paced by it.
 - While `/run/mgu-render/stats-log` exists, each step of an app's frames and touches goes to `/run/mgu-render/trace.log` (`<us> R <step> <n> <app>`, CLOCK_MONOTONIC): touch in and forwarded, TICK sent, frame received, draw start and end, commit, the HMI's frame callback; `tools/car-test/trace.js` lines it up with the Store's.
 
 ## 0.5.1

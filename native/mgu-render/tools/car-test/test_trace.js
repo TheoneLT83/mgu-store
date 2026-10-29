@@ -14,7 +14,8 @@ r(500, 'frame-rx', 1);                       // an earlier connection: left out
 for (let n = 1; n <= 10; n++) {
     const t = 1000000 + n * 40000;
     r(t - 6000, 'tick', n); s(t - 5800, 'tick', n);
-    r(t - 9000, 'touch-in', n); r(t - 8900, 'touch-fwd', n); s(t - 8000, 'touch', n, 'move');
+    r(t - 9000, 'touch-in', n); r(t - 8900, 'touch-fwd', n); s(t - 8000, 'touch', n, n % 5 === 1 ? 'down' : 'move');
+    if (n % 5 === 0) { s(t + 2000, 'settle-start', n); s(t + 3500, 'settle-end', n); }
     s(t - 5000, 'build-start', n, 'drag'); s(t - 1000, 'build-end', n, 'drag'); s(t, 'send', n);
     r(t + 300, 'frame-rx', n);
     if (n === 5) continue;                   // a newer frame drawn in its place
@@ -36,6 +37,9 @@ assert.strictEqual(med('frame-rx to draw-start'), 10);
 assert.strictEqual(med('commit to HMI callback'), 14);
 assert.strictEqual(med('frame to next frame (send to send)'), 40);
 assert.strictEqual(a.offClock, 0);
+const work = Object.fromEntries(a.work.map(([k, xs]) => [k, xs]));
+assert.deepStrictEqual([a.touches, work['a touch\'s first drag frame'], work['release (settle)']], [2, [4, 4], [1.5, 1.5]],
+    'per touch: its first drag frame, the release');
 assert(/10 frames sent in 0\.4 s/.test(report(a)), report(a));
 fs.rmSync(dir, { recursive: true, force: true });
 console.log('trace: all checks pass');

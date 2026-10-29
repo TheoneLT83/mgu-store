@@ -139,6 +139,23 @@ int cfg_set(struct cfg *c, const char *key, const char *value)
         log_error("%s: '%s' is not a number", key, value);
         return -1;
     }
+    if (!strncmp(key, "fps.", 4) && key[4]) {
+        int i = 0;
+        while (i < c->n_app_fps && strcmp(c->app_fps[i].app, key + 4)) i++;
+        if (i == CFG_MAX_APP_FPS || strlen(key + 4) >= sizeof c->app_fps[0].app || n < 0 || n > 1000) {
+            log_error("%s: too many apps, too long a name or not 0..1000", key);
+            return -1;
+        }
+        if (i == c->n_app_fps) c->n_app_fps++;
+        snprintf(c->app_fps[i].app, sizeof c->app_fps[i].app, "%s", key + 4);
+        c->app_fps[i].fps = (int)n;
+        return 0;
+    }
+    if (!strcmp(key, "fps")) {
+        if (n < 0 || n > 1000) { log_error("fps: 0..1000"); return -1; }
+        c->fps = (int)n;
+        return 0;
+    }
     if (!strcmp(key, "screen_id")) c->screen_id = (uint32_t)n;
     else if (!strcmp(key, "embed")) c->embed = n != 0;
     else if (!strcmp(key, "embed_surface_id")) c->embed_surface_id = (uint32_t)n;
@@ -199,4 +216,11 @@ int cfg_load(struct cfg *c, const char *path)
     }
     fclose(f);
     return rc;
+}
+
+int cfg_fps(const struct cfg *c, const char *app)
+{
+    for (int i = 0; i < c->n_app_fps; i++)
+        if (!strcmp(c->app_fps[i].app, app)) return c->app_fps[i].fps;
+    return c->fps;
 }

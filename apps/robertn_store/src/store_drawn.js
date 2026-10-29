@@ -37,12 +37,13 @@ const { frame, layoutOf, dragOf, dragFrame, hit, placement } = require('./store_
 const DEPTHS = 3;
 const ICON_BYTES = 128 * 1024;          // a package picture: at most this big
 const ICONS_KEPT = 48;                  // decoded pictures kept, the most recently shown
-const FPS = 60;                         // frames a second at most
+const FPS = 30;                         // frames a second at most (mgu-render's fps setting can give another)
 const KEEPALIVE_MS = 1000;              // the renderer hides an app silent for 3 s
 const CLOSED_RESHOW_MS = 700;           // a touch outside that left the page where it was
 const DRAG_PX = 14;
 const DRAG_ROWS_PX = 2048;                // a drag's cached rows: at most this high on the device (mgu-render takes 4096)
 const PREBUILD_MS = 300;                  // a drag's layers made ahead once the page has stayed this long
+const PICTURES_MS = 100;                  // a new page's first frame waits at most this long for its pictures
 const STATS_LOG = '/run/mgu-render/stats-log';  // mgu-render's per-second stats switch: the Store's own then too
 const STATS_OUT = '/dev/shm/robertn_store-stats.log';   // where they go (an OAP app's own log goes to DLT)
 const STATS_OUT_MAX = 1024 * 1024;              // bytes kept; past it the file starts again
@@ -155,9 +156,12 @@ class Drawn extends EventEmitter {
         this.touch = null;
         this.drag = null;                   // a drag's cached layers (_dragFrame), for the page as at gen
         this.gen = 0;                       // counts changes to what the page draws besides a grid's or list's scroll
-        this.drawn = null;                  // the model the page was last built from (JSON)
+        this.drawn = null;                  // the model the page was last built from (JSON), and its focus
+        this.drawnFocus = 0;
         this.settleKey = null;              // a released drag's region whose last position is still to be drawn
         this.prebuild = null;
+        this.pageAt = 0;                    // when the page last changed (_page)
+        this.held = null;                   // a new page's frame held for its pictures
         this.retired = [];                  // layers to drop once the next frame is sent
         this.ccu = null;
         this.fccu = null;
@@ -185,6 +189,7 @@ class Drawn extends EventEmitter {
         this.gpu.on('closed', () => {
             this.closedHide = true;
             this.on_ = false;
+            this._dropKept();
             setTimeout(() => {
                 this.closedHide = false;
                 this._updateShow();
@@ -201,6 +206,7 @@ class Drawn extends EventEmitter {
     close() {
         clearInterval(this.keepalive);
         clearTimeout(this.prebuild);
+        clearTimeout(this.held);
         this.timing.close();
         this.gpu.removeAllListeners('close');
         this.gpu.close();
@@ -249,6 +255,15 @@ class Drawn extends EventEmitter {
     reset() {
         this.stack = [{ name: 'main' }];
         this.focus = 0;
+        this._page();
+    }
+
+    /* Another page: a gesture on the one before ends, and the new page's
+     * first frame shows it whole (render: its pictures too). */
+    _page() {
+        this.pageAt = Date.now();
+        this.touch = null;
+        this.settleKey = null;
     }
 
     top() {
@@ -276,6 +291,7 @@ class Drawn extends EventEmitter {
             this.host.openState(this.hostOf(this.stack.length));
         }
         this.focus = 0;
+        this._page();
         this.render();
         return replaced;
     }
@@ -284,6 +300,7 @@ class Drawn extends EventEmitter {
     restore(page) {
         this.stack[this.stack.length - 1] = page;
         this._backTo();
+        this._page();
         this.render();
     }
 
@@ -293,6 +310,7 @@ class Drawn extends EventEmitter {
             this.stack.pop();
             this._backTo();
             this.host.closeState(this.hostOf(depth));
+            this._page();
             this.render();
         }
     }
@@ -314,11 +332,13 @@ class Drawn extends EventEmitter {
             this.pop();
         }
         this.tab = tab;
+        this._page();
         this.render();
     }
 
     setFilter(filter) {
         this.filter = filter;
+        this._page();
         this.render();
     }
 
@@ -334,6 +354,7 @@ class Drawn extends EventEmitter {
             if (depth < this.stack.length) {
                 this.stack.length = depth;
                 this._backTo();
+                this._page();
             }
             this.focusLost = false;
             this.render();
@@ -395,6 +416,9 @@ class Drawn extends EventEmitter {
             return;
         }
         this.on_ = on;
+        if (!on) {
+            this._dropKept();
+        }
         this.gpu.claim(on ? [this.viewport] : []);
         this.gpu.grab(on && !!this.controller);
         if (on) {
@@ -416,14 +440,17 @@ class Drawn extends EventEmitter {
         if (!this.mode || !this.w) {
             return;
         }
-        if (!same) {
-            this.gen++;
-        }
         this.settleKey = null;
         const b0 = this.timing.on ? usNow() : 0;
         const t0 = this.timing.on ? msNow() : 0;
         const m = this._model();
-        this.drawn = JSON.stringify(m);
+        const json = JSON.stringify(m);
+        if (!same || json !== this.drawn) {
+            this.gen++;
+            same = false;
+        }
+        this.drawn = json;
+        this.drawnFocus = this.focus;
         const tm = t0 ? msNow() : 0;
         const r = frame(m, { textScale: this.scale, focus: this.focus, scroll: this.scroll, layout: this.layout });
         if (t0) { this.timing.model += tm - t0; this.timing.layout += msNow() - tm; }
@@ -447,6 +474,16 @@ class Drawn extends EventEmitter {
             return;
         }
         const now = Date.now();
+        clearTimeout(this.held);
+        this.held = null;
+        if (now - this.pageAt < PICTURES_MS && r.icons.some((f) => this.decoding.has(f))) {
+            // a new page: shown once its pictures are decoded (refresh), or as it is at PICTURES_MS
+            this.held = setTimeout(() => {
+                this.held = null;
+                this.render(true);
+            }, PICTURES_MS - (now - this.pageAt));
+            return;
+        }
         if (this.gpu.waiting && now - this.sentAt < KEEPALIVE_MS) {
             this.dirty = true;
             return;
@@ -458,9 +495,10 @@ class Drawn extends EventEmitter {
 
     /* The model may have changed (the updater's state, pictures decoded): built again now, or, while a drag
      * moves cached rows, once the drag ends (its release builds the page); decoded pictures redraw the rows. A
-     * state the page was built from already changes nothing. */
+     * state the page was built from already draws nothing; its proxies are written again where they differ. */
     refresh(pictures) {
-        if (!pictures && this.mode && JSON.stringify(this._model()) === this.drawn) {
+        if (!pictures && this.mode && this.focus === this.drawnFocus && JSON.stringify(this._model()) === this.drawn) {
+            this._proxies();                // cells the host asked to be written again
             return;
         }
         if (this.touch && this.touch.drag) {
@@ -480,7 +518,11 @@ class Drawn extends EventEmitter {
         clearTimeout(this.prebuild);
         this.prebuild = setTimeout(() => {
             this.prebuild = null;
-            if (!this.on_ || this.touch || (this.drag && this.drag.gen === this.gen)) {
+            if (this.touch) {
+                this._prebuildSoon();
+                return;
+            }
+            if (!this.on_ || (this.drag && this.drag.gen === this.gen)) {
                 return;
             }
             const g = this.regions.filter((x) => x.max > 0).sort((a, b) => b.w * b.h - a.w * a.h)[0];
@@ -594,6 +636,16 @@ class Drawn extends EventEmitter {
         d.n = n;
     }
 
+    /* Hidden: the drag's layers and those retired dropped now (the next frame, once shown, is built whole). */
+    _dropKept() {
+        this._dragEnd();
+        this.retired.forEach((L) => {
+            kit.dropLayer(L);
+            this.gpu.dropLayer(L.layerId);
+        });
+        this.retired = [];
+    }
+
     /* The drag's layers retired: dropped after the next frame sent. */
     _dragEnd() {
         const d = this.drag;
@@ -613,10 +665,13 @@ class Drawn extends EventEmitter {
             this.render();
             return;
         }
+        this.timing.trace('settle-start', this.timing.sent);
         const l = layoutOf(this._model(), { focus: this.focus, scroll: this.scroll, layout: this.layout });
+        this.drawnFocus = this.focus;
         this.items = l.items;
         this.regions = l.regions;
         this._proxies();
+        this.timing.trace('settle-end', this.timing.sent);
         if (this.dirty) {
             this.settleKey = t.region.key;
             if (!this.gpu.waiting) {

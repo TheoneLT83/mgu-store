@@ -37,7 +37,7 @@ STATS_FILE=/run/mgu-render/stats-log
 STORE_STATS=/dev/shm/robertn_store-stats.log    # the Store's own per-second line while stats-log is on
 RENDER_TRACE=/run/mgu-render/trace.log          # the per-frame trace (trace.js), mgu-render's and the Store's
 STORE_TRACE=/dev/shm/robertn_store-trace.log
-AB_KEYS="embed_zero_copy tick_early readback_pbo embed_finish verbose"
+AB_KEYS="embed_zero_copy tick_early readback_pbo embed_finish fps fps.robertn_store verbose"
 # on the unit: what a pid runs (its binary, else its command line)
 # shellcheck disable=SC2016
 RUNS_FN='runs() { e=$(readlink /proc/$1/exe 2>/dev/null); case "$e" in *mgu-render*) printf "%s" "$e" ;; *) tr "\0" " " </proc/$1/cmdline ;; esac; }'
@@ -362,12 +362,17 @@ cmd_ab() {
 	for p in "${ARGS[@]}"; do
 		k=${p%%=*}; v=${p#*=}
 		case " $AB_KEYS " in *" $k "*) ;; *) die "unknown setting $k (one of: $AB_KEYS)" 2 ;; esac
-		case "$v" in 0|1) ;; *) die "$k takes 0 or 1" 2 ;; esac
-		keys="$keys $k"; sets="$sets -s $k=$v"
+		case "$k" in
+			fps|fps.*) case "$v" in ''|*[!0-9]*) die "$k takes frames a second (0: the app's own)" 2 ;; esac
+				keys="$keys 0..1000" ;;                    # the fps settings' own error text: only a renderer with them has it
+			*) case "$v" in 0|1) ;; *) die "$k takes 0 or 1" 2 ;; esac
+				keys="$keys $k" ;;
+		esac
+		sets="$sets -s $k=$v"
 	done
 	on_unit "set -e
 		b=/var/opt/mgu-render/current/mgu-render
-		for k in$keys; do grep -q \"\$k\" \"\$b\" || { echo \"the installed mgu-render does not know \$k: not set\" >&2; exit 2; }; done
+		for k in$keys; do grep -qF \"\$k\" \"\$b\" || { echo \"the installed mgu-render does not know \$k: not set\" >&2; exit 2; }; done
 		line=\$(sed -n 's/^ExecStart=//p' /etc/systemd/system/mgu-render.service | tail -n 1)
 		[ -n \"\$line\" ] || { echo 'no ExecStart in mgu-render.service' >&2; exit 2; }
 		mkdir -p $DROPIN_DIR

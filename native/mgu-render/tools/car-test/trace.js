@@ -80,7 +80,29 @@ function analyse(render, store) {
     const tickIpc = [];
     const rticks = by(render, 'tick');
     ticks.forEach((e) => { const r = rticks.get(e.n); if (r && e.us >= r.us) tickIpc.push((e.us - r.us) / 1000); });
-    return { sent: sent.length, notDrawn, offClock, trig, steps, touch, tickIpc,
+    // per touch: its first drag frame's build, and the Store's work at the release (settle) and ahead (prebuild)
+    const builds = (kind) => sent.filter((n) => S.start.has(n) && S.end.has(n) && S.start.get(n).rest === kind)
+        .map((n) => (S.end.get(n).us - S.start.get(n).us) / 1000);
+    const downs = touches.filter((e) => e.rest === 'down');
+    const firstDrag = [];
+    downs.forEach((d, i) => {
+        const until = i + 1 < downs.length ? downs[i + 1].us : Infinity;
+        const n = sent.find((k) => { const s = S.start.get(k); return s && s.rest === 'drag' && s.us >= d.us && s.us < until; });
+        if (n !== undefined) firstDrag.push((S.end.get(n).us - S.start.get(n).us) / 1000);
+    });
+    const pairs = (a, b) => {
+        const out = [];
+        let open = null;
+        store.forEach((e) => {
+            if (e.step === a) open = e;
+            else if (e.step === b && open) { out.push((e.us - open.us) / 1000); open = null; }
+        });
+        return out;
+    };
+    const work = [['whole page builds', builds('whole')], ['drag frames', builds('drag')],
+        ['a touch\'s first drag frame', firstDrag], ['release (settle)', pairs('settle-start', 'settle-end')],
+        ['drag layers made ahead', pairs('prebuild-start', 'prebuild-end')]];
+    return { sent: sent.length, notDrawn, offClock, trig, steps, touch, tickIpc, work, touches: downs.length,
         seconds: sent.length > 1 ? (S.send.get(sent[sent.length - 1]).us - S.send.get(sent[0]).us) / 1e6 : 0 };
 }
 
@@ -94,6 +116,8 @@ function report(a) {
     a.steps.forEach(([name, xs]) => out.push(row(name, xs)));
     out.push(row('TICK: mgu-render to the Store', a.tickIpc));
     out.push(row('touch: mgu-render to the Store', a.touch));
+    out.push(`the Store's work, ${a.touches} touches                  median    p90    max  (times) ms`);
+    a.work.forEach(([name, xs]) => out.push(`${row(name, xs).replace(/  \((\d+)\)$/, '')} ${xs.length ? Math.max.apply(null, xs).toFixed(1).padStart(6) : '     -'}  (${xs.length})`));
     if (a.offClock) out.push(`warning: ${a.offClock} frames reached mgu-render before the Store sent them: the two clocks differ`);
     return out.join('\n');
 }

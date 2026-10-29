@@ -929,7 +929,7 @@ function runDrawn() {
         appArea: { x: 108, y: 82, w: 1790, h: 638 }, controller: false, touch: true, pixmap: true });
     return tick().then(() => {
         eq(app._ui, mode, `the renderer offering embed: ${mode} (the host states this HMI has)`);
-        eq(fpsAsked, 60, 'at most 60 frames a second');
+        eq(fpsAsked, 30, 'at most 30 frames a second');
         eq(gpuLog.slice(0, 2), [`mode ${mode}`, mode === 'embed' ? 'place 104,88 1796x632 1.000' : 'place 108,82 1790x638 1.000'],
             'iDrive 7: the compact layout, at scale 1');
         eq(states.slice(0, 2), [`map ${host(1)}`, `open ${host(1)}`], 'the tile maps to the drawn screens; the Store on screen moves there');
@@ -1022,8 +1022,52 @@ function runDrawn() {
         gpu.emit('touch', 'move', x0, y0 - 40);
         eq([...frames[frames.length - 1].layersUsed].sort(), ahead, 'the first drag frame from them');
         gpu.emit('touch', 'up', x0, y0 - 40);
-        drawn.scroll = {};
-        app._client.emit('state', st);
+        // the host's cells forgotten (an HMI restore): the same state draws nothing but writes the proxies again
+        const n7 = frames.length, w0 = writes.length;
+        app._forgetWritten();
+        app._client.emit('state', app._st);
+        eq([frames.length - n7, writes.slice(w0).some((w) => w.startsWith(proxy(1, 0)))], [0, true], 'proxies written again, nothing drawn');
+        // hidden: the kept layers dropped at once
+        const d2 = dropped.length;
+        drawn.suspend(true);
+        eq(dropped.slice(d2).sort(), ahead, 'hidden: the drag\'s layers dropped');
+        drawn.suspend(false);
+        // another page during a drag, a frame pending: the frame at the TICK is the new page built whole, the
+        // same as a build of it now (no drag frame of the page before)
+        const whole = () => Array.from(require(path.join(SRC, 'store_frame.js')).frame(drawn._model(), { textScale: drawn.scale,
+            focus: drawn.focus, scroll: Object.assign({}, drawn.scroll), layout: drawn.layout }).rec.words());
+        gpu.emit('touch', 'down', x0, y0);
+        gpu.emit('touch', 'move', x0, y0 - 40);
+        gpu.waiting = true;
+        gpu.emit('touch', 'move', x0, y0 - 80);
+        const n5 = frames.length;
+        drawn.push({ name: 'app', id: 'doom' });
+        gpu.emit('touch', 'move', x0, y0 - 120);
+        eq(frames.length, n5, 'nothing sent while a frame is pending');
+        gpu.waiting = false;
+        gpu.emit('tick');
+        const shown = frames[frames.length - 1];
+        eq([frames.length - n5, drawn.touch, !shown.layersUsed || !shown.layersUsed.size, Array.from(shown.words())],
+            [1, null, true, whole()], 'the new page whole at the TICK; the drag ended with the page');
+        gpu.emit('touch', 'up', x0, y0 - 120);
+        drawn.pop();
+        // a new page with a picture not decoded yet: its first frame waits for it
+        const pic = path.join(__dirname, '..', 'robertn_store@0.9.11', 'rhmiData', 'variantGroups', 'Common', 'images', 'store_icon.png');
+        const extra = Array.from({ length: 30 }, (_, i) => comp({ id: `x${i}`, title: `Extra ${i}`, version: '1.0.0', installed: null, status: 'available' }));
+        app._client.emit('state', Object.assign({}, st, { components: st.components.concat(extra, [comp({ id: 'pictured', title: 'Pictured',
+            version: '1.0.0', installed: null, status: 'available', icon: pic })]) }));
+        const n6 = frames.length;
+        drawn.push({ name: 'app', id: 'pictured' });
+        eq(frames.length, n6, 'held while its picture is decoded');
+        return tick(150).then(() => {
+            const f = frames[frames.length - 1];
+            eq([frames.length - n6, f.images && f.images.size > 0, Array.from(f.words())], [1, true, whole()],
+                'then shown whole, with its picture');
+            drawn.pop();
+            drawn.scroll = {};
+            app._client.emit('state', st);
+        });
+    }).then(() => {
         // focus moves with the HMI's
         app._components[proxy(1, 9)].emit('focus', { value: true });
         eq(drawn.focus, 9);

@@ -7,7 +7,8 @@
  * focus ring use the same list. No I/O (tools/test_screens.js).
  *
  *   frame(model, { textScale, focus, scroll, layout }) -> { screen, rec, items, regions, icons }
- *   layoutOf(model, same) -> frame()'s items, regions and icons, without drawing
+ *   layoutOf(model, frame()'s options) -> its items, regions and icons, without drawing (a focus out of view
+ *   scrolls as in frame())
  *   dragOf(model, { textScale, scroll, layout }, key) -> what a drag of grid or list key draws (store_drawn.js)
  *   dragFrame(drag, baseLayer, rowsLayer, from, top, textScale) -> one frame of that drag
  *

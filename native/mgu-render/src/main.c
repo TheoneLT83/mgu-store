@@ -508,8 +508,16 @@ static void stats(client *c, uint64_t dt) {
 }
 
 /* a capped app's frame that came too early: how long until it may be drawn (us), else 0 */
+/* the time between two frames of an app that asked for a rate: the fps setting's in place of its own; 0 = none */
+static uint64_t frame_us(const client *c) {
+    if (!c->min_us) return 0;
+    int f = cfg_fps(&cfg, c->app);
+    return f > 0 ? 1000000ull / (uint64_t)f : c->min_us;
+}
+
 static uint64_t cap_wait(const client *c, uint64_t now) {
-    return c->min_us && c->dirty && !c->frame_cb && now - c->last_draw < c->min_us ? c->min_us - (now - c->last_draw) : 0;
+    uint64_t m = frame_us(c);
+    return m && c->dirty && !c->frame_cb && now - c->last_draw < m ? m - (now - c->last_draw) : 0;
 }
 
 static void render_layer(client *c) {

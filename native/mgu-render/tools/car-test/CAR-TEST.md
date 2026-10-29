@@ -25,6 +25,31 @@ plays, and says what they see.
 | `test_probe.js` | `node test_probe.js`: the probe against a fake compositor |
 | `trace.js` | the per-frame trace of a drag as a step-by-step breakdown, on the Mac (`node test_trace.js`) |
 
+## Short check: swipes, 30 and 60 fps, page changes
+
+The branch's mgu-render and Store with the per-frame trace; renderer
+restarts with nothing on screen, no head-unit restart. About 25 minutes.
+
+1. `k status` (the published versions, `embed: zero-copy`), `k stats on`.
+2. Owner: open the Store on its list. `k drag before`: quick swipes.
+   Owner: close the Store.
+3. `k install`, `k restart --off-screen`. Owner: open the Store and wait a
+   second (the drag's layers are made ahead).
+4. `k drag swipes30`: the owner swipes the list in short quick strokes,
+   lifting the finger between them. `k drag drag30`: one slow drag up and
+   down without lifting. `k drag pages30`: the owner opens apps from the
+   list and goes back, and switches tabs, several times. The owner says
+   what flickers, if anything. Owner: close the Store.
+5. `k ab fps.robertn_store=60`, `k restart --off-screen`. Owner: open the
+   Store. `k drag swipes60`, `k drag drag60`, `k drag pages60`, as in 4;
+   the owner says what flickers, during the drags and when the page
+   changes. Owner: close the Store.
+6. `k restore`, `k restart --off-screen`, `k status`.
+
+`<name>.trace.txt`: each step's median and p90, and the Store's work per
+touch: a touch's first drag frame, the release (settle), whole page builds
+and the drag layers made ahead.
+
 ## Short check: one drag, traced
 
 `install` puts on only what is newer on the branch. With the unit's
