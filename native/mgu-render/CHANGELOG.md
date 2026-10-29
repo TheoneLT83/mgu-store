@@ -1,5 +1,9 @@
 # mgu-render changelog
 
+## 0.6.4
+
+- An app's layer goes back on the centre screen, on top, each time it is shown: another renderer (the MGU Store's beside idrive7-apps') or the HMI could set the screen's layers without it, and the app then showed a black page (seen on the car after opening the Store, then an app).
+
 ## 0.6.3
 
 - The old GPU renderers are set aside at install again (`mgu-render-retire.sh`): idrive7-apps' installer's `mgu-renderd.service` and idrive7-renderd 1.x, which 0.6.2 put back and which do not speak mgu-render/1 (the apps then showed their old screen). idrive7-apps' renderer 2.x stays and runs beside it.
