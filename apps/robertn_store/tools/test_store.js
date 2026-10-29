@@ -929,7 +929,7 @@ function runDrawn() {
         appArea: { x: 108, y: 82, w: 1790, h: 638 }, controller: false, touch: true, pixmap: true });
     return tick().then(() => {
         eq(app._ui, mode, `the renderer offering embed: ${mode} (the host states this HMI has)`);
-        eq(fpsAsked, 30, 'at most 30 frames a second');
+        eq(fpsAsked, 60, 'at most 60 frames a second');
         eq(gpuLog.slice(0, 2), [`mode ${mode}`, mode === 'embed' ? 'place 104,88 1796x632 1.000' : 'place 108,82 1790x638 1.000'],
             'iDrive 7: the compact layout, at scale 1');
         eq(states.slice(0, 2), [`map ${host(1)}`, `open ${host(1)}`], 'the tile maps to the drawn screens; the Store on screen moves there');
@@ -943,8 +943,8 @@ function runDrawn() {
         eq([lastText(proxy(1, 0)), lastText(proxy(1, 3)), lastText(proxy(1, 4)), lastText(proxy(1, 7))],
             ['Store', 'Settings', 'All', 'DOOM'], 'proxies in focus order: side menu, filters, tiles');
         eq(last(new RegExp(`^${proxy(1, 12)}\\.Visible`)), `${proxy(1, 12)}.Visible=0`, 'unused proxies hidden');
-        // a drag moves the grid's rows: each move one frame of two cached layers (the frame as the drag started, the
-        // rows); at rest the frame built again and the layers dropped
+        // a drag moves the grid's rows: each move one frame of two cached layers (the page as the drag started,
+        // the rows); the release keeps them, and the next drag draws from them
         const many = Object.assign({}, st, { components: st.components.concat(Array.from({ length: 30 }, (_, i) =>
             comp({ id: `x${i}`, title: `Extra ${i}`, version: '1.0.0', installed: null, status: 'available' }))) });
         app._client.emit('state', many);
@@ -956,31 +956,44 @@ function runDrawn() {
         const moves = frames.slice(n0);
         eq([moves.length, moves.every((f) => !!f.layersUsed && f.layersUsed.size === 2)], [4, true], 'a frame of two layers each move');
         eq(drawn.scroll[g.key] > 1, true, 'the rows scrolled');
+        const layers = [...moves[0].layersUsed].sort();
         const d0 = dropped.length;
         gpu.emit('touch', 'up', x0, y0 - 400);
-        const rest = frames[frames.length - 1];
-        eq([frames.length - n0, !rest.layersUsed || !rest.layersUsed.size, dropped.length - d0], [5, true, 2],
-            'at rest: the frame built again, the drag\'s two layers dropped');
         const top = drawn.scroll[g.key], first = drawn.items.find((i) => i.label === 'DOOM');
-        eq(Math.round(first.y), Math.round(g.y - top * g.step), 'items where the rows came to rest');
+        eq([frames.length - n0, dropped.length - d0, Math.round(first.y)], [4, 0, Math.round(g.y - top * g.step)],
+            'the release: no frame built, the layers kept, items where the rows came to rest');
+        gpu.emit('touch', 'down', x0, y0);
+        gpu.emit('touch', 'move', x0, y0 + 60);
+        eq([...frames[frames.length - 1].layersUsed].sort(), layers, 'the next drag: the same layers');
+        // a release while a frame is pending: its last position drawn at the TICK, from the same layers
+        gpu.waiting = true;
+        gpu.emit('touch', 'move', x0, y0 + 100);
+        const n4 = frames.length;
+        gpu.emit('touch', 'up', x0, y0 + 100);
+        gpu.waiting = false;
+        gpu.emit('tick');
+        eq([frames.length - n4, [...frames[frames.length - 1].layersUsed].sort()], [1, layers], 'the last position at the TICK');
         // a state change during a drag waits for its release: the drag frames keep their layers (a frame pending
-        // at the renderer: drawn at its TICK); the release builds the page from the new state
+        // at the renderer: drawn at its TICK); the release builds the page from the new state and drops them
         gpu.emit('touch', 'down', x0, y0);
         gpu.emit('touch', 'move', x0, y0 - 40);
-        const before = [...frames[frames.length - 1].layersUsed];
         gpu.waiting = true;
         const n2 = frames.length, d1 = dropped.length;
-        app._client.emit('state', Object.assign({}, many, { components: many.components.concat([comp({ id: 'fresh', title: 'Fresh', version: '1.0.0', installed: null, status: 'available' })]) }));
+        const fresh = Object.assign({}, many, { components: many.components.concat([comp({ id: 'fresh', title: 'Fresh', version: '1.0.0', installed: null, status: 'available' })]) });
+        app._client.emit('state', fresh);
         gpu.emit('touch', 'move', x0, y0 - 80);
         eq(frames.length, n2, 'nothing sent while a frame is pending');
         gpu.waiting = false;
         gpu.emit('tick');
-        const after = [...frames[frames.length - 1].layersUsed];
-        eq([frames.length - n2, after.sort(), dropped.length - d1], [1, before.sort(), 0],
+        eq([frames.length - n2, [...frames[frames.length - 1].layersUsed].sort(), dropped.length - d1], [1, layers, 0],
             'at the TICK: a drag frame of the same layers, none dropped');
         gpu.emit('touch', 'up', x0, y0 - 80);
-        eq([dropped.slice(d1).sort(), drawn.items.some((i) => i.label === 'Fresh')], [before.sort(), true],
+        eq([dropped.slice(d1).sort(), drawn.items.some((i) => i.label === 'Fresh')], [layers, true],
             'the release: the page built from the new state, the drag\'s layers dropped');
+        // a state the page was built from already: nothing built
+        const n3 = frames.length;
+        app._client.emit('state', fresh);
+        eq(frames.length, n3, 'the same state: nothing built');
         // a drag the rows cannot follow (past the top) draws nothing
         drawn.scroll = {};
         drawn.render();
@@ -997,6 +1010,18 @@ function runDrawn() {
         gpu.emit('ready', { w: 1920, h: 720 }, { version: 1, modes: ['layer', 'embed'], embedBox: { x: 104, y: 88, w: 1796, h: 632 },
             appArea: { x: 108, y: 82, w: 1790, h: 638 }, controller: false, touch: true, pixmap: true });
         app._states[host(1)].emit('visible', { visible: true });
+        drawn.scroll = {};
+        app._client.emit('state', many);
+        return tick(400);
+    }).then(() => {
+        // the page stayed: its grid's layers made ahead, the first drag frame draws from them
+        const d = drawn.drag, g = drawn.regions.find((r) => r.max > 0), x0 = g.x + 40, y0 = g.y + g.h - 20;
+        eq([!!d, d && d.gen === drawn.gen, d && d.key], [true, true, g.key], 'layers made ahead for the grid');
+        const ahead = [d.baseLayer.layerId, d.rowsLayer.layerId].sort();
+        gpu.emit('touch', 'down', x0, y0);
+        gpu.emit('touch', 'move', x0, y0 - 40);
+        eq([...frames[frames.length - 1].layersUsed].sort(), ahead, 'the first drag frame from them');
+        gpu.emit('touch', 'up', x0, y0 - 40);
         drawn.scroll = {};
         app._client.emit('state', st);
         // focus moves with the HMI's

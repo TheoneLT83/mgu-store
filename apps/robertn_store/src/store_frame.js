@@ -7,6 +7,7 @@
  * focus ring use the same list. No I/O (tools/test_screens.js).
  *
  *   frame(model, { textScale, focus, scroll, layout }) -> { screen, rec, items, regions, icons }
+ *   layoutOf(model, same) -> frame()'s items, regions and icons, without drawing
  *   dragOf(model, { textScale, scroll, layout }, key) -> what a drag of grid or list key draws (store_drawn.js)
  *   dragFrame(drag, baseLayer, rowsLayer, from, top, textScale) -> one frame of that drag
  *
@@ -205,7 +206,9 @@ function dragFrame(d, baseLayer, rowsLayer, from, top, textScale) {
     return r;
 }
 
-function frame(m, opts) {
+/* frame() without the drawing: what can be pressed and where, the scrolling
+ * regions and the pictures. */
+function layoutOf(m, opts) {
     const o = opts || {};
     const scroll = o.scroll || {};
     const v = view(m);
@@ -219,12 +222,18 @@ function frame(m, opts) {
         st = screenOf(v, scroll, layout);
         laid = itemsOf(st, page);
     }
-    const rec = record(st, recordOpts(layout, o.textScale));
-    const f = laid.items[o.focus];
+    return { st, screen: v.screen, items: laid.items, regions: laid.regions, icons: icons(v), values: v.values };
+}
+
+function frame(m, opts) {
+    const o = opts || {};
+    const l = layoutOf(m, o);
+    const rec = record(l.st, recordOpts(o.layout || null, o.textScale));
+    const f = l.items[o.focus];
     if (f && !f.reveal) {
         rec.strokeRoundRect(f.x - 8, f.y - 8, f.w + 16, f.h + 16, f.r + 8, 5, FOCUS);
     }
-    return { screen: v.screen, rec, items: laid.items, regions: laid.regions, icons: icons(v), values: v.values };
+    return { screen: l.screen, rec, items: l.items, regions: l.regions, icons: l.icons, values: l.values };
 }
 
 const inside = (r, x, y) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
@@ -241,4 +250,4 @@ function hit(items, x, y) {
     return -1;
 }
 
-module.exports = { frame, dragOf, dragFrame, hit, placement };
+module.exports = { frame, layoutOf, dragOf, dragFrame, hit, placement };
