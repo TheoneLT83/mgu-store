@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.32
+
+iDrive 7 full screen: the header tabs (Store, Installed, USB, Settings) can be tapped; a tap there went to the HMI, which closed the Store's screen.
+
 ## 0.9.31
 
 iDrive 7 full screen: the HMI's clock and status icons show at the title strip's right end again (the page's background covered them: the screens lost the strip's setting on the way to the drawing).

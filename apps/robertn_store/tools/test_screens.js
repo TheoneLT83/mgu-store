@@ -515,3 +515,6 @@ console.log(`screens: ${fixture.screens().length} screens in ${Object.keys(UNITS
         eq([alpha(1500, 30), alpha(1800, 60), alpha(300, 30)], [0, 0, 255], `full screen ${tab}: the status icons' corner see-through, the header drawn`);
     });
 }
+
+// iDrive 7 full screen: the header tabs take touch (the Store's claims: the strip up to the status icons, the page)
+eq(UNITS['iDrive 7 full screen'].layout.claims, [{ x: 0, y: 80, w: 1836, h: 640 }, { x: 0, y: 0, w: 1256, h: 80 }], 'full screen: touch claimed for the header tabs too');

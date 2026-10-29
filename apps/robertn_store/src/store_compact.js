@@ -281,7 +281,9 @@ function compact(W, H0, look, opts) {
     const screens = [store, app, confirm, installed, usb, settings, source, accounts, changelog, pick, login, phone, type,
         wifi, prefer, internet, information];
     if (TOP) screens.forEach((st) => st.components.forEach((c) => { c.y += TOP; }));
-    return { design: { w: W, h: H0 }, screens, full, claims: full ? [{ x: 0, y: TOP, w: W, h: H }].concat(headTabs ? [{ x: 0, y: 0, w: STATUS_X, h: TOP }] : []) : null };
+    return { design: { w: W, h: H0 }, screens, full, // full: touch claimed under the strip and in it up to the status icons, in either look (store_drawn.js claims the
+        // top-level layout's, whichever look shows: the header tabs had no touch under the iDrive 7 look)
+        claims: full ? [{ x: 0, y: TOP, w: W, h: H }, { x: 0, y: 0, w: STATUS_X, h: TOP }] : null };
 }
 
 module.exports = { compact };
