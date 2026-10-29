@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.30
+
+Check for updates with no internet and no USB stick: the button says No internet for a moment.
+
 ## 0.9.29
 
 Installed: Install all updates (n) when there are updates, else Check for updates, which looks for new ones (as Settings' Check now).

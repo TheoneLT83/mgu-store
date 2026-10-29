@@ -265,6 +265,8 @@ f = screen('installed');
 eq(f.labels[4], 'Install all updates (1)', 'DOOM downloads and Extended dashboard waits: one update left');
 const noUp = screen('installed', {}, { components: fixture.state().components.map((c) => Object.assign({}, c, { status: c.installed ? 'installed' : c.status })) });
 eq([noUp.values.updateAll.text, noUp.values.updateAll.act], ['Check for updates', { do: 'check' }], 'no update: Check for updates');
+eq(screen('installed', { noNet: true }, { components: fixture.state().components.map((c) => Object.assign({}, c, { status: c.installed ? 'installed' : c.status })) }).values.updateAll.text,
+    'No internet', 'checked with no internet and no USB stick: says so');
 ok(!f.items.some((i) => i.label === 'Update'), 'the Update chip is not pressed on its own');
 eq(f.items.find((i) => i.label === 'Extended dashboard' || i.act && i.act.page && i.act.page.id === 'gauges').act.do, 'open', 'its row opens the page');
 ok(f.labels.indexOf('Display bridge') >= 0 && f.labels.indexOf('M Vitals') < 0, 'installed ones only');
