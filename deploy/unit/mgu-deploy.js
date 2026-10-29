@@ -44,7 +44,7 @@ var cp = require('child_process');
 
 /* deploy/component.json's version; bumped when a file under deploy/unit/
  * changes. */
-var VERSION = '0.6.4';
+var VERSION = '0.6.6';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -1045,6 +1045,18 @@ function cleanStale() {
         var p = path.join(CFG.varOpt, n), st = /^mgu-deploy-kit-\d+$/.test(n) && p !== HERE && lstatOrNull(p);
         if (st && Date.now() - st.mtime.getTime() > 86400000) rmrf(p);
     });
+    /* A tool's earlier current folder a killed install moved aside: back as
+     * current when nothing replaced it, else gone. */
+    fs.readdirSync(CFG.varOpt).forEach(function (n) {
+        var root = path.join(CFG.varOpt, n), cur = path.join(root, 'current'), st = lstatOrNull(root);
+        if (n === 'public' || !st || !st.isDirectory()) return;
+        fs.readdirSync(root).forEach(function (m) {
+            var pid = /^current\.legacy-(\d+)$/.exec(m), p = path.join(root, m);
+            if (!pid || pidAlive(Number(pid[1]))) return;
+            if (lstatOrNull(cur)) rmrf(p);
+            else { fs.renameSync(p, cur); say(n + ': the earlier install\'s current folder is back'); }
+        });
+    });
 }
 function releaseLock() {
     try { if (fs.readFileSync(LOCK_FILE, 'utf8').split(' ')[0] === String(process.pid)) fs.unlinkSync(LOCK_FILE); }
@@ -1782,6 +1794,17 @@ function installTool(a, state, tx) {
     var i7 = i7Takeover(a);
     tx.root = root; tx.before = before; tx.rootExisted = fs.existsSync(root);
     tx.versionExisted = fs.existsSync(dest); tx.socketsActive = {};
+    /* A current that is no link (a folder an earlier installer left, e.g.
+     * app-privacy 1.5.0's) cannot be replaced by rename: it goes aside, and
+     * a rollback puts it back. It goes once the install is through. */
+    var curStat = lstatOrNull(path.join(root, 'current'));
+    tx.legacy = null;
+    if (curStat && !curStat.isSymbolicLink()) {
+        var legacy = path.join(root, 'current.legacy-' + process.pid);
+        fs.renameSync(path.join(root, 'current'), legacy);
+        tx.legacy = legacy;
+        say(c.id + ': the earlier install\'s current folder moved aside to ' + legacy);
+    }
     (c.enable || []).forEach(function (en) {
         if (/\.socket$/.test(en.unit)) tx.socketsActive[en.unit] = unitState(en.unit, 'is-active') === 'active';
     });
@@ -1922,15 +1945,17 @@ function preUninstall(c, root) {
             '; ' + c.id + ' stays installed');
     }
 }
-/* Undoes one failed tool install. With no version to return to, a tool
- * that failed its health check or its app-privacy apply stays current,
- * reported as such. Otherwise current returns to the previous version,
- * the snapshot puts units and the recmgr list back, a version folder this
+/* Undoes one failed tool install. With no version and no earlier current
+ * folder to return to, a tool that failed its health check or its
+ * app-privacy apply stays current, reported as such. Otherwise current
+ * returns to the previous version or the earlier install's folder, the
+ * snapshot puts units and the recmgr list back, a version folder this
  * install created goes, a socket it started whose unit is gone again is
- * stopped, and units it restarted restart on the previous version. */
+ * stopped, and units it restarted restart on what is current again. */
 function rollbackTool(a, tx, backup, e, state) {
     var c = a.component;
-    if ((e.health || e.privacy) && !tx.before) {
+    var was = tx.before ? c.id + ' ' + tx.before : tx.legacy ? c.id + '\'s earlier install' : null;
+    if ((e.health || e.privacy) && !was) {
         say(c.id + ' ' + c.version + ' stays current: there is no previous version to return to');
         if (e.privacy) {
             say('the app-privacy patch is NOT in effect; app installs are refused until ' +
@@ -1938,7 +1963,7 @@ function rollbackTool(a, tx, backup, e, state) {
         }
         return;
     }
-    say('rolling back ' + c.id + ' ' + c.version + (tx.before ? ' to ' + tx.before : '') + ' from ' + backup);
+    say('rolling back ' + c.id + ' ' + c.version + (tx.before ? ' to ' + tx.before : tx.legacy ? ' to its earlier install' : '') + ' from ' + backup);
     restoreSnapshot(backup);
     if (tx.before) {
         if (currentTarget(tx.root) !== tx.before) switchCurrent(tx.root, tx.before);
@@ -1949,8 +1974,17 @@ function rollbackTool(a, tx, backup, e, state) {
     } else if (!tx.rootExisted) {
         rmrf(tx.root);
     } else {
-        rmrf(path.join(tx.root, 'current'));
+        /* a current that is a folder is the earlier install's, never this one's */
+        if (currentTarget(tx.root) !== null) rmrf(path.join(tx.root, 'current'));
+        rmrf(path.join(tx.root, 'current.new'));
         if (!tx.versionExisted) rmrf(path.join(tx.root, 'versions', c.version));
+        if (tx.legacy) {
+            try { fs.rmdirSync(path.join(tx.root, 'versions')); } catch (e2) { /* holds other versions */ }
+        }
+        if (tx.legacy && fs.existsSync(tx.legacy)) {
+            fs.renameSync(tx.legacy, path.join(tx.root, 'current'));
+            say(c.id + ': the earlier install\'s current folder is back');
+        }
     }
     Object.keys(tx.socketsActive || {}).forEach(function (u) {
         if (!tx.socketsActive[u] && !fs.existsSync(path.join(CFG.systemd, u))) {
@@ -1959,10 +1993,10 @@ function rollbackTool(a, tx, backup, e, state) {
     });
     runOk(CFG.systemctl, ['daemon-reload']);
     pruneCreatedDirs(state);
-    if (e.health) restartAgain(e.health, c.id + ' ' + tx.before);
+    if (e.health) restartAgain(e.health, was);
     if (e.privacy) {
         var pr = privacyApplyAndBounce(state);
-        say(pr.ok ? 'app-privacy ' + tx.before + ' applied again' : 'app-privacy ' + tx.before + ' apply failed too: ' + pr.why);
+        say(pr.ok ? was + ' applied again' : was + ' apply failed too: ' + pr.why);
     }
 }
 /* The deploy tool is a tool like the others: /var/opt/mgu-deploy/
@@ -2688,6 +2722,7 @@ function installApp(a, state, decision) {
         inplaceHookOf(fs.readFileSync(FALLBACK_COPY, 'utf8')) !== null) {
         say('the app manager runs older code than its main.js or AppManagement.js: restarting it before the update, ' +
             'which it then makes in place');
+        if (kept) rebuildFallback(false);
         bounceManager();
     }
     if (existing) waitStartedUp('placing ' + a.id + ' ' + a.version);
@@ -2695,7 +2730,11 @@ function installApp(a, state, decision) {
     var kc = existing ? lstatOrNull(keychainFile(existing.uid)) : null;
     a.noKeychain = existing && !(kc && kc.size > 0) ? existing.uid : null;
     placePreinstalled(a);
-    customAppsPut(a.id, entry ? entry.provisioningCache : null, a.pkg.mguAppStartType || 'manually');
+    /* The app is listed enabled and allowed whatever its registry entry
+     * cached: an app provisioning once dropped caches both false, and the
+     * manager installs no app the listing disables. */
+    customAppsPut(a.id, Object.assign({}, entry ? entry.provisioningCache : null, { '-enabled': 'true', '-allowed': 'true' }),
+        a.pkg.mguAppStartType || 'manually');
     var r = installInPlace(a, existing), uid = r.uid;
     /* MainApp's installer rejected the app's install or update: a restarted
      * manager runs the same install, and restarting it stops every app. */
@@ -3636,6 +3675,7 @@ function amRenderer(state, stage) {
         productName: 'GPU renderer', mguService: 'renderer' }, null, 2) + '\n');
     var a = validateService(r.bin, dir, pkgDir, readJson(path.join(pkgDir, 'package.json'))), tx = {};
     installTool(a, state, tx);
+    if (tx.legacy) rmrf(tx.legacy);
     return r.version;
 }
 /* Takes over: see the section's comment. Run under the lock, inside the
@@ -4656,6 +4696,8 @@ function cmdInstall(args) {
                 else if (id8) installAppId8(a, state, decisions[a.id], backup);
                 else installApp(a, state, decisions[a.id]);
                 syncDropIns();
+                /* a tool's earlier current folder stays until here, for a rollback */
+                if (tx.legacy) rmrf(tx.legacy);
                 endAppRecord(state, a.id);
                 done.push(a.id + ' ' + a.version);
             } catch (e) {

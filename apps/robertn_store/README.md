@@ -339,7 +339,7 @@ node tools/build.js                                # robertn_store@0.9.33.src.tg
 node tools/build.js --sdk <donor .tgz|.js>         # and robertn_store@0.9.33.tgz (MGU_SDK_DONOR)
 node tools/test_view.js && node tools/test_rhmi.js && node tools/test_qr.js && node tools/test_speller.js &&
     node tools/test_screens.js && node tools/test_store.js && STORE_HMI=ID8 node tools/test_store.js
-(cd ../../native/mgu-render && make test) && node tools/shots.js <out dir>     # screenshots
+(cd ../../native/mgu-render && make test) && node tools/test_drag.js && node tools/shots.js <out dir>     # screenshots
 ```
 
 The published artifact is the source package: `mgu-app.json`, the modules

@@ -250,7 +250,7 @@ func (s *service) setLease(l *Lease) {
 	s.lease = l
 	if s.wifi != nil {
 		ip := ""
-		if l != nil && l.Interface == s.wifi.iface {
+		if l != nil && l.Interface == s.wifi.ifname() {
 			ip = l.IP
 		}
 		s.wifi.setOnline(ip)
@@ -353,8 +353,8 @@ func (s *service) guarded() []string {
 	if s.link != nil && !slices.Contains(out, s.link.Ifname()) {
 		out = append(out, s.link.Ifname())
 	}
-	if s.wifi != nil && s.wifi.guarding() && !slices.Contains(out, s.wifi.iface) {
-		out = append(out, s.wifi.iface)
+	if s.wifi != nil && s.wifi.guarding() && !slices.Contains(out, s.wifi.ifname()) {
+		out = append(out, s.wifi.ifname())
 	}
 	return out
 }
@@ -402,6 +402,9 @@ func cleanup(c config) {
 	deleteVethPair()
 	restoreLinkState(c.linkFile())
 	killOwnSupplicants("/proc", c.wpaConf())
+	if !exists(filepath.Join(sysClassNet, c.WiFiIf)) && exists(filepath.Join(sysClassNet, carIfname)) {
+		removeCarNetworks(carIfname)
+	}
 	restoreWiFi(c.wifiFile(), false)
 	os.RemoveAll(c.wpaCtrl())
 	os.Remove(c.wpaLocal())

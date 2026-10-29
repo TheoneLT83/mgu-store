@@ -1,5 +1,15 @@
 # mgu-uplink changelog
 
+## 0.7.3
+
+- Wi-Fi on iDrive 7 units without `wlan1` (Broadcom BCM4359, `bcmdhd`): the unit joins on the car's own `wlan0` through the car's D-Bus wpa_supplicant, beside the car's hotspot and wireless CarPlay, with the same requests, saved networks, DHCP, routing and firewall as on `wlan1`. Our networks live only in the car's supplicant's memory, tagged `id_str="mgu-uplink"`, and are removed when Wi-Fi is switched off, the service stops or the car starts using `wlan0` (a network of its own, its Wi-Fi switched off); a start removes the ones a killed run left. `wlan1`, where there is one, is used as before.
+- `status.json`'s `wifi.backend` says what joins: `mgu-wpa` or `car-supplicant`.
+
+## 0.7.2
+
+- Wi-Fi: `wlan1` is taken again when the car blocks its radio or sets it down under our wpa_supplicant (connman switching its Wi-Fi off blocks every WLAN rfkill), or when it is created again (the driver is reloaded around suspend). Before, wpa_supplicant stayed `INTERFACE_DISABLED`, every scan failed with `scan: FAIL` and the state showed `idle` until Wi-Fi was switched off and on. A supplicant that ran 2 min is taken again at once, else after the usual 30 s, doubling, up to 5 in a row. A scan that fails so says why.
+- Wi-Fi requests wait for wpa_supplicant's control socket ("Wi-Fi is starting"), not only for the process.
+
 ## 0.7.1
 
 - Our wpa_supplicant is installed as `mgu-wpa`, and the tool names `mgu-uplink` and `mgu-wpa` in `crashNames`: with deploy tool 0.6.0 a crash of either does not reboot the head unit.

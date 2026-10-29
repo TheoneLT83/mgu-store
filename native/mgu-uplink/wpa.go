@@ -96,6 +96,13 @@ func (t *tail) String() string {
 	return string(t.b)
 }
 
+func (s *supplicant) name() string { return backendMGU }
+
+// ready: running, with its control socket there.
+func (s *supplicant) ready() bool {
+	return s.isRunning() && exists(filepath.Join(s.ctrl, s.iface))
+}
+
 func (s *supplicant) isRunning() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -420,24 +427,31 @@ func parseSaved(r string) map[string]int {
 }
 
 // parseScan reads SCAN_RESULTS: a "bssid / frequency / signal level /
-// flags / ssid" header, then tab-separated rows. One row per name, the
-// strongest; hidden ones left out; strongest first; at most maxNetworks.
+// flags / ssid" header, then tab-separated rows (bestNetworks).
 func parseScan(r string) []wifiNetwork {
-	best := map[string]wifiNetwork{}
+	var rows []wifiNetwork
 	for i, l := range strings.Split(r, "\n") {
 		f := strings.Split(l, "\t")
 		if i == 0 || len(f) < 5 {
 			continue
 		}
-		ssid := unescape(f[4])
 		sig, err := strconv.Atoi(f[2])
-		if ssid == "" || err != nil {
+		if err != nil {
 			continue
 		}
-		n := wifiNetwork{SSID: ssid, Signal: sig,
-			Secure: strings.Contains(f[3], "WPA") || strings.Contains(f[3], "RSN") || strings.Contains(f[3], "WEP")}
-		if old, ok := best[ssid]; !ok || old.Signal < sig {
-			best[ssid] = n
+		rows = append(rows, wifiNetwork{SSID: unescape(f[4]), Signal: sig,
+			Secure: strings.Contains(f[3], "WPA") || strings.Contains(f[3], "RSN") || strings.Contains(f[3], "WEP")})
+	}
+	return bestNetworks(rows)
+}
+
+// bestNetworks is one row per name, the strongest; hidden ones left out;
+// strongest first; at most maxNetworks.
+func bestNetworks(rows []wifiNetwork) []wifiNetwork {
+	best := map[string]wifiNetwork{}
+	for _, n := range rows {
+		if old, ok := best[n.SSID]; n.SSID != "" && (!ok || old.Signal < n.Signal) {
+			best[n.SSID] = n
 		}
 	}
 	out := make([]wifiNetwork, 0, len(best))

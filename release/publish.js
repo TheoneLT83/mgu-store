@@ -119,7 +119,9 @@ const targets = {
         /* Returns the asset's API URL: the head unit downloads it with its
          * token and Accept: application/octet-stream. A release left by an
          * interrupted publish is completed rather than created again. The
-         * release's one asset is the artifact, whatever name GitHub gave it. */
+         * release's one asset is the artifact, whatever name GitHub gave it.
+         * Each new release is marked Latest, so a run's last one is the
+         * repository's Latest. */
         uploadArtifact(entry, file) {
             const tag = `${entry.id}@${entry.version}`;
             const view = () => {
@@ -132,7 +134,7 @@ const targets = {
             let release = view();
             if (!release) {
                 const commit = cp.execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO, encoding: 'utf8' }).trim();
-                gh(['release', 'create', tag, file, '-R', WHERE, '--target', commit, '--latest=false',
+                gh(['release', 'create', tag, file, '-R', WHERE, '--target', commit, '--latest',
                     '--title', `${entry.title} ${entry.version}`, '--notes', entry.description || tag]);
                 release = view();
             } else if (release.assets.length !== 1 || assetSha256(tag) !== entry.artifact.sha256) {

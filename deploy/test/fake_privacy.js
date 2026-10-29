@@ -7,6 +7,8 @@
 // apply exits $FAKE_PRIVACY_APPLY_EXIT when set. Each command is appended
 // to $FAKE_PRIVACY_LOG when it is set. With $FAKE_PRIVACY_CHANGED_ONCE
 // naming a file that does not exist, apply reports changed and makes it.
+// With $FAKE_PRIVACY_WRITES_MAIN_AT "<file>:<n>", the n-th apply (counted
+// in that file) writes main.js, as a patch it applies there.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -44,6 +46,15 @@ let changed = false;
 if (argv[0] === 'apply' && !explicit && env.FAKE_PRIVACY_CHANGED_ONCE && !fs.existsSync(env.FAKE_PRIVACY_CHANGED_ONCE)) {
     fs.writeFileSync(env.FAKE_PRIVACY_CHANGED_ONCE, '');
     changed = true;
+}
+if (argv[0] === 'apply' && !explicit && env.FAKE_PRIVACY_WRITES_MAIN_AT) {
+    const [count, at] = env.FAKE_PRIVACY_WRITES_MAIN_AT.split(':');
+    const n = (Number(fs.existsSync(count) ? fs.readFileSync(count, 'utf8') : 0) || 0) + 1;
+    fs.writeFileSync(count, String(n));
+    if (n === Number(at)) {
+        const now = Date.now() / 1000;
+        fs.utimesSync(paths.main, now, now);
+    }
 }
 console.log(JSON.stringify({ version: 'fake', command: argv[0], state, changed, files, restartNeeded: false }));
 if (argv[0] === 'apply' && !explicit && env.FAKE_PRIVACY_APPLY_EXIT) {

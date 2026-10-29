@@ -122,7 +122,7 @@ func (u *scanUplink) candidates() []candidate {
 	var out []candidate
 	if u.wifi != nil {
 		if ssid, ok := u.wifi.associated(); ok {
-			out = append(out, candidate{kind: kindWiFi, key: "wifi:" + ssid, netdev: u.wifi.iface,
+			out = append(out, candidate{kind: kindWiFi, key: "wifi:" + ssid, netdev: u.wifi.ifname(),
 				dev: statusDevice{Kind: kindWiFi, Name: ssid}})
 		}
 	}

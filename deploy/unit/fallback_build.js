@@ -43,6 +43,17 @@
  * update(app, {updateType: "PLATFORM", requestSource: "PREINSTALLED"}),
  * so neither asks the backend. Every edit runs inside try/catch, and all
  * three anchors must occur exactly once (exit 3 otherwise).
+ *
+ * On iDrive 7 the copy also puts our apps first in MainApp's install queue
+ * (firstSources): an install or update of an app custom_apps.json lists
+ * goes right behind the one running, ahead of the others waiting, and
+ * starts without the network-retry delay others left. Without
+ * ConnectedDrive, MainApp tries each of BMW's online apps again at every
+ * start; each fails after its network retries and goes back to the end of
+ * the queue, and the delay between tries doubles from 40 s for every app
+ * behind them. Its two anchors are
+ * optional, as the hook's: when either does not occur exactly once, the
+ * copy is built without it, and says so on stdout.
  */
 var fs = require('fs');
 var path = require('path');
@@ -52,6 +63,13 @@ var CLASS_ANCHOR = 'class ProvisioningNotifier ';
 var HOOK_ANCHOR = 'isMainapp&&section===mainAppSection&&(newProvisioning.';
 var INPLACE_MARK = '/* mgu-deploy in-place install */';
 var INPLACE_ANCHOR = 'mainApp.init()}).then(()=>{';
+var FIRST_MARK = '/* mgu-deploy apps first */';
+/* the end of MainApp's own makeMethodQueued module (utils/makeMethodQueued, the one the
+ * controller requires; oap-sdk's copy of it is another module), where its queues are in scope */
+var QUEUE_ANCHOR = 'module.exports={makeMethodQueued:makeMethodQueued,unqueueMethodCall:unqueueMethodCall,' +
+    'getCurrentOperationPromise:getCurrentOperationPromise,onQueueIdle:onQueueIdle,configureQueue:configureQueue};';
+/* AppManagementController's constructor, which queues its installs and updates */
+var CONTROLLER_ANCHOR = 'this.queuedRecursiveRetry=makeMethodQueued_1.makeMethodQueued(this,this.queuedRecursiveRetry,!0)';
 
 /* The flags an entry does not name: idrive7-apps' installer lists its apps
  * in the same file with "-appStartType" and "-userLoginRequired" alone. */
@@ -210,6 +228,38 @@ function inplaceSource(requestPath, statusPath, v) {
         '})' + v.args + '}catch(e){}' + INPLACE_MARK + ';';
 }
 
+/* Our apps first in AppManagementController's queue (iDrive 7). MainApp's
+ * own queue module gets global.__mguDeployFirst(controller, queued): it wraps the
+ * controller's queued queuedRecursiveRetry, which every install and update
+ * goes through (start-up, provisioning, the in-place hook, a failed try
+ * queued again). A call for an app custom_apps.json lists (read at each
+ * call) has its queue entry moved from the end to right behind the entry
+ * running and the ones of ours moved before it (ours keep their order);
+ * the entry running is never touched. When it runs, the controller's
+ * network-retry count is 0, so it does not wait out the delay another
+ * app's failures left (install() and update() clear only a delay already
+ * under way). A call that lands first in an empty queue is already
+ * started, and reads the count on the next tick, so the count is reset at
+ * once. Only a call's first entry moves: one of ours that fails and
+ * is queued again (the same options) goes to the end with MainApp's own
+ * delay, so it cannot keep the others waiting. Nothing in it throws into the manager: on any error the
+ * call stays where MainApp put it. */
+function firstSources(listPath) {
+    return { queue: 'try{global.__mguDeployFirst=(ctl,queued)=>function(resolve,reject,options){' +
+        'const p=queued.apply(this,arguments);' +
+        'try{const app=options&&options.appId;if("string"!=typeof app||options.__mguDeployFirst)return p;' +
+        'let ours;try{ours=JSON.parse(require("fs").readFileSync(' + JSON.stringify(listPath) + ',"utf8"))}catch(e){return p}' +
+        'if(!ours||"object"!=typeof ours||!Object.prototype.hasOwnProperty.call(ours,app))return p;' +
+        'const q=getQueueDataForContext(ctl).queue,i=q.findIndex(x=>x.promise===p);if(i<0)return p;' +
+        'const it=q[i],fn=it.fn;let at=1;for(;at<i&&q[at].__mguDeployFirst;)at++;' +
+        'options.__mguDeployFirst=!0,it.__mguDeployFirst=!0,it.fn=()=>(ctl.retries=0,fn()),i||(ctl.retries=0),' +
+        'at<i&&(q.splice(i,1),q.splice(at,0,it),' +
+        'logger.info(`mgu-deploy: ${options.method} ${app} queued ahead of ${i-at} other install(s)`))' +
+        '}catch(e){}return p}}catch(e){}' + FIRST_MARK + ';',
+        controller: ',global.__mguDeployFirst&&(this.queuedRecursiveRetry=' +
+            'global.__mguDeployFirst(this,this.queuedRecursiveRetry))' + FIRST_MARK };
+}
+
 function once(src, anchor, what) {
     var i = src.indexOf(anchor);
     if (i < 0 || src.indexOf(anchor, i + 1) >= 0) {
@@ -230,11 +280,11 @@ function main() {
         return 2;
     }
     var src = fs.readFileSync(inFile, 'utf8');
-    if (src.indexOf(MARK) >= 0 || src.indexOf(INPLACE_MARK) >= 0) {
+    if (src.indexOf(MARK) >= 0 || src.indexOf(INPLACE_MARK) >= 0 || src.indexOf(FIRST_MARK) >= 0) {
         process.stderr.write('fallback_build: input already carries the fallback; refusing to build\n');
         return 3;
     }
-    var statusPath = path.join(path.dirname(listPath), 'mgu-deploy-inplace.json'), hook = true;
+    var statusPath = path.join(path.dirname(listPath), 'mgu-deploy-inplace.json'), hook = true, first = true;
     var id8 = src.indexOf(ID8.hookAnchor) >= 0;
     if (id8 && src.indexOf(HOOK_ANCHOR) >= 0) {
         process.stderr.write('fallback_build: both MainApp variants\' anchors occur; refusing to build\n');
@@ -262,6 +312,15 @@ function main() {
             p += INPLACE_ANCHOR.length;
             src = src.slice(0, p) + inplaceSource(requestPath, statusPath, ID7) + src.slice(p);
         }
+        var qa = src.indexOf(QUEUE_ANCHOR), ca = src.indexOf(CONTROLLER_ANCHOR);
+        first = qa >= 0 && src.indexOf(QUEUE_ANCHOR, qa + 1) < 0 && ca >= 0 && src.indexOf(CONTROLLER_ANCHOR, ca + 1) < 0;
+        if (first) {
+            var fs7 = firstSources(listPath);
+            /* the later anchor first, so the earlier one's offset holds */
+            var edits = [{ at: qa + QUEUE_ANCHOR.length, text: fs7.queue }, { at: ca + CONTROLLER_ANCHOR.length, text: fs7.controller }]
+                .sort(function (x, y) { return y.at - x.at; });
+            edits.forEach(function (e) { src = src.slice(0, e.at) + e.text + src.slice(e.at); });
+        }
     }
     var tmp = outFile + '.tmp-' + process.pid;
     fs.writeFileSync(tmp, src);
@@ -270,6 +329,10 @@ function main() {
     if (!hook) {
         process.stdout.write('fallback_build: anchor for the in-place install hook not found exactly once; ' +
             'the copy has no hook, so app installs bounce the manager\n');
+    }
+    if (!id8 && !first) {
+        process.stdout.write('fallback_build: anchors for our apps first in the install queue not found exactly once; ' +
+            'the copy leaves the queue as it is\n');
     }
     return 0;
 }

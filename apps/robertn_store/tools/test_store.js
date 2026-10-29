@@ -932,7 +932,7 @@ function runDrawn() {
         appArea: { x: 108, y: 82, w: 1790, h: 638 }, controller: false, touch: true, pixmap: true });
     return tick().then(() => {
         eq(app._ui, mode, `the renderer offering embed: ${mode} (the host states this HMI has)`);
-        eq(fpsAsked, 30, 'at most 30 frames a second');
+        eq(fpsAsked, 60, 'at most 60 frames a second');
         eq(gpuLog.slice(0, 2), [`mode ${mode}`, mode === 'embed' ? 'place 104,88 1796x632 1.000' : 'place 108,82 1790x638 1.000'],
             'iDrive 7: the compact layout, at scale 1');
         eq(states.slice(0, 2), [`map ${host(1)}`, `open ${host(1)}`], 'the tile maps to the drawn screens; the Store on screen moves there');

@@ -1,5 +1,10 @@
 # mgu-render changelog
 
+## 0.6.5
+
+- `fps` and `fps.<app>` (0): the frames a second an app that asks for a rate (FPS) gets, in place of the rate it asks; for every such app, or for one (`fps.robertn_store = 30`). Display-bridge apps ask for none and are not paced by it.
+- While `/run/mgu-render/stats-log` exists, each step of an app's frames and touches goes to `/run/mgu-render/trace.log` (`<us> R <step> <n> <app>`, CLOCK_MONOTONIC): touch in and forwarded, TICK sent, frame received, draw start and end, commit, the HMI's frame callback; `tools/car-test/trace.js` lines it up with the Store's.
+
 ## 0.6.4
 
 - An app's layer goes back on the centre screen, on top, each time it is shown: another renderer (the MGU Store's beside idrive7-apps') or the HMI could set the screen's layers without it, and the app then showed a black page (seen on the car after opening the Store, then an app).

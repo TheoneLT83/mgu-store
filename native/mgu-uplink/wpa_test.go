@@ -17,6 +17,9 @@ import (
 // <conf>", a fake wpa_supplicant (fakeWPA); its value is the scan file.
 const fakeWPAEnv = "MGU_UPLINK_FAKE_WPA"
 
+// fakeRfkillEnv: the rfkill soft file the fake wpa_supplicant reads.
+const fakeRfkillEnv = "MGU_UPLINK_FAKE_RFKILL"
+
 func TestMain(m *testing.M) {
 	if scan := os.Getenv(fakeWPAEnv); scan != "" && len(os.Args) > 1 && os.Args[1] == "-i" {
 		os.Exit(fakeWPA(scan, os.Args[1:]))
@@ -133,8 +136,8 @@ func TestStockUsers(t *testing.T) {
 		{[][]string{{"/usr/sbin/wpa_supplicant_nxp", "-iwlan1", "-c/etc/wpa.conf"}}, "another wpa_supplicant", false},
 		{[][]string{{"/usr/sbin/wpa_supplicant_nxp", "-iwfd0", "-Dnl80211"}}, "", false},
 		{[][]string{dbusWPA, nxpConnman}, "", true},
-		{[][]string{dbusWPA, connman}, "connman manages", false},
-		{[][]string{dbusWPA, append([]string{"/usr/sbin/connmand_nxp"}, connman[1:]...)}, "connman manages", false},
+		{[][]string{dbusWPA, connman}, "connman manages", true},
+		{[][]string{dbusWPA, append([]string{"/usr/sbin/connmand_nxp"}, connman[1:]...)}, "connman manages", true},
 		{[][]string{{"/usr/sbin/connmand_nxp", "-n", "-iwfd0,wlan*"}}, "connman manages", false},
 		{[][]string{{"/usr/sbin/connmand-wait-online_nxp", "-i", "wlan1"}}, "", false},
 		{[][]string{{"/usr/sbin/wpa_supplicant", "-dsu"}}, "", true},
@@ -153,7 +156,8 @@ func TestStockUsers(t *testing.T) {
 			writeFile(t, filepath.Join(proc, strconv.Itoa(100+i), "cmdline"), strings.Join(a, "\x00")+"\x00")
 		}
 		u := stockUsers(proc, "wlan1", conf, main)
-		if tc.why == "" && u.why != "" || !strings.Contains(u.why, tc.why) || u.dbus != tc.dbus {
+		why := u.why + u.connman
+		if tc.why == "" && why != "" || !strings.Contains(why, tc.why) || u.dbus != tc.dbus {
 			t.Errorf("%v: %+v, want %q dbus %v", tc.args, u, tc.why, tc.dbus)
 		}
 	}
@@ -382,6 +386,18 @@ func fakeWPA(scanFile string, args []string) int {
 			}
 		}
 		reply := "OK\n"
+		// a radio blocked under it: wpa_supplicant 2.10 disables the
+		// interface and refuses SCAN with a plain FAIL
+		if b, _ := os.ReadFile(os.Getenv(fakeRfkillEnv)); strings.TrimSpace(string(b)) == "1" {
+			switch f[0] {
+			case "STATUS":
+				srv.WriteToUnix([]byte("wpa_state=INTERFACE_DISABLED\n"), from)
+				continue
+			case "SCAN":
+				srv.WriteToUnix([]byte("FAIL\n"), from)
+				continue
+			}
+		}
 		switch f[0] {
 		case "STATUS":
 			if cur >= 0 && nets[cur] != nil {

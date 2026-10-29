@@ -284,7 +284,7 @@ The unit-specific ones:
 | `touch_area` | 84,0,1836,720 (`auto` by screen size) | 0,76,2880,764 |
 | `embed`, `embed_area` | 1, 104,88,1796,632 | never offered: no HmiMain3D, so no template is loaded |
 | `embed_zero_copy`, `tick_early`, `readback_pbo`, `embed_finish` | 1, 1, 1, 0 (embed: "Embed buffers") | same |
-| `fps`, `fps.<app>` | 0: an app that asks for a rate (the Store: 30) gets it; N: N frames a second in its place, for every such app or one (`fps.robertn_store = 60`) | same |
+| `fps`, `fps.<app>` | 0: an app that asks for a rate (the Store: 60) gets it; N: N frames a second in its place, for every such app or one (`fps.robertn_store = 30`) | same |
 | `embed_bridge`, `embed_bridge_ms` | 1, 400 ("Page changes") | not offered (no embed) |
 | `foreground_gate`, `hmi_process` | node + `foreground_gate.js`, `HmiMain3D` | the gate reads `RemoteHmiApplication2` from `oap-mainapp21` |
 

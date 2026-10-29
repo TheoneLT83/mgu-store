@@ -665,7 +665,10 @@ folders 0755) and `current` switches to it by rename. Once it is up, only the
 new version and the one `current` pointed to before stay; others are
 removed. Units, enablement links and the recmgr list change only when their
 bytes differ, then `systemctl daemon-reload`. Reinstalling the same artifact
-changes nothing but adding a snapshot.
+changes nothing but adding a snapshot. A `current` that is a folder (an
+earlier installer's) goes aside for the install and is removed once the new
+version is up; a failed install puts it back as `current`, the way it returns
+to a previous version.
 
 **Drop-ins.** `dropins[{unit, name}]` adds a drop-in to a unit the tool does
 not own, such as `hmi.service`: `/etc/systemd/system/<unit>.d/<name>` (the
@@ -733,7 +736,7 @@ unit's drop-in, say) is never left without it.
 failed one does not. When the check fails, `current` returns to the previous
 version, the snapshot puts units and the recmgr list back, the unit restarts
 on the previous version and is checked again (the result is printed), and
-the install exits 1. With no previous version, the new one stays current,
+the install exits 1. With no previous version or folder, the new one stays current,
 reported as not healthy, exit 1.
 
 `uninstall <id>` stops the tool's running units (when recmgr has loaded
@@ -1168,7 +1171,9 @@ gone, or from an earlier boot, is taken over. `status`, `check`, `backups`
 `fallback status` and `sdk-donor` take no lock. Holding the lock, a changing command
 first removes what a killed run left: files named after a process that is
 gone (staging, rootfs-window and temp files, a tool's unfinished version
-folder) and `/var/opt/mgu-deploy-kit-<n>` folders a day old.
+folder) and `/var/opt/mgu-deploy-kit-<n>` folders a day old. A tool's earlier
+`current` folder such a run set aside comes back as `current` when there is
+none, else it is removed.
 
 `restore [name]` (default `stock`) first snapshots the current state, then
 puts every recorded file back, removes what the snapshot shows as absent
@@ -1225,6 +1230,27 @@ mainApp.init()}).then(()=>{
 
 When that anchor does not occur exactly once, the copy is built without
 the hook and the build says so; app installs then go through a bounce.
+
+On iDrive 7 the copy also puts our apps first in MainApp's install queue.
+MainApp runs every install and update through one queue in
+`AppManagementController`, one at a time. Without ConnectedDrive it retries
+BMW's online apps there at every start, and each failure doubles the wait
+(from 40 s) before the next call, whichever app it is for. In the copy, a
+call for an app `custom_apps.json` lists moves to right behind the call
+running (ours keep their order) and runs without the leftover wait; a
+retry of one of ours after a network error goes to the end, as MainApp
+queues it. MainApp logs `mgu-deploy: install <app> queued ahead of <n>
+other install(s)`. It needs these two anchors exactly once, the end of
+MainApp's own `utils/makeMethodQueued` and the controller's queued method:
+
+```
+module.exports={makeMethodQueued:makeMethodQueued,unqueueMethodCall:unqueueMethodCall,getCurrentOperationPromise:getCurrentOperationPromise,onQueueIdle:onQueueIdle,configureQueue:configureQueue};
+this.queuedRecursiveRetry=makeMethodQueued_1.makeMethodQueued(this,this.queuedRecursiveRetry,!0)
+```
+
+Without them the copy is built without it and the build says so. The
+manager runs it from its next start: the boot unit's build, or the build
+this tool writes before it restarts the manager.
 
 The copy, with the app-privacy patch applied to it, is `/var/opt/mgu-deploy/main.js`,
 bind-mounted over the stock file; a rebuild unmounts the old copy, builds

@@ -839,6 +839,7 @@ function testFallback() {
         !fs.existsSync(path.join(sys, 'multi-user.target.wants/mgu-app-fallback.service')) && !fs.existsSync(copy), off.out);
 
     testFallbackHook();
+    testQueueFirst();
 
     const main = stockMain();
     [['a duplicated class anchor', main.replace(CLASS_ANCHOR, `${CLASS_ANCHOR}}${CLASS_ANCHOR}`)],
@@ -939,6 +940,72 @@ function testFallbackHook() {
         JSON.stringify(handle('our_app', { '-enabled': 'false' })) === '{"-enabled":"false"}');
     check('fallback hook: an app custom_apps.json does not list is unchanged',
         handle('other_app', undefined) === undefined);
+}
+
+/* The copy built from fixtures/main_queue.js: our apps' installs go first in
+ * the controller's queue, behind the one running; an app not listed waits its
+ * turn. The stock fixture main.js lacks the anchors: built without, said. */
+function testQueueFirst() {
+    const dir = fs.mkdtempSync(path.join(T, 'queue-'));
+    const list = path.join(dir, 'custom_apps.json');
+    write(list, JSON.stringify({ our_app: {}, their_app: { '-appStartType': 'manually' } }));
+    const build = (fixture, out) => cp.spawnSync(UNIT_NODE, [path.join(DEPLOY, 'unit', 'fallback_build.js'),
+        path.join(HERE, 'fixtures', fixture), path.join(dir, out), list], { encoding: 'utf8' });
+    const run = (built) => {
+        const r = cp.spawnSync(UNIT_NODE, [path.join(HERE, 'queue_first.js'), path.join(dir, built)], { encoding: 'utf8' });
+        try { return JSON.parse(r.stdout); } catch (e) { return { error: r.stdout + r.stderr }; }
+    };
+    const b = build('main_queue.js', 'built.js');
+    check('queue first: builds from the queue fixture, with no note', b.status === 0 && !b.stdout.includes('install queue'), b.stdout + b.stderr);
+    if (b.status !== 0) return;
+    /* not before every one of BMW's apps had its next try (or not yet at all) */
+    const late = (o, a) => { const i = (o.ran || []).indexOf(a); return i < 0 || i > 7; };
+    const r = run('built.js'), ran = r.ran || [];
+    check('queue first: ours run right behind the one running, in their order, ahead of the others waiting',
+        ran.indexOf('our_app') === 2 && ran.indexOf('their_app') === 3 && late(r, 'other_app'), JSON.stringify(r));
+    check('queue first: ours are done before the retry waits of the others', r.done && r.done.our_app < 300 && r.done.their_app < 300,
+        JSON.stringify(r));
+    check('queue first: MainApp\'s log says what moved',
+        (r.log || []).join('|') === 'mgu-deploy: install our_app queued ahead of 5 other install(s)|' +
+            'mgu-deploy: install their_app queued ahead of 5 other install(s)', JSON.stringify(r.log));
+    /* ten of ours at once, one of them failing with a network error */
+    const ten = Array.from({ length: 10 }, (x, i) => `app_${i}`);
+    write(list, JSON.stringify(ten.reduce((o, id) => Object.assign(o, { [id]: {} }), {})));
+    const r10 = cp.spawnSync(UNIT_NODE, [path.join(HERE, 'queue_first.js'), path.join(dir, 'built.js'), ten.join(','), 'app_4'],
+        { encoding: 'utf8' });
+    let t = {};
+    try { t = JSON.parse(r10.stdout); } catch (e) { t = { error: r10.stdout + r10.stderr }; }
+    const ran10 = t.ran || [];
+    check('queue first: ten of ours at once run right behind the one running, in their order',
+        JSON.stringify(ran10.slice(2, 12)) === JSON.stringify(ten), JSON.stringify(t));
+    check('queue first: one of ours that fails is queued again at the end, not first again',
+        (ran10.indexOf('app_4', 7) < 0 || ran10.indexOf('app_4', 7) > 16) && ran10.slice(12, 17).every((a) => /^bmw_/.test(a)) &&
+        ten.filter((a) => a !== 'app_4').every((a) => t.done && t.done[a] < 400), JSON.stringify(t));
+    /* first into an empty queue, behind a retry wait the others left */
+    write(list, JSON.stringify({ our_app: {} }));
+    const alone = (failing) => {
+        const r = cp.spawnSync(UNIT_NODE, [path.join(HERE, 'queue_first.js'), path.join(dir, 'built.js'), 'our_app', failing, 'empty'],
+            { encoding: 'utf8' });
+        try { return JSON.parse(r.stdout); } catch (e) { return { error: r.stdout + r.stderr }; }
+    };
+    const e = alone('');
+    check('queue first: one of ours first in an empty queue does not wait out the retry delay left behind',
+        (e.ran || [])[0] === 'our_app' && e.done && e.done.our_app < 150, JSON.stringify(e));
+    const ef = alone('our_app'), efRan = ef.ran || [];
+    check('queue first: one of ours first in an empty queue that fails is queued again at the end, not first again',
+        efRan[0] === 'our_app' && efRan[1] === 'bmw_1' && (efRan.indexOf('our_app', 1) < 0 || efRan.indexOf('our_app', 1) > 6),
+        JSON.stringify(ef));
+    write(list, '{}');
+    const s = run('built.js');
+    check('queue first: an app custom_apps.json no longer lists waits its turn', late(s, 'our_app') && !(s.log || []).length,
+        JSON.stringify(s));
+    write(list, 'not json');
+    const u = run('built.js');
+    check('queue first: an unreadable custom_apps.json leaves the queue as it is', late(u, 'our_app') && !(u.log || []).length, JSON.stringify(u));
+    const p = build('main.js', 'plain.js');
+    check('queue first: a main.js without its anchors is built without it, said',
+        p.status === 0 && p.stdout.includes('anchors for our apps first in the install queue not found exactly once') &&
+        !fs.readFileSync(path.join(dir, 'plain.js'), 'utf8').includes('mgu-deploy apps first'), p.stdout + p.stderr);
 }
 
 /* ---- in-place install --------------------------------------------------------------------- */
@@ -1511,6 +1578,27 @@ function testInplaceKeepCopy() {
         p.out.includes('updated in place') && plog.includes('start-up pass') &&
         !plog.some((l) => l.startsWith('update fixture_app') && l.endsWith(' at start')), `${p.out}\n${plog.join('\n')}`);
     stopHooked(pv.root);
+
+    // a kept copy, then app-privacy writes main.js: the bounce before the update restarts the manager on this version's copy
+    const queueMain = `${stockMain()}
+const makeMethodQueued_1=(function(){const module={};function makeMethodQueued(){}function unqueueMethodCall(){}
+function getCurrentOperationPromise(){}function onQueueIdle(){}function configureQueue(){}
+module.exports={makeMethodQueued:makeMethodQueued,unqueueMethodCall:unqueueMethodCall,getCurrentOperationPromise:getCurrentOperationPromise,onQueueIdle:onQueueIdle,configureQueue:configureQueue};
+return module.exports})();
+class AppManagementController{constructor(){this.queuedRecursiveRetry=makeMethodQueued_1.makeMethodQueued(this,this.queuedRecursiveRetry,!0)}}
+`;
+    const st = inplaceRoot(undefined, { minUp: 1, main: queueMain });
+    older(st.root, (t) => `/* an earlier build */\n${t.split('/* mgu-deploy apps first */').join('')}`);
+    sleep(50);
+    const ks = st.root.kills().length;
+    const s = st.root.run(['install', '--artifact', appArtifact('fixture_app', '1.1.0', true), '--yes'],
+        { FAKE_MGR_HOOK: '1', FAKE_PRIVACY_WRITES_MAIN_AT: `${st.root.R}.privacy-applies:2` });
+    const copyNow = fs.readFileSync(copyOf(st.root), 'utf8');
+    check('keep copy: a stale manager with a kept copy restarts on this version\'s copy, with the queue edit, then updates in place',
+        s.status === 0 && st.root.kills().length === ks + 1 && s.out.includes('restarting it before the update') &&
+        !copyNow.startsWith('/* an earlier build */') && copyNow.includes('/* mgu-deploy apps first */') &&
+        s.out.includes('updated in place'), `${s.out}\n${st.root.managerLog().join('\n')}`);
+    stopHooked(st.root);
 }
 
 /* Uninstall through the running manager's own uninstall (its tile goes at
@@ -2061,6 +2149,81 @@ function testProvisioningSection() {
         r.status === 0 && r.out.includes("fixture_app's tile stays hidden: provisioning has its own section for fixture_app"), r.out);
     check('tile: status reports it hidden', a && a.tile_visible === false && a.tile_provisioned === false &&
         a.tile_fallback === false, JSON.stringify(a));
+}
+
+/* An app whose registry entry caches -enabled and -allowed false (one
+ * provisioning dropped) updates listed enabled and allowed. */
+function testDisabledCache() {
+    const root = fakeRoot();
+    root.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
+    const entry = readJson(root.entry('fixture_app'));
+    entry.provisioningCache = Object.assign({}, entry.provisioningCache, { '-enabled': 'false', '-allowed': 'false' });
+    write(root.entry('fixture_app'), JSON.stringify(entry), 0o660);
+    const r = root.run(['install', '--artifact', appArtifact('fixture_app', '1.1.0', true), '--yes']);
+    const listed = (readJsonOrNull(root.p(`var/opt/public/oap/oap_${MGR}/data/custom_apps.json`)) || {}).fixture_app || {};
+    check('disabled cache: the update lists the app enabled and allowed', r.status === 0 &&
+        listed['-enabled'] === 'true' && listed['-allowed'] === 'true', `${JSON.stringify(listed)}\n${r.out}`);
+}
+
+/* A current that is a folder (an earlier installer's) goes aside for the
+ * install and goes once the new version is up; a failed install, its
+ * health check or app-privacy apply included, puts it back; a killed
+ * install's folder comes back at the next run. */
+function testLegacyCurrent() {
+    const legacy = (root, id, files) => {
+        const cur = path.join(root.tool(id || 'fixture-tool'), 'current');
+        Object.entries(files || { 'old.js': 'old\n' }).forEach(([n, d]) => write(path.join(cur, n), d));
+        return cur;
+    };
+    const isLink = (p) => { try { return fs.lstatSync(p).isSymbolicLink(); } catch (e) { return null; } };
+    const isBack = (root, cur, id) => isLink(cur) === false && fs.readFileSync(path.join(cur, 'old.js'), 'utf8') === 'old\n' &&
+        !fs.readdirSync(root.tool(id || 'fixture-tool')).some((n) => n === 'current.new' || n.startsWith('current.legacy-'));
+
+    let root = fakeRoot();
+    let cur = legacy(root);
+    let r = root.run(['install', '--artifact', plainArtifact('0.2.0'), '--yes']);
+    check('legacy current: a folder current is replaced by a link to the new version, and goes once it is up',
+        r.status === 0 && isLink(cur) && fs.readlinkSync(cur) === 'versions/0.2.0' &&
+        fs.readdirSync(root.tool('fixture-tool')).join(' ') === 'current versions', r.out);
+
+    // the restart fails; the rollback itself works
+    root = fakeRoot({ recmgr: ['fixture-tool'], active: 'fixture-tool.service', fail: 'restart fixture-tool.service' });
+    cur = legacy(root);
+    r = root.run(['install', '--artifact', plainArtifact('0.2.0'), '--yes']);
+    check('legacy current: a failed install puts the folder back as current, with no current.new or version left',
+        r.status === 1 && isBack(root, cur) && fs.readdirSync(root.tool('fixture-tool')).join(' ') === 'current' &&
+        r.out.includes('current folder is back'), r.out);
+
+    root = fakeRoot({ recmgr: ['fixture-tool'] });
+    cur = legacy(root);
+    fs.writeFileSync(root.unitFile('fixture-tool.service.crash'), `${cur} versions/0.2.0\n`);
+    r = root.run(['install', '--artifact', plainArtifact('0.2.0'), '--yes']);
+    check('legacy current: a failed health check puts the folder back and restarts the tool on it',
+        r.status === 1 && isBack(root, cur) && !r.out.includes('stays current') &&
+        r.out.includes("fixture-tool's earlier install is healthy"), r.out);
+
+    // app-privacy's own tool runs from current: the new version has none, the folder's applies
+    root = fakeRoot({ privacy: false });
+    cur = legacy(root, 'app-privacy', { 'old.js': 'old\n', 'patch_mainapp.js': 'console.log(JSON.stringify({ state: "patched" }));\n' });
+    r = root.run(['install', '--artifact', privacyArtifact(), '--yes']);
+    check('legacy current: a failed app-privacy apply puts the folder back and applies it again',
+        r.status === 1 && isBack(root, cur, 'app-privacy') && !r.out.includes('stays current') &&
+        r.out.includes("app-privacy's earlier install applied again"), r.out);
+
+    // a killed install: its folder comes back when current is gone, else goes
+    const gone = Number(cp.spawnSync(process.execPath, ['-e', 'console.log(process.pid)'], { encoding: 'utf8' }).stdout.trim());
+    root = fakeRoot();
+    cur = legacy(root);
+    fs.renameSync(cur, `${cur}.legacy-${gone}`);
+    r = root.run(['rollback', 'fixture-tool', '--yes']);
+    check('legacy current: a killed install\'s folder is current again at the next run', isBack(root, cur), r.out);
+    root = fakeRoot();
+    root.run(['install', '--artifact', plainArtifact('0.2.0'), '--yes']);
+    cur = legacy(root, 'fixture-tool', {});
+    write(`${cur}.legacy-${gone}/old.js`, 'old\n');
+    r = root.run(['rollback', 'fixture-tool', '--yes']);
+    check('legacy current: a killed install\'s folder goes at the next run when current is in place',
+        fs.readlinkSync(cur) === 'versions/0.2.0' && fs.readdirSync(root.tool('fixture-tool')).join(' ') === 'current versions', r.out);
 }
 
 /* A killed run's files go at the next changing run. */
@@ -4952,6 +5115,8 @@ const SUITES = [
     testRestoreRefusals,
     testStaleFiles,
     testProvisioningSection,
+    testDisabledCache,
+    testLegacyCurrent,
     testBackupRetention,
     testLock,
     testFallbackOffPrivacy,

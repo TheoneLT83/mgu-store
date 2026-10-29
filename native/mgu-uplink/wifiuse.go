@@ -89,13 +89,14 @@ func dbusSupplicantHas(iface string) (bool, error) {
 }
 
 type stockUse struct {
-	why  string // a process that uses the interface
-	dbus bool   // a D-Bus wpa_supplicant runs (ask it: dbusHas)
+	why     string // a process that uses the interface
+	connman string // connman manages it
+	dbus    bool   // a D-Bus wpa_supplicant runs (ask it: dbusHas)
 }
 
 // stockUsers looks through the processes under proc for users of iface:
-// hostapd on it, a wpa_supplicant not on conf (ours) on it, connman
-// managing it (connConf: its main.conf), and notes a D-Bus wpa_supplicant.
+// hostapd on it, a wpa_supplicant not on conf (ours) on it, and notes
+// connman managing it (connConf: its main.conf) and a D-Bus wpa_supplicant.
 func stockUsers(proc, iface, conf, connConf string) stockUse {
 	var u stockUse
 	dirs, _ := os.ReadDir(proc)
@@ -130,7 +131,7 @@ func stockUsers(proc, iface, conf, connConf string) stockUse {
 			}
 		case base == "connmand" || strings.HasPrefix(base, "connmand_"): // connmand_nxp on the 88W9098 units
 			if connmanManages(args[1:], iface, connConf) {
-				return stockUse{why: fmt.Sprintf("connman manages %s", iface)}
+				u.connman = fmt.Sprintf("connman manages %s", iface)
 			}
 		}
 	}
