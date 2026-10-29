@@ -25,9 +25,11 @@ const M = 14;                 // the box's margin: the focus ring's room
 const RAIL = 150;
 const BAR = 64;               // the iDrive 7 look's menu bar
 const HEAD_H = 80;            // full: the HMI's title strip (idrive7-apps kit display.js FULL.headH)
-const STATUS_X = 1256;        // full: where the HMI's status icons start, in the box (screen x 1340 - the box's 84)
-const NAV_X = 214;            // full: the header tabs, after the Store's name
-const NAV_CELL = 236;
+// full: the header as compact as Fault Scanner's: it ends before the HMI's notification arrow (screen x ~1140), which
+// with the status icons stays the HMI's, seen and tapped
+const NAV_X = 200;            // full: the header tabs, after the Store's name
+const NAV_CELL = 196;
+const STATUS_X = NAV_X + 4 * NAV_CELL + 12;   // full: where the HMI's strip takes over, in the box
 const NAV_ITEMS = 'Store, grid\nInstalled, check\nUSB, usb\nSettings, gear';
 const TEXT = 'text';
 const DIM = 'dim';
@@ -53,11 +55,11 @@ function compact(W, H0, look, opts) {
     const R = W - M;                      // its right edge
     const B = low && !headTabs ? H - M - BAR - 12 : H - M; // its bottom
     const CW = R - X;
-    const nav = (sel) => (headTabs ? el('nav', 'sideNav', NAV_X, -TOP, NAV_CELL * 4, TOP, { items: NAV_ITEMS, sel, labelSize: 20, head: true })
+    const nav = (sel) => (headTabs ? el('nav', 'sideNav', NAV_X, -TOP, NAV_CELL * 4, TOP, { items: NAV_ITEMS, sel, labelSize: 18, head: true })
         : low ? el('nav', 'sideNav', M, H - M - BAR, W - 2 * M, BAR, { items: NAV_ITEMS, sel, labelSize: 22 })
         : el('nav', 'sideNav', M, M, RAIL, H - 2 * M, { items: NAV_ITEMS, sel, labelSize: 24 }));
     // full: the strip's left part the Store's (its name and tabs, iDrive 7 look), the rest the HMI's (record: head)
-    const appName = () => text('appName', 20, -TOP + 22, NAV_X - 30, 52, 'MGU Store', 34, 'label');
+    const appName = () => text('appName', 20, -TOP + 24, NAV_X - 30, 48, 'MGU Store', 32, 'label');
     const screen = (name, sel, components) => Object.assign({ kind: 'gpu', name, theme: 'm_tricolour', bg: 'theme',
         components: (headTabs ? [appName()] : []).concat([nav(sel)], components) },
     full ? { head: { h: TOP, end: headTabs ? STATUS_X : 0 } } : {});

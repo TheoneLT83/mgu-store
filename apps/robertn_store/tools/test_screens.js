@@ -517,4 +517,4 @@ console.log(`screens: ${fixture.screens().length} screens in ${Object.keys(UNITS
 }
 
 // iDrive 7 full screen: the header tabs take touch (the Store's claims: the strip up to the status icons, the page)
-eq(UNITS['iDrive 7 full screen'].layout.claims, [{ x: 0, y: 80, w: 1836, h: 640 }, { x: 0, y: 0, w: 1256, h: 80 }], 'full screen: touch claimed for the header tabs too');
+eq(UNITS['iDrive 7 full screen'].layout.claims, [{ x: 0, y: 80, w: 1836, h: 640 }, { x: 0, y: 0, w: 996, h: 80 }], 'full screen: touch claimed for the header tabs too');

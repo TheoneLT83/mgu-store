@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.33
+
+iDrive 7 full screen: the header is as compact as the idrive7-apps' (smaller tabs) and ends before the HMI's notification arrow, which with the status icons stays in view and can be tapped.
+
 ## 0.9.32
 
 iDrive 7 full screen: the header tabs (Store, Installed, USB, Settings) can be tapped; a tap there went to the HMI, which closed the Store's screen.
