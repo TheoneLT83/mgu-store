@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.34
+
+The Store asks for 60 frames a second, as upstream 0.9.11 (mgu-render's fps.robertn_store can set another). Merged with robertnisipeanu/mgu-store #52-#56.
+
 ## 0.9.33
 
 iDrive 7 full screen: the header is as compact as the idrive7-apps' (smaller tabs) and ends before the HMI's notification arrow, which with the status icons stays in view and can be tapped.
