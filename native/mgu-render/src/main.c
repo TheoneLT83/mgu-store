@@ -471,6 +471,7 @@ static void frame_done(void *data, struct wl_callback *cb, uint32_t t) {
     client *c = data;
     wl_callback_destroy(cb);
     c->frame_cb = NULL;
+    if (trace_on()) trace(now_us(), "callback", c->app, c->tr_committed);
     dbr_presented(c);
     if (c->want_tick) send_tick(c);
 }
@@ -516,11 +517,15 @@ static void render_layer(client *c) {
     uint64_t t0 = now_us();
     if (cap_wait(c, t0)) return;                          /* too early for its cap: stays dirty, drawn later */
     c->last_draw = t0;
+    c->tr_drawn = c->tr_committed = c->tr_frames;
+    if (trace_on()) trace(t0, "draw-start", c->app, c->tr_drawn);
     eglMakeCurrent(edpy, c->es, c->es, ectx);
     gfx_draw(&c->g, &c->xf, c->w, c->h, c->frame, c->frame_words, 1);
+    if (trace_on()) trace(now_us(), "draw-end", c->app, c->tr_drawn);
     c->frame_cb = wl_surface_frame(c->ws);
     wl_callback_add_listener(c->frame_cb, &frame_listener, c);
     eglSwapBuffers(edpy, c->es);
+    if (trace_on()) trace(now_us(), "commit", c->app, c->tr_committed);
     c->dirty = 0;
     dbr_drawn(c);
     dbr_committed(c);

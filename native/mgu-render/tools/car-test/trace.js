@@ -76,7 +76,7 @@ function analyse(render, store) {
         if (prev) add(8, prev, se);
     });
     const touch = [];
-    [...R.tfwd.keys()].forEach((n) => { if (S.touch.has(n)) touch.push((S.touch.get(n).us - R.tin.get(n).us) / 1000); });
+    [...R.tin.keys()].forEach((n) => { const a = R.tin.get(n), b = S.touch.get(n); if (b && b.us >= a.us) touch.push((b.us - a.us) / 1000); });
     const tickIpc = [];
     const rticks = by(render, 'tick');
     ticks.forEach((e) => { const r = rticks.get(e.n); if (r && e.us >= r.us) tickIpc.push((e.us - r.us) / 1000); });

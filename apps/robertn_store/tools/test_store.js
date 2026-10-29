@@ -970,7 +970,7 @@ function runDrawn() {
         const before = [...frames[frames.length - 1].layersUsed];
         gpu.waiting = true;
         const n2 = frames.length, d1 = dropped.length;
-        app._client.emit('state', Object.assign({}, many, { busy: { id: 'x3', op: 'install', phase: 'download', progress: 10 } }));
+        app._client.emit('state', Object.assign({}, many, { components: many.components.concat([comp({ id: 'fresh', title: 'Fresh', version: '1.0.0', installed: null, status: 'available' })]) }));
         gpu.emit('touch', 'move', x0, y0 - 80);
         eq(frames.length, n2, 'nothing sent while a frame is pending');
         gpu.waiting = false;
@@ -979,7 +979,7 @@ function runDrawn() {
         eq([frames.length - n2, after.sort(), dropped.length - d1], [1, before.sort(), 0],
             'at the TICK: a drag frame of the same layers, none dropped');
         gpu.emit('touch', 'up', x0, y0 - 80);
-        eq([dropped.slice(d1).sort(), drawn.items.some((i) => i.label === 'Extra 3')], [before.sort(), true],
+        eq([dropped.slice(d1).sort(), drawn.items.some((i) => i.label === 'Fresh')], [before.sort(), true],
             'the release: the page built from the new state, the drag\'s layers dropped');
         // a drag the rows cannot follow (past the top) draws nothing
         drawn.scroll = {};

@@ -78,9 +78,9 @@ class Timing {
     }
     /* One step of the trace, "<us> S <step> <n> <kind>": n counts frames sent or touches had on this connection,
      * as mgu-render does. */
-    trace(step, n, kind) {
+    trace(step, n, kind, us) {
         if (this.on) {
-            this.lines.push(`${usNow()} S ${step} ${n} ${kind || ''}\n`);
+            this.lines.push(`${us || usNow()} S ${step} ${n} ${kind || ''}\n`);
         }
     }
     connected() {
@@ -88,17 +88,17 @@ class Timing {
         this.touchesIn = 0;
     }
     _second() {
-        if (this.lines.length) {
-            const text = this.lines.join('');
-            this.lines = [];
-            fs.stat(this.traceOut, (e, st) => {
-                const write = !e && st.size > TRACE_MAX ? fs.writeFile : fs.appendFile;
-                write(this.traceOut, text, () => { /* a full /dev/shm: the lines are lost */ });
-            });
-        }
         fs.access(this.file, (err) => {
             const was = this.on;
             this.on = !err;
+            if (this.on && this.lines.length) {
+                const text = this.lines.join('');
+                fs.stat(this.traceOut, (e, st) => {
+                    const write = !e && st.size > TRACE_MAX ? fs.writeFile : fs.appendFile;
+                    write(this.traceOut, text, () => { /* a full /dev/shm: the lines are lost */ });
+                });
+            }
+            this.lines = [];
             if (was && this.on && (this.builds || this.drags || this.touches)) {
                 const n = this.builds || 1, f = this.frames || 1, c = process.cpuUsage(this.cpu), el = msNow() - this.t0;
                 const d = this.drags || 1;
@@ -407,7 +407,7 @@ class Drawn extends EventEmitter {
         if (!this.mode || !this.w) {
             return;
         }
-        this.timing.trace('build-start', this.timing.sent + 1, 'whole');
+        const b0 = this.timing.on ? usNow() : 0;
         const t0 = this.timing.on ? msNow() : 0;
         const m = this._model();
         const tm = t0 ? msNow() : 0;
@@ -423,7 +423,7 @@ class Drawn extends EventEmitter {
             const ms = msNow() - t0;
             this.timing.builds++; this.timing.build += ms; this.timing.buildMax = Math.max(this.timing.buildMax, ms);
         }
-        this.timing.trace('build-end', this.timing.sent + 1, 'whole');
+        const b1 = b0 ? usNow() : 0;
         if (!this.on_) {
             return;
         }
@@ -434,7 +434,7 @@ class Drawn extends EventEmitter {
         }
         this.dirty = false;
         this.sentAt = now;
-        this._send(rec);
+        this._send(rec, b0, b1, 'whole');
     }
 
     /* The model changed (the updater's state, pictures decoded): built again now, or, while a drag moves
@@ -453,12 +453,21 @@ class Drawn extends EventEmitter {
         return Object.assign(this.host.model(), { stack: this.stack, tab: this.tab, filter: this.filter });
     }
 
-    /* Sends a frame, then drops the layers retired before it (none of them
-     * drawn by it or any frame after). */
-    _send(rec) {
+    /* Sends a frame (built from b0 to b1, us, when traced), then drops the
+     * layers retired before it (none of them drawn by it or any frame after). */
+    _send(rec, b0, b1, kind) {
         const t1 = this.timing.on ? msNow() : 0;
-        if (this.gpu.frame(rec)) {
-            this.timing.trace('send', ++this.timing.sent);
+        // the frames mgu-render gets: those RenderClient.frame() writes (false from it can also mean the socket's
+        // buffer is full, the frame still on its way)
+        const written = this.gpu.ready && this.gpu.native && !!this.gpu.placement;
+        this.gpu.frame(rec);
+        if (written) {
+            const n = ++this.timing.sent;
+            if (b0) {
+                this.timing.trace('build-start', n, kind, b0);
+                this.timing.trace('build-end', n, kind, b1);
+            }
+            this.timing.trace('send', n);
         }
         if (t1) { this.timing.frames++; this.timing.send += msNow() - t1; }
         this.retired.forEach((L) => {
@@ -484,7 +493,7 @@ class Drawn extends EventEmitter {
             this.dirty = true;
             return;
         }
-        this.timing.trace('build-start', this.timing.sent + 1, 'drag');
+        const b0 = this.timing.on ? usNow() : 0;
         const t0 = this.timing.on ? msNow() : 0;
         if (this.drag && this.drag.key !== key) {
             this._dragEnd();
@@ -500,10 +509,10 @@ class Drawn extends EventEmitter {
         }
         const r = dragFrame(v, d.baseLayer, d.rowsLayer, d.from, top, this.scale);
         if (t0) { this.timing.drags++; this.timing.dragMs += msNow() - t0; }
-        this.timing.trace('build-end', this.timing.sent + 1, 'drag');
+        const b1 = b0 ? usNow() : 0;
         this.dirty = false;
         this.sentAt = now;
-        this._send(r);
+        this._send(r, b0, b1, 'drag');
     }
 
     _dragStart(key) {
