@@ -1,0 +1,32 @@
+{
+  "id": "carplay-multitouch",
+  "kind": "tool",
+  "version": "0.1.0",
+  "title": "CarPlay multitouch",
+  "description": "Two fingers on the touchscreen in CarPlay (pinch to zoom). Only for the one CarPlay build it was made for; other cars stay unchanged. Works from the next start",
+  "mguHmi": ["ID7"],
+  "optional": true,
+  "uninstallable": true,
+  "requires": {
+    "mgu-deploy": "0.6.4"
+  },
+  "files": [
+    { "path": "multitouch.sh", "from": "multitouch.sh", "mode": "0644" },
+    { "path": "multitouch.js", "from": "multitouch.js", "mode": "0644" },
+    { "path": "agent.js", "from": "agent.js", "mode": "0644" },
+    { "path": "read-voltage.js", "from": "read-voltage.js", "mode": "0644" },
+    { "path": "patch/patcher.js", "from": "patch/patcher.js", "mode": "0644" },
+    { "path": "patch/patch.json", "from": "patch/patch.json", "mode": "0644" },
+    { "path": "runtime/manager.js", "from": "runtime/manager.js", "mode": "0644" },
+    { "path": "runtime/60-mgu-carplay-multitouch.conf", "from": "runtime/60-mgu-carplay-multitouch.conf", "mode": "0644" },
+    { "path": "LICENSE", "from": "LICENSE", "mode": "0644" }
+  ],
+  "postInstall": [
+    "multitouch.sh",
+    "install"
+  ],
+  "preUninstall": [
+    "multitouch.sh",
+    "uninstall"
+  ]
+}

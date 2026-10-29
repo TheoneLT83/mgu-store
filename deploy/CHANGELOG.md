@@ -3,6 +3,7 @@
 ## 0.6.4
 
 - `"preUninstall": [<script>, <arg>...]` in a tool's `component.json` (`deploy/hu artifact` keeps it): the script, one of the tool's files, runs with `sh` as root from `current/` before the tool is uninstalled, for at most 5 minutes; its output is shown. A script that fails keeps the tool installed, so what it set up outside its folder is never left behind without it. The CarPlay multitouch tool takes its patch back out with it.
+- `mgu-install first-install` also installs CarPlay multitouch (`carplay-multitouch`), as it does the renderer and the uplink; `--no-multitouch` leaves it out. It patches only the one CarPlay build it was made for; on any other car it changes nothing.
 
 ## 0.6.3
 

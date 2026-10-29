@@ -257,7 +257,7 @@ newer it adds `HostKeyAlgorithms=+ssh-rsa` and
 `--arm-debug` stays with `deploy/hu`.
 
 ```sh
-node mgu-install.js first-install [--no-renderer] [--no-uplink] [--token] [ssh options]
+node mgu-install.js first-install [--no-renderer] [--no-uplink] [--no-multitouch] [--token] [ssh options]
 node mgu-install.js token [--list [--json] | --remove <id>] [ssh options]
 node mgu-install.js usb-repo <stick folder> [<input>...]
 ```
@@ -271,8 +271,10 @@ node .\mgu-install.js usb-repo E:\ github:robertnisipeanu/mgu-store
 **first-install** reads the `catalog` release of
 `robertnisipeanu/mgu-store` (release/README.md), takes every entry but the
 optional ones, and of those the renderer `mgu-render` (the Store draws its
-screens with it) and the internet uplink `mgu-uplink` (`--no-renderer`,
-`--no-uplink` leave them out; one the catalog does not list is skipped,
+screens with it), the internet uplink `mgu-uplink` and CarPlay multitouch
+`carplay-multitouch` (it patches only the one CarPlay build it was made for
+and leaves any other car unchanged) (`--no-renderer`, `--no-uplink`,
+`--no-multitouch` leave them out; one the catalog does not list is skipped,
 saying so, and one the deploy tool refuses is left out after the rest
 installs), downloads each
 artifact and checks its size and sha256 against the catalog; a mismatch

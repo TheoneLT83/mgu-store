@@ -6,16 +6,17 @@
  * no dependencies: Node 18 or newer and the system's OpenSSH client, on
  * Windows, macOS or Linux (deploy/README.md, "mgu-install").
  *
- *   node mgu-install.js first-install [--no-renderer] [--no-uplink] [--token] [--from <folder>] [<ssh options>]
+ *   node mgu-install.js first-install [--no-renderer] [--no-uplink] [--no-multitouch] [--token] [--from <folder>] [<ssh options>]
  *   node mgu-install.js download <folder>
  *   node mgu-install.js token [--list [--json] | --remove <id>] [<ssh options>]
  *   node mgu-install.js usb-repo <stick folder> [<input>...]
  *
  * first-install downloads the newest published mgu-store release (the
  * deploy tool, app-privacy, the updater, the Store's source package, the
- * renderer the Store draws its screens with and the internet uplink;
- * --no-renderer and --no-uplink leave those two out, and one the deploy tool
- * refuses is left out), checks each file against the
+ * renderer the Store draws its screens with, the internet uplink and
+ * CarPlay multitouch, which changes only the one CarPlay build it was made
+ * for; --no-renderer, --no-uplink and --no-multitouch leave those out, and
+ * one the deploy tool refuses is left out), checks each file against the
  * catalog's size and sha256, sends them to the unit and installs them with
  * the release's own deploy tool, which builds the Store on the unit. Newer
  * installed components are kept; running it again is safe. --token adds a
@@ -739,7 +740,9 @@ async function reach(o, d = NET) {
  * each one's flag, the unit that runs it, and its name in the last line. */
 const WITH = [
     { id: 'mgu-render', skip: 'noRenderer', unit: 'mgu-render.socket', name: 'the renderer' },
-    { id: 'mgu-uplink', skip: 'noUplink', unit: 'mgu-uplink.service', name: 'the uplink' }
+    { id: 'mgu-uplink', skip: 'noUplink', unit: 'mgu-uplink.service', name: 'the uplink' },
+    // no service: its patch works from the next start of the head unit
+    { id: 'carplay-multitouch', skip: 'noMultitouch', unit: null, name: 'CarPlay multitouch' }
 ];
 
 function sayList(names) {
@@ -860,7 +863,7 @@ async function firstInstall(o) {
             return t;
         }
     }
-    const services = [{ id: 'mgu-updater', unit: 'mgu-updater.service', name: 'the updater' }].concat(withs);
+    const services = [{ id: 'mgu-updater', unit: 'mgu-updater.service', name: 'the updater' }].concat(withs.filter((w) => w.unit));
     // the status on stderr, shown as it comes; which services run on stdout (absent: not installed)
     const st = ssh(o, [`sh ${DEPLOY} status >&2`].concat(services.map((s) =>
         `if [ -e /var/opt/${s.id}/current ]; then systemctl is-active ${s.unit} 2>/dev/null || true; else echo absent; fi`)).join('; '),
@@ -1243,7 +1246,7 @@ const USAGE = FROM_STDIN ? 'usage: deploy/README.md, "mgu-install"' : fs.readFil
 
 function parse(argv) {
     const o = { command: argv[0], host: null, port: '22', bind: null, given: false, user: 'root', identity: null, sshOpts: [],
-        noRenderer: false, noUplink: false, token: false, from: null, list: false, json: false, remove: null, rest: [] };
+        noRenderer: false, noUplink: false, noMultitouch: false, token: false, from: null, list: false, json: false, remove: null, rest: [] };
     const value = (i, flag) => {
         if (i >= argv.length) {
             throw new Usage(`${flag} needs a value`);
@@ -1259,6 +1262,7 @@ function parse(argv) {
         else if (a === '--ssh-opt') o.sshOpts.push(value(++i, a));
         else if (a === '--no-renderer' && o.command === 'first-install') o.noRenderer = true;
         else if (a === '--no-uplink' && o.command === 'first-install') o.noUplink = true;
+        else if (a === '--no-multitouch' && o.command === 'first-install') o.noMultitouch = true;
         else if (a === '--token' && o.command === 'first-install') o.token = true;
         else if (a === '--from' && o.command === 'first-install') o.from = value(++i, a);
         else if (a === '--list' && o.command === 'token') o.list = true;
