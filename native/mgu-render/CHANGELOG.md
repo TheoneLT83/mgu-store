@@ -1,5 +1,9 @@
 # mgu-render changelog
 
+## 0.6.3
+
+- The old GPU renderers are set aside at install again (`mgu-render-retire.sh`): idrive7-apps' installer's `mgu-renderd.service` and idrive7-renderd 1.x, which 0.6.2 put back and which do not speak mgu-render/1 (the apps then showed their old screen). idrive7-apps' renderer 2.x stays and runs beside it.
+
 ## 0.6.2
 
 - The HMI page template, its folder and the boot's copy of the HMI's widgets are made readable by the HMI's user (0644 files, 0755 folders) whatever umask the install or the boot runs with. An install that ran with umask 077 left the template readable by root only, and the HMI, which runs as its own user, showed the app's page empty. An install whose template is in place for its HmiMain3D makes it readable without making it again, and each boot copies it readable. (robertnisipeanu/mgu-store mgu-render 0.6.1, pull request #48.)

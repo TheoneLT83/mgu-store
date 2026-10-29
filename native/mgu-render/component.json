@@ -1,7 +1,7 @@
 {
   "id": "mgu-render",
   "kind": "tool",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "title": "Renderer",
   "description": "Draws apps' screens on the GPU, over the HMI or inside the app's page",
   "mguProvides": "renderer",
@@ -16,7 +16,7 @@
     { "path": "foreground_gate.js", "from": "js/foreground_gate.js", "mode": "0644" },
     { "path": "hmi_template.js", "from": "js/hmi_template.js", "mode": "0644" },
     { "path": "mgu-render-hmi.sh", "from": "systemd/mgu-render-hmi.sh", "mode": "0644" },
-    { "path": "mgu-render-restore.sh", "from": "systemd/mgu-render-restore.sh", "mode": "0644" },
+    { "path": "mgu-render-retire.sh", "from": "systemd/mgu-render-retire.sh", "mode": "0644" },
     { "path": "mgu-render-install.sh", "from": "systemd/mgu-render-install.sh", "mode": "0644" },
     { "path": "mgu_render_client.js", "from": "js/mgu_render_client.js", "mode": "0644" },
     { "path": "LICENSE.mgu-renderd", "from": "LICENSE.mgu-renderd", "mode": "0644" }

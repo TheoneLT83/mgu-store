@@ -211,8 +211,9 @@ from its repository through the Store, `idrive7-renderd.service`) run beside
 mgu-render: they serve their apps on the community socket, mgu-render the
 Store on its own. idrive7-apps' renderer diverts touch in its own table and
 ports (`touch_table`, `touch_port`: `ip idrive7_render`, 30572 and 30573;
-ours `ip mgu_render`, 30570 and 30571). Unit files mgu-render 0.5.3-0.6.1 set
-aside go back at install (`mgu-render-restore.sh`). A tool that needs a renderer
+ours `ip mgu_render`, 30570 and 30571). The older ones (the installer's
+`mgu-renderd.service`, idrive7-renderd 1.x, IterioDev's) are set aside at install
+(`mgu-render-retire.sh`, into `/var/opt/mgu-renderd/retired/`). A tool that needs a renderer
 (upstream's controller gate) is satisfied by any.
 
 **Sockets.** Ours is `/run/mgu-render/render.sock`. The community socket
