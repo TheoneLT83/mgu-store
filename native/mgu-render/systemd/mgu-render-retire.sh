@@ -7,10 +7,19 @@
 # nothing is stopped while the HMI runs (the gate talks to the renderer, and an HMI that aborts reboots the
 # head unit): from the next start mgu-render serves the apps and the gate.
 #   mgu-render-retire.sh          (component.json postInstall, through mgu-render-install.sh)
+# The kit's GPU renderer 2.x installed from the Store (idrive7-renderd, mgu-render itself under the old name,
+# for a car whose screen does not show with this one) stays: its owner chose it there.
 # Undo: move the files in retired/ back and reboot.
 S=${MGU_RENDER_SYSTEMD:-/etc/systemd/system}
 B=${MGU_RENDER_RETIRED:-/var/opt/mgu-renderd/retired}
-OLD="$S/mgu-renderd.service $S/oapcontroller.service.wants/mgu-renderd.service $S/idrive7-renderd.service $S/oapcontroller.service.wants/idrive7-renderd.service"
+K=${MGU_RENDER_KIT:-/var/opt/idrive7-renderd/current/component.json}
+OLD="$S/mgu-renderd.service $S/oapcontroller.service.wants/mgu-renderd.service"
+kv=$(sed -n 's/.*"version"[^"]*"\([0-9]*\)\..*/\1/p' "$K" 2>/dev/null | head -n 1)
+if [ -n "$kv" ] && [ "$kv" -ge 2 ]; then
+    echo "mgu-render: the kit's GPU renderer $kv.x from the Store stays (uninstall it in the Store to use this one)"
+else
+    OLD="$OLD $S/idrive7-renderd.service $S/oapcontroller.service.wants/idrive7-renderd.service"
+fi
 any=0
 for f in $OLD; do { [ -e "$f" ] || [ -L "$f" ]; } && any=1; done
 [ $any = 1 ] || exit 0
