@@ -1077,7 +1077,9 @@ function testDaemon(certs, pubDir) {
             ok('install: the verified copy is removed afterwards', !fs.existsSync(path.join(T, 'state', 'verified', 'demo_app@1.0.0.tgz')));
             restarting();
             client.install('mgu-updater');
-            return waitFor(client, (s) => version(s) === '0.2.0' && settled(s), 30000, 'the updater running 0.2.0');
+            // the commit (trial file gone, current switched) can follow the first answer of the new version
+            return waitFor(client, (s) => version(s) === '0.2.0' && settled(s) && !fs.existsSync(trialFile) && current() === 'versions/0.2.0',
+                30000, 'the updater running 0.2.0, committed');
         })
         .then((st) => {
             ok('self-update: the new version runs and is committed', !fs.existsSync(trialFile) && current() === 'versions/0.2.0');
