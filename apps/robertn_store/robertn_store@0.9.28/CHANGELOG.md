@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.28
+
+The controller gate's logo drew with a call the renderer's recorder does not have: the tool grid stopped with an error and its tiles did not open.
+
 ## 0.9.27
 
 - iDrive 7 (the renderer's own layer): the Store takes the whole screen right of the HMI's back arrow column, as the
