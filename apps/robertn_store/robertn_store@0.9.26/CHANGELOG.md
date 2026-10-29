@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.26
+
+iDrive 7: the Store page's tiles keep their name and status line above the next row: the icon is sized to
+leave them room (it ran into the next row's icon).
+
 ## 0.9.25
 
 Opening or leaving a page of the drawn screens, and the HMI's BACK, keep

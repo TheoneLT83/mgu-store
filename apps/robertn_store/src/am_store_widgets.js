@@ -137,15 +137,16 @@ function fitSource(cv, s, w, size) {
     return W.fit(cv, s.slice(0, i), Math.max(0, w - cv.textWidth(repo, size)), size) + repo;
 }
 // (the Store: o.iconK, o.titleSize, o.subSize size a smaller tile's icon and texts; the defaults are the design's.
-// Tiles with a source line (item.src, dim, under the title) set the three lines closer and take the icon that
-// leaves them, descenders included, above the tile's bottom 8 px, where the focus rings are drawn: store_frame.js.)
+// Tiles with a source line (item.src, dim, under the title) set the three lines closer. The icon leaves the lines,
+// descenders included, above the tile's bottom 8 px, where the focus rings are drawn: store_frame.js.)
 function appGrid(cv, t, b, o) {
     const g = gridView(b, o), k = g.th / 274;
     const ts = o.titleSize || 40, ss = o.subSize || 30, rs = Math.round(ss * 0.9), top = 12 * k;
     const src = g.all.some((a) => a.src);
     const gap = src ? [ts * 1.2, rs * 1.25, ss * 1.25] : [ts * 1.45, 0, ss * 1.4];
-    const s = src ? Math.floor(Math.min(g.th * (o.iconK || 0.5), g.th - 8 - top - gap[0] - gap[1] - gap[2] - ss * 0.25))
-        : Math.round(g.th * (o.iconK || 0.5));
+    // the icon leaves the title and status lines, descenders included, above the tile's bottom 8 px (with or
+    // without a source line): a short tile (iDrive 7's Store page) has a smaller icon, not lines over the next row
+    const s = Math.floor(Math.min(g.th * (o.iconK || 0.5), g.th - 8 - top - gap[0] - gap[1] - (src ? gap[2] : 0) - ss * (src ? 0.25 : 1.65)));
     cv.clip(b.x, b.y, b.w, b.h);
     g.all.slice(g.first * g.cols, g.end * g.cols).forEach((a, i) => {
         const x = b.x + (i % g.cols) * g.tw, y = b.y + (g.first + Math.floor(i / g.cols) - g.top) * g.th;
