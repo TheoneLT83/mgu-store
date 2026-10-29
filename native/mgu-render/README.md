@@ -180,9 +180,12 @@ and serves those apps, unchanged.
 IterioDev's mgu-renderd (`mgu-renderd.service`, from his App Manager or as a
 service package through the Store) and upstream idrive7-apps' renderer
 (`mgu-renderd.service` from its installer, or the tool `idrive7-renderd`
-from its repository through the Store, `idrive7-renderd.service`) can be
-installed with mgu-render. Each serves its own apps; nothing is replaced. A
-tool that needs a renderer (upstream's controller gate) is satisfied by any.
+from its repository through the Store, `idrive7-renderd.service`) are set
+aside when mgu-render installs (`mgu-render-retire.sh`: their unit files move
+to `/var/opt/mgu-renderd/retired/`, nothing is stopped while the HMI runs):
+from the next start mgu-render serves their apps and the controller gate. One
+installed afterwards runs beside it as below. A tool that needs a renderer
+(upstream's controller gate) is satisfied by any.
 
 **Sockets.** Ours is `/run/mgu-render/render.sock`. The community socket
 `/run/mgu-renderd/renderd.sock` is ours exactly when it is a symlink to our

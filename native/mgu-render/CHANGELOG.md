@@ -1,5 +1,9 @@
 # mgu-render changelog
 
+## 0.5.3
+
+- The older GPU renderers are set aside at install (`mgu-render-retire.sh`, run by the new postInstall `mgu-render-install.sh` before the page template): idrive7-apps' `mgu-renderd.service` and `idrive7-renderd.service`, IterioDev's `mgu-renderd.service`. Their unit files move to `/var/opt/mgu-renderd/retired/`; nothing is stopped while the HMI runs, and from the next start mgu-render serves their apps (in their protocols) and the controller gate. Beside one of them the apps kept drawing through it, and the gate stayed connected to it.
+
 ## 0.5.2
 
 - A zero-copy frame is committed once its GL commands are flushed (`glFlush`), relying on the GPU driver's implicit sync, so the renderer's loop is not held while the GPU draws; `embed_finish = 1` waits for the GPU (`glFinish`).
