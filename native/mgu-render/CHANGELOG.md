@@ -1,5 +1,9 @@
 # mgu-render changelog
 
+## 0.6.0
+
+- Page changes of an embed app show no black box: when the app says its HMI page changes (X_BRIDGE 1, caps 64), its frames show on a layer of the renderer's own over exactly the box, above the HMI, for `embed_bridge_ms` (400), while the HMI shows neither page. The layer goes at once on X_BRIDGE 0 (an HMI popup, menu or HOME took the page's focus), when another app comes in front, a camera or video surface shows, or the app leaves the box, hides, goes silent or disconnects. `embed_bridge = 0` turns it off; apps that do not send X_BRIDGE get no layer (README.md, "Page changes"). (robertnisipeanu/mgu-store pull request #47.)
+
 ## 0.5.4
 
 - `fps` and `fps.<app>` (0): the frames a second an app that asks for a rate (FPS) gets, in place of the rate it asks; for every such app, or for one (`fps.robertn_store = 60`). Display-bridge apps ask for none and are not paced by it.
