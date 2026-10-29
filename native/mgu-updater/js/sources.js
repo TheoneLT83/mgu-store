@@ -1190,10 +1190,19 @@ function githubReader(s, ctx) {
     const reuse = (key) => (ctx.reuse ? ctx.reuse(key) : null);
     const raw = (url, name, max, onProgress) => ctx.net.get(url, headers(url, 'application/octet-stream'), name, max, onProgress);
     // the tarball endpoint redirects to codeload for its JSON media type; octet-stream is refused (415)
-    const tarball = (commit, onProgress) => ctx.net.get(`${repoUrl}/tarball/${commit}`, headers(repoUrl, 'application/vnd.github+json'),
-        `${s.repo.replace('/', '-')}.tgz`, ctx.maxRepoBytes, onProgress);
+    const tarball = (commit, onProgress) => (anonymous()
+        ? ctx.net.get(`${codeload}/${s.repo}/tar.gz/${commit}`, headers(codeload, 'application/octet-stream'), `${s.repo.replace('/', '-')}.tgz`, ctx.maxRepoBytes, onProgress)
+        : ctx.net.get(`${repoUrl}/tarball/${commit}`, headers(repoUrl, 'application/vnd.github+json'), `${s.repo.replace('/', '-')}.tgz`, ctx.maxRepoBytes, onProgress));
     // a file's own bytes from the contents API (else it answers with JSON around them)
     const content = (url, name, max) => ctx.net.get(url, headers(url, 'application/vnd.github.raw+json'), name, max);
+    // without a token (a public repo, and GitHub's 60 API requests an hour for the whole car): a file at a
+    // commit from raw.githubusercontent.com and the catalog release's catalog.json from its download link,
+    // neither counted against the API's rate limit. ctx.githubRaw (conf github_raw; none with another
+    // github_api, as in the tests): both off; ctx.githubWeb: github.com.
+    const rawHost = ctx.githubRaw ? ctx.githubRaw.replace(/\/+$/, '') : null;
+    const webHost = (ctx.githubWeb || 'https://github.com').replace(/\/+$/, '');
+    const anonymous = () => !!rawHost && !ctx.tokenFor(s.id);
+    const codeload = (ctx.githubCodeload || 'https://codeload.github.com').replace(/\/+$/, '');
     const encode = (rel) => rel.split('/').map(encodeURIComponent).join('/');
     // an icon named by a release asset's name is that asset; an https URL stays
     const assetIcon = (c, assets) => {
@@ -1295,7 +1304,9 @@ function githubReader(s, ctx) {
             unsure = unsure || e.status !== 404;
             throw Object.assign(e, { missing: e.status === 404 });
         };
-        const readFile = (rel) => content(`${repoUrl}/contents/${encode(rel)}?ref=${sha}`, path.posix.basename(rel), SMALL).catch(failed);
+        const readFile = (rel) => (anonymous()
+            ? raw(`${rawHost}/${s.repo}/${sha}/${encode(rel)}`, path.posix.basename(rel), SMALL)
+            : content(`${repoUrl}/contents/${encode(rel)}?ref=${sha}`, path.posix.basename(rel), SMALL)).catch(failed);
         const listDir = (rel) => json(`${repoUrl}/contents/${encode(rel)}?ref=${sha}`, 'contents.json').then((items) => {
             if (!Array.isArray(items)) {
                 throw new Error(`${rel}: not a folder`);
@@ -1307,9 +1318,26 @@ function githubReader(s, ctx) {
         });
     };
 
+    // the API's limit spent: the catalog release's catalog.json from its download link (no listing of the
+    // release's assets then: icons named by an asset's name go to that asset's download link)
+    const fromCatalogLink = () => {
+        const base = `${webHost}/${s.repo}/releases/download/catalog/`;
+        return raw(base + 'catalog.json', 'catalog.json', 4 << 20).then((b) => {
+            const cat = Object.assign({ mode: 'catalog', memoKey: null }, catalogLib.parse(b.toString('utf8')));
+            cat.components.forEach((c) => {
+                if (c.icon && !/^https:\/\//.test(c.icon.ref)) {
+                    c.icon = Object.assign(c.icon, { ref: base + encodeURIComponent(c.icon.ref) });
+                }
+            });
+            return cat;
+        });
+    };
     const onChannel = (channel) => {
         if (channel === 'releases') {
             return json(`${repoUrl}/releases/tags/catalog`, 'release.json').then(fromCatalog, (err) => {
+                if (err.rateLimited && rawHost) {
+                    return fromCatalogLink().catch(() => { throw err; });
+                }
                 if (!missing(err)) {
                     throw err;
                 }
@@ -1393,9 +1421,15 @@ function githubReader(s, ctx) {
                 })),
         catalog: () => json(repoUrl, 'repo.json')
             .catch((err) => {
+                if (err.rateLimited && rawHost && anonymous() && (!s.channel || s.channel === 'releases')) {
+                    return fromCatalogLink().then((c) => ({ limited: Object.assign(c, { channel: 'releases', public: true }) }), () => { throw err; });
+                }
                 throw refused(err) ? authError(err.message) : err;
             })
             .then((repo) => {
+                if (repo && repo.limited) {
+                    return repo.limited;
+                }
                 const branch = `branch:${repo.default_branch || 'main'}`;
                 const done = (channel) => (c) => Object.assign(c, { channel, public: repo.private === false });
                 if (s.channel) {
@@ -1403,6 +1437,9 @@ function githubReader(s, ctx) {
                     return onChannel(channel).then(done(channel));
                 }
                 return json(`${repoUrl}/releases/tags/catalog`, 'release.json').then((r) => fromCatalog(r).then(done('releases')), (err) => {
+                    if (err.rateLimited && rawHost) {
+                        return fromCatalogLink().then(done('releases'), () => { throw err; });
+                    }
                     if (!missing(err)) {
                         throw err;
                     }
@@ -1416,7 +1453,8 @@ function githubReader(s, ctx) {
         // a repo tree's icon is its file at the listed commit
         icon: (entry) => (/^https:\/\//.test(entry.icon.ref) ? raw(entry.icon.ref, 'icon.png', ICON_BYTES)
             : entry.commit && safeRel(entry.icon.ref) ? iconOf(entry, (rel, max) => (safeRel(rel)
-                ? content(`${repoUrl}/contents/${encode(rel)}?ref=${entry.commit}`, path.posix.basename(rel), max)
+                ? (anonymous() ? raw(`${rawHost}/${s.repo}/${entry.commit}/${encode(rel)}`, path.posix.basename(rel), max)
+                    : content(`${repoUrl}/contents/${encode(rel)}?ref=${entry.commit}`, path.posix.basename(rel), max))
                 : Promise.reject(new Error('an icon path stays inside the repo'))))
                 : Promise.reject(new Error('an icon is a release asset, an https url or a file of the repo tree'))),
         files: (commit, onProgress, under) => tarball(commit, onProgress)

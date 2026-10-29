@@ -1,0 +1,29 @@
+# Runs the tests on branches other than main (and by hand): the updater's (in the head unit's Node, Docker),
+# the deploy tool's and the Store's. Publishes nothing (release.yml publishes from main).
+name: Test
+
+on:
+  push:
+    branches-ignore: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.12.0
+      - name: Updater
+        run: sh native/mgu-updater/test/run.sh
+      - name: Deploy tool
+        run: node deploy/test/run.js
+      - name: Store
+        working-directory: apps/robertn_store
+        run: |
+          node tools/test_view.js && node tools/test_rhmi.js && node tools/test_speller.js
+          node tools/test_screens.js && node tools/test_store.js && STORE_HMI=ID8 node tools/test_store.js

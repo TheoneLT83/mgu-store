@@ -1,5 +1,9 @@
 # Updater changelog
 
+## 0.8.5
+
+- Without a GitHub token (GitHub allows such a car 60 API requests an hour), a public GitHub source's files at a commit, its icons and its tarball come from raw.githubusercontent.com and codeload.github.com, which are not counted against that limit: a branch source no longer spends one request per app at each new commit. With the limit spent, a releases source (the Store's own) reads its catalog release's catalog.json from the download link instead of failing with 'GitHub rate limit reached'. Conf `github_raw` names the raw host (none when `github_api` names another server).
+
 ## 0.8.4
 
 - The phone page shows the renderer's journals too (`mgu-render`, `mgu-render-hmi`).

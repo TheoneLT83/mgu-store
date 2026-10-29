@@ -762,6 +762,9 @@ class Updater {
             },
             version: this.version,
             githubApi: conf.github_api || 'https://api.github.com',
+            // a public repo's files and a catalog release's catalog.json outside the API's rate limit (sources.js)
+            githubRaw: conf.github_raw || (conf.github_api ? '' : 'https://raw.githubusercontent.com'),
+            githubWeb: conf.github_web || 'https://github.com',
             maxRepoBytes: Number(conf.repo_max_bytes) || 64 << 20,
             maxBuildBytes: Number(conf.build_max_bytes) || 200 << 20,
             // an index source's packages, kept by their sha256
