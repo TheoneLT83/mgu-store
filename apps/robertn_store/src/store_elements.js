@@ -6,6 +6,9 @@
  * of dark modules in a row), so it needs no picture upload.
  */
 const { qrModules } = require('./qr.js');
+const { vicon } = require('./kit_vicons.js');
+const { withAlpha } = require('./kit_canvas.js');
+const W = require('./am_widgets.js');
 
 function qr(cv, t, b, o) {
     if (!o.text) {
@@ -32,4 +35,25 @@ function qr(cv, t, b, o) {
     }
 }
 
-module.exports = { DRAW: { qr } };
+/* Ways to do something, side by side (Settings > Internet): o.items [{ vicon, title, text }], each a card with its logo
+ * on a disc at the top, its name and its text wrapped under it. */
+function ways(cv, t, b, o) {
+    const items = Array.isArray(o.items) ? o.items : [];
+    if (!items.length) return;
+    const gap = Math.round(b.w * 0.015), cw = (b.w - gap * (items.length - 1)) / items.length;
+    const big = b.h > 600, d = Math.round(Math.min(cw * 0.42, b.h * (big ? 0.26 : 0.3))), ts = o.titleSize || (big ? 40 : 28),
+        xs = o.textSize || (big ? 32 : 22);
+    items.forEach((it, i) => {
+        const x = b.x + i * (cw + gap);
+        if (W.id7(t)) W.panel7(cv, t, x, b.y, cw, b.h, true);
+        else cv.roundRect(x, b.y, cw, b.h, Math.min(24, cw / 10), t.panelTop);
+        const cx = x + cw / 2, cy = b.y + b.h * 0.06 + d / 2 + 10;
+        cv.circle(cx, cy, d / 2, withAlpha(t.text, 0.1));
+        vicon(cv, it.vicon, cx - d * 0.32, cy - d * 0.32, d * 0.64, t.text);
+        const ty = cy + d / 2 + ts * 1.4;
+        cv.text(W.fit(cv, String(it.title || ''), cw - 32, ts, 'bold'), cx, ty, ts, t.text, { align: 'center', font: 'bold' });
+        W.wrap(cv, String(it.text || ''), x + 20, ty + ts * 0.5, cw - 40, xs, t.dim, Math.max(1, Math.floor((b.y + b.h - ty - ts * 0.5 - 12) / (xs * 1.25))));
+    });
+}
+
+module.exports = { DRAW: { qr, ways } };

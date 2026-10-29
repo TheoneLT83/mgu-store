@@ -944,7 +944,7 @@ function runDrawn() {
         eq(frames.length > 0 && drawn.items.some((i) => i.label === 'DOOM'), true, 'the Store tab drawn');
         eq(app._drawnModel().version, 'test', 'the Store\'s version, from where this HMI\'s oap-sdk keeps package.json');
         eq([drawn.items[0].label, drawn.items[3].label, drawn.items[4].label, drawn.items[7].label],
-            ['Store', 'Settings', 'All', 'DOOM'], 'items in focus order: side menu, filters, tiles');
+            ['Store', 'Settings', 'All', 'Gauges'], 'items in focus order: side menu, filters, tiles (not installed first)');
         eq([lastText(proxy(1, 0)), lastText(proxy(1, 7))], [' ', ' '], 'proxies unlabelled: the HMI never shows the names');
         eq(last(new RegExp(`^${proxy(1, 12)}\\.Visible`)), `${proxy(1, 12)}.Visible=0`, 'unused proxies hidden');
         // a drag moves the grid's rows: each move one frame of two cached layers (the page as the drag started,
@@ -963,7 +963,7 @@ function runDrawn() {
         const layers = [...moves[0].layersUsed].sort();
         const d0 = dropped.length;
         gpu.emit('touch', 'up', x0, y0 - 400);
-        const top = drawn.scroll[g.key], first = drawn.items.find((i) => i.label === 'DOOM');
+        const top = drawn.scroll[g.key], first = drawn.items.find((i) => i.label === 'Gauges');      // the first tile (not installed first)
         eq([frames.length - n0, dropped.length - d0, Math.round(first.y)], [4, 0, Math.round(g.y - top * g.step)],
             'the release: no frame built, the layers kept, items where the rows came to rest');
         gpu.emit('touch', 'down', x0, y0);
@@ -1091,7 +1091,8 @@ function runDrawn() {
         // a tile press opens its page at depth 2
         reset();
         bridges.length = 0;
-        app._components[proxy(1, 7)].emit('action', {});
+        // (DOOM's tile: what is not on the car comes first)
+        app._components[proxy(1, drawn.items.findIndex((i) => i.label === 'DOOM'))].emit('action', {});
         return tick();
     }).then(() => {
         eq(states, [`open ${host(2)}`], 'the app page is the next host state');
@@ -1137,7 +1138,7 @@ function runDrawn() {
     }).then(() => {
         eq(drawn.stack.length, 1, 'BACK leaves the page');
         eq(gpu.visible, true, 'and the tabs show');
-        eq(drawn.focus, 7, 'the focus back on the tile the page opened from');
+        eq(drawn.items[drawn.focus].label, 'DOOM', 'the focus back on the tile the page opened from');
         // touch: a tap on Renderer's tile opens it; Install installs it beside the other renderer
         reset();
         const tile = drawn.items.find((i) => i.label === 'Renderer');
@@ -1527,7 +1528,7 @@ function runDrawn() {
             ccu(101, 'DREHGEBER_KURZ_GEDRUECKT');
             ccu(101, 'SIGNAL_UNGUELTIG', 5);
             ccu(101, 'DREHGEBER_KURZ_GEDRUECKT');
-            eq({ name: drawn.top().name, id: drawn.top().id }, { name: 'app', id: 'doom' }, 'a push presses the focused tile (DOOM)');
+            eq({ name: drawn.top().name, id: drawn.top().id }, { name: 'app', id: 'gauges' }, 'a push presses the focused tile (the first: Gauges, not installed)');
             eq(states.length, 1, 'once while held, an invalid sample in between');
             ccu(101);
             drawn.pop();

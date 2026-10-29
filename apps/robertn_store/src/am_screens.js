@@ -9,7 +9,7 @@
  * type (his Add repository page's text box and keyboard), wifi (his App Manager 2.0.6's Wi-Fi page), prefer and changelog are the Store's
  * own in the same frame. Each element is drawn by am_gpu.js; src/store_ui.js gives their values.
  */
-module.exports = {
+const SCREENS = {
  "design": {
   "w": 2880,
   "h": 960
@@ -2113,3 +2113,26 @@ module.exports = {
   }
  ]
 };
+
+/* Settings: the access list over the head-unit lines (Information has them); Internet: the ways as cards, its note
+ * under them; Information: changelog's page. */
+(function () {
+    const by = (n) => SCREENS.screens.find((x) => x.name === n);
+    const comp = (st, n) => st.components.find((c) => c.name === n);
+    const set = by('settings');
+    const access = comp(set, 'access'), check = comp(set, 'checkNow');
+    access.h = check.y - 30 - access.y;
+    access.opts.rowH = Math.min(120, Math.floor(access.h / 5));
+    set.components = set.components.filter((c) => c.name !== 'unit' && c.name !== 'versions');
+    const net = by('internet');
+    const steps = comp(net, 'steps');
+    net.components.splice(net.components.indexOf(steps), 0, { name: 'ways', rtype: 'gpu', gpu: 'ways', x: steps.x, y: steps.y,
+        w: steps.w, h: steps.h - 90, opts: { items: [] } });
+    Object.assign(steps, { y: steps.y + steps.h - 70, h: 60 });
+    const info = JSON.parse(JSON.stringify(by('changelog')));
+    info.name = 'information';
+    comp(info, 'nav').opts.sel = 3;
+    SCREENS.screens.push(info);
+}());
+
+module.exports = SCREENS;

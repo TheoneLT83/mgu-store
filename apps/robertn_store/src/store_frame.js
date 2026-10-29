@@ -51,7 +51,12 @@ const measure = new Recorder(1, 1);       // text widths, as drawn
  * (viewport, logical px). A box under COMPACT_H high (iDrive 7) gets the
  * compact layout made for it at scale 1; a higher one (iDrive 8) the
  * design's VIEWPORT fitted in, centred, on whole device pixels. */
-function placement(w, h) {
+function placement(w, h, full) {
+    if (full) {
+        // iDrive 7 layer mode over the whole screen (right of the HMI's back arrow column): the header tabs in the HMI's strip
+        return { scale: 1, ox: 0, oy: 0, viewport: { x: 0, y: 0, w, h },
+            layout: Object.assign(compact(w, h, undefined, { full: true }), { id7: compact(w, h, 'id7', { full: true }) }) };
+    }
     if (h < COMPACT_H) {
         // the iDrive 7 look's own layout beside it: the menu along the bottom
         return { scale: 1, ox: 0, oy: 0, viewport: { x: 0, y: 0, w, h }, layout: Object.assign(compact(w, h), { id7: compact(w, h, 'id7') }) };
@@ -90,7 +95,9 @@ function itemsOf(st, page, look) {
         if (c.gpu === 'sideNav' && b.w > b.h) {         // along the bottom (the iDrive 7 look)
             const list = navItems(o);
             const iw = b.w / Math.max(1, list.length);
-            list.forEach((it, i) => items.push({ x: b.x + i * iw + 8, y: b.y + 8, w: iw - 16, h: b.h - 16, r: 2, label: it.label, act: it.act }));
+            // header tabs (full screen): the focus ring inside the screen's top edge
+            const iy = o.head ? 12 : 8;
+            list.forEach((it, i) => items.push({ x: b.x + i * iw + 8, y: b.y + iy, w: iw - 16, h: b.h - 2 * iy, r: 2, label: it.label, act: it.act }));
         } else if (c.gpu === 'sideNav') {
             const list = navItems(o);
             const ih = b.h / Math.max(1, list.length);
@@ -182,8 +189,9 @@ const recordOpts = (layout, textScale) => (layout ? { textScale: textScale || 1,
  * high. null when key is not on the screen or has nothing to scroll. */
 function dragOf(m, opts, key) {
     const o = opts || {};
-    const layout = o.layout || null;
-    const st = screenOf(view(m), o.scroll || {}, layout);
+    const v = view(m);
+    const layout = o.layout && v.look === 'id7' && o.layout.id7 ? o.layout.id7 : o.layout || null;
+    const st = screenOf(v, o.scroll || {}, layout);
     const c = st.components.find((x) => `${st.name}.${x.name}` === key);
     if (!c || (c.gpu !== 'appGrid' && c.gpu !== 'appList') || c.opts.hidden) {
         return null;

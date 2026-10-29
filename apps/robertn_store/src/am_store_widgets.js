@@ -225,7 +225,31 @@ const navItems = (o) => (Array.isArray(o.items) ? o.items
 // (the Store: o.labelSize for a narrower menu; the default is the design's)
 /* The menu as the iDrive 7 look has it: along the bottom, the kit's button bar (gauges.js menuBar): names in capitals,
  * the selected one lit with a line of the selection colour, thin separators; a count after a name. */
+/* The pages as header tabs in the HMI's title strip (full screen, iDrive 7 look): the idrive7-apps' header (kit
+ * gauges.js header) - names in capitals, the page lit with a red line along the bottom. */
+function headNav(cv, t, b, o) {
+    const items = navItems(o), n = Math.max(1, items.length), iw = b.w / n, S = t.sel || t.accent, size = o.labelSize || 20;
+    const opt = { align: 'center', font: 'bold', spacing: 2 };
+    items.forEach((it, i) => {
+        const x = b.x + i * iw, on = i === (o.sel | 0), label = String(it.label).toUpperCase();
+        if (on) {
+            cv.gradientRect(x, b.y, iw, b.h, [[0, withAlpha(S, 0)], [1, withAlpha(S, 0.25)]]);
+            cv.fillRect(x, b.y + b.h - 5, iw, 5, S);
+        }
+        const badge = it.badge && String(it.badge) !== '0' ? String(it.badge) : '';
+        const lw = cv.textWidth(label, size, opt), bw = badge ? size * 1.5 : 0, lx = x + iw / 2 - (badge ? (bw + 10) / 2 : 0);
+        cv.text(label, lx, b.y + b.h / 2 + 7, size, on ? t.selText || '#ffffff' : t.dim, opt);
+        if (badge) {
+            const bx = lx + lw / 2 + 10 + bw / 2, cy = b.y + b.h / 2;
+            cv.roundRect(bx - bw / 2, cy - size * 0.7, bw, size * 1.4, size * 0.28, S);
+            cv.text(badge, bx, cy + size * 0.3, Math.round(size * 0.82), '#ffffff', { align: 'center', font: 'bold' });
+        }
+        if (i < n - 1) cv.fillRect(x + iw, b.y + b.h * 0.28, 1, b.h * 0.44, withAlpha('#ffffff', 0.14));
+    });
+}
+
 function bottomNav(cv, t, b, o) {
+    if (o.head) return headNav(cv, t, b, o);
     const items = navItems(o), n = Math.max(1, items.length), iw = b.w / n, S = t.sel || t.accent, size = o.labelSize || 22;
     cv.fillRect(b.x, b.y, b.w, b.h, t.bg);
     cv.gradientRect(b.x, b.y, b.w, b.h, [[0, withAlpha('#ffffff', 0.09)], [1, withAlpha('#ffffff', 0.03)]]);

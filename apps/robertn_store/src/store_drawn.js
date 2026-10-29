@@ -33,6 +33,7 @@ const kit = require('./kit_record.js');
 const png = require('./kit_png.js');
 const { setPicture } = require('./am_widgets.js');
 const { frame, layoutOf, dragOf, dragFrame, hit, placement } = require('./store_frame.js');
+const FULL_X = 84;              // the HMI's back arrow column (x 0..84): kept the HMI's, as the idrive7-apps keep it
 
 const DEPTHS = 3;
 const ICON_BYTES = 128 * 1024;          // a package picture: at most this big
@@ -241,8 +242,13 @@ class Drawn extends EventEmitter {
             }
         }
         if (mode) {
-            const box = mode === 'embed' ? info.embedBox : info.appArea;
-            const p = placement(box.w, box.h);
+            let box = mode === 'embed' ? info.embedBox : info.appArea;
+            // iDrive 7 layer mode: the whole screen right of the HMI's back arrow column, the header in its title
+            // strip, as the idrive7-apps run (store_compact.js full)
+            const scr = this.gpu.screen || {};
+            const full = mode === 'layer' && box.h < 700 && scr.w === 1920 && scr.h === 720;
+            if (full) box = { x: FULL_X, y: 0, w: scr.w - FULL_X, h: scr.h };
+            const p = placement(box.w, box.h, full);
             this.scale = p.scale;
             this.layout = p.layout;
             this.viewport = p.viewport;
@@ -470,7 +476,8 @@ class Drawn extends EventEmitter {
         if (!on) {
             this._dropKept();
         }
-        this.gpu.claim(on ? [this.viewport] : []);
+        // full screen: not the HMI's status icons at the title strip's right end
+        this.gpu.claim(on ? (this.layout && this.layout.claims) || [this.viewport] : []);
         this.gpu.grab(on && !!this.controller);
         if (on) {
             // the frame before it shows: at once (a frame the renderer had may draw layers dropped while hidden)

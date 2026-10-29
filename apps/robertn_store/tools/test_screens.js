@@ -19,7 +19,8 @@ const { view } = require(path.join(__dirname, '..', 'src', 'store_ui.js'));
 let checks = 0;
 const eq = (got, want, msg) => { checks += 1; assert.deepStrictEqual(got, want, msg); };
 const ok = (cond, msg) => { checks += 1; assert(cond, msg); };
-const UNITS = { 'iDrive 7 embed': placement(1796, 632), 'iDrive 7 layer': placement(1790, 638), 'iDrive 8': placement(2880, 764) };
+const UNITS = { 'iDrive 7 embed': placement(1796, 632), 'iDrive 7 layer': placement(1790, 638), 'iDrive 7 full screen': placement(1836, 720, true),
+    'iDrive 8': placement(2880, 764) };
 const ID7 = UNITS['iDrive 7 embed'];
 const RING = 11;                // the focus ring's reach outside an item (8 out, 5 wide)
 
@@ -80,7 +81,9 @@ let f = screen('store');
 eq(f.labels.slice(0, 7), ['Store', 'Installed', 'USB', 'Settings', 'All', 'Apps', 'Tools']);
 eq(f.labels.length, 7 + fixture.state().components.length - 1, 'a tile per component but the one for another head unit only');
 ok(f.labels.indexOf('Car Data') < 0, 'Car Data (iDrive 8 only, not installed) is not listed');
-eq(f.items[7].act, { do: 'open', page: { name: 'app', id: 'robertn_store', source: 'mgu-store', listed: 'robertn_store' } });
+// what is not on the car first
+eq(f.items[7].act, { do: 'open', page: { name: 'app', id: 'car_vitals', source: 'idrive7-apps', listed: 'car_vitals' } });
+ok(f.values.grid.items.findIndex((t) => t.badge === 'installed') > f.values.grid.items.findIndex((t) => t.id === 'car_vitals'), 'not installed before installed');
 const subs = f.values.grid.items.map((t) => t.sub);
 ['Downloading 42 %', 'Update 1.2.0', 'Waiting', 'Restart pending', 'Failed', 'Installed', '2.1.0 · 402 KB']
     .forEach((s) => ok(subs.indexOf(s) >= 0, `a tile says ${s}`));
@@ -280,7 +283,7 @@ Object.keys(UNITS).forEach((unit) => {
     const th = def.opts.tileH;
     // the first row's texts but the letter tiles' letters
     const row0 = texts.filter((t) => t.y < def.y + th && t.str.length > 1);
-    eq(row0.slice(0, 3).map((t) => t.str), ['Store', 'mgu-store', 'Installed'], `${unit}: title, source, state`);
+    eq(row0.slice(0, 3).map((t) => t.str), ['M Vitals', 'idrive7-apps', '2.1.0 · 402 KB'], `${unit}: title, source, state (not installed first)`);
     // the tile's bottom 8 px hold the focus rings (store_frame.js): every line, descenders included, ends above them
     ok(row0.every((t) => t.y + 0.25 * t.size <= def.y + th - 8),
         `${unit}: the lines clear of the focus rings (${row0.map((t) => Math.round(t.y + 0.25 * t.size))} of ${def.y + th - 8})`);
@@ -300,16 +303,18 @@ eq(text(f, 'subtitle'), 'USB STICK · 2 packages');
 // Settings: sources, Add source, Wi-Fi, Accounts, Phone access, the unit; no restart while busy
 f = screen('settings');
 eq(f.labels.slice(4), ['iDrive 7', 'iDrive 8', 'TheoneLT83/mgu-store', 'TheoneLT83/idrive7-apps', 'IterioDev/car-apps', 'USB STICK',
-    'Add source', 'Wi-Fi', 'Internet', 'Accounts', 'Phone access', 'Check now']);
+    'Add source', 'Wi-Fi', 'Internet', 'Accounts', 'Phone access', 'Information', 'Check now']);
 // the look: the head unit's own until one is picked; each pick is a press
 eq(f.items.filter((i) => /^iDrive/.test(i.label)).map((i) => i.act), [{ do: 'look', look: 'id7' }, { do: 'look', look: 'id8' }]);
 eq(view(fixture.model({ tab: 'settings' })).look, 'id7', 'an iDrive 7 unit: the iDrive 7 look');
 eq(view(fixture.model({ tab: 'settings' }, { unit: { hmi: 'ID8' } })).look, 'id8', 'an iDrive 8 unit: the iDrive 8 look');
 eq(view(fixture.model({ tab: 'settings', look: 'id8' })).values.look.sel, 1, 'the picked look is selected');
-eq(text(f, 'unit'), 'iDrive 7 · BMW MGU P18_23w44.2-1-3 mgu-high');
-eq(text(f, 'versions'), 'Updater 0.4.0 · Store 0.7.0 · Renderer mgu-renderd 1.1.0');
-eq(text(screen('settings', {}, { allProviders: { renderer: [{ id: 'mgu-render', version: '0.2.0' }, { id: 'mgu-renderd', version: '1.1.2' }] } }),
-    'versions'), 'Updater 0.4.0 · Store 0.7.0 · Renderer mgu-render 0.2.0, mgu-renderd 1.1.2', 'every installed renderer');
+// the head unit's line on the Information row; its page lists the head unit and every version
+const infoRow = f.values.access.items.find((i) => i.id === 'info');
+eq([infoRow.title, infoRow.sub, infoRow.act], ['Information', 'iDrive 7 · BMW MGU P18_23w44.2-1-3 mgu-high', { do: 'open', page: { name: 'information' } }]);
+const info = view(fixture.model({ tab: 'settings', stack: [{ name: 'main' }, { name: 'information' }] })).values.list.items;
+eq(info.slice(0, 3).map((i) => [i.title, i.right]), [['iDrive 7', ''], ['Store', 'chip:0.7.0'], ['Updater', 'chip:0.4.0']], 'Information: the head unit, the Store, the updater');
+ok(info.some((i) => i.id === 'mgu-renderd' && i.right === 'chip:1.1.0'), 'Information: an installed renderer and its version');
 const idle = { busy: null, components: fixture.state().components.map((c) => Object.assign({}, c, { queued: false })) };
 ok(screen('settings', {}, idle).labels.indexOf('Restart head unit') >= 0, 'Restart head unit with nothing installing');
 
@@ -472,7 +477,8 @@ eq(text(screen('offline'), 'subtitle'), 'Restart the head unit to finish setup')
 // internet: the page says whether the car is online and how to connect it; offline, the Store points to it
 f = screen('internet');
 eq([own(f), text(f, 'status')], [['Back'], 'Connected']);
-ok(/USB LTE stick/.test(text(f, 'steps')) && /USB tethering/.test(text(f, 'steps')) && /Personal Hotspot/.test(text(f, 'steps')), 'the ways to connect');
+eq(f.values.ways.items.map((w) => [w.vicon, w.title]), [['lteStick', 'USB LTE stick'], ['ethernet', 'USB network adapter'], ['android', 'Android phone'], ['iphone', 'iPhone']], 'the ways to connect, a card each');
+ok(/USB tethering/.test(f.values.ways.items[2].text) && /Personal Hotspot/.test(f.values.ways.items[3].text), 'how, on the phones');
 eq(text(screen('internet-offline'), 'status'), 'Not connected');
 eq(text(screen('store-no-internet'), 'subtitle'), 'No internet: Settings > Internet shows how to connect the car');
 // every character on these screens is in the baked fonts (tools/bake_fonts.py TEXT); others draw as '?'

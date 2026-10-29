@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.27
+
+- iDrive 7 (the renderer's own layer): the Store takes the whole screen right of the HMI's back arrow column, as the
+  idrive7-apps do: its pages (Store, Installed, USB, Settings) are header tabs after its name in the HMI's title strip,
+  and the bar along the bottom is gone. The HMI's status icons and back arrow stay in view.
+- Dragging a list or grid showed the iDrive 8 look under the iDrive 7 look: the drag's frames are made from the look shown.
+- The Store page lists what is not on the car first.
+- The head-unit tools have logos of their own (renderer, updater, deploy tool, Python, network, privacy, controller
+  gate, CarPlay multitouch) in place of their first letter.
+- USB without a stick says USB not connected.
+- Settings: Wi-Fi, Internet, Accounts, Phone access and the new Information all in view; Information shows the head
+  unit and the version of everything installed (it had a line under the access rows).
+- Settings > Internet: the four ways to connect the car as cards with their logos (USB LTE stick, USB network
+  adapter, Android phone, iPhone).
+
 ## 0.9.26
 
 iDrive 7: the Store page's tiles keep their name and status line above the next row: the icon is sized to

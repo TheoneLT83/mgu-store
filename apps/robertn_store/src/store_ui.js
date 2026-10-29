@@ -109,8 +109,12 @@ function canRestart(m) {
 
 /* The icon fields of a component: its picture (components[].icon, a file
  * the Store reads), else a letter tile; tools round. */
+/* The head-unit tools' logos (kit_vicons.js), where a tool brings no picture of its own. */
+const TOOL_ICONS = { 'mgu-render': 'layers', 'idrive7-renderd': 'layers', 'mgu-renderd': 'layers', 'mgu-updater': 'refresh',
+    'mgu-deploy': 'box', 'mgu-python': 'python', 'mgu-uplink': 'tether', 'app-privacy': 'shield', 'mgu-inputgate': 'knob',
+    'carplay-multitouch': 'touch', 'display-bridge': 'display' };
 function iconOf(c) {
-    return { icon: c.icon ? `key:${c.icon}` : '', vicon: '', letter: String(c.title || c.id || '?')[0], kind: isTool(c) ? 'service' : 'app',
+    return { icon: c.icon ? `key:${c.icon}` : '', vicon: c.icon ? '' : TOOL_ICONS[c.id] || '', letter: String(c.title || c.id || '?')[0], kind: isTool(c) ? 'service' : 'app',
         colors: colors(c.id), badge: '', progress: -1 };
 }
 
@@ -172,7 +176,9 @@ function storeView(m) {
     const busyRow = busy && find(comps(m), busy.id);
     // the status line names a row as the tiles tell it apart
     const st = m.st && Object.assign({}, m.st, { components: m.st.components.map((c) => (listed(c) ? Object.assign({}, c, { title: named(m, c) }) : c)) });
-    const list = comps(m).filter((c) => m.filter === 'all' || (m.filter === 'app' ? !isTool(c) : isTool(c)));
+    const shown = comps(m).filter((c) => m.filter === 'all' || (m.filter === 'app' ? !isTool(c) : isTool(c)));
+    // what is not on the car yet first, each group in its usual order
+    const list = shown.filter((c) => !c.installed).concat(shown.filter((c) => c.installed));
     const checking = !!(m.connected && m.st && m.st.catalog && m.st.catalog.checking);
     const online = m.connected && m.st && m.st.online;
     return {
@@ -222,7 +228,7 @@ function usbView(m) {
     return {
         title: { text: 'USB' },
         subtitle: { text: usb.length ? `${usb.map(sourceLabel).join(', ')} · ${plural(list.length, 'package')}` : '' },
-        grid: { items: list.map((c) => tile(m, c, busy)), empty: usb.length ? 'Nothing here' : 'No USB stick' }
+        grid: { items: list.map((c) => tile(m, c, busy)), empty: usb.length ? 'Nothing here' : 'USB not connected' }
     };
 }
 
@@ -262,17 +268,15 @@ function settingsView(m) {
             right: 'chevron', act: { do: 'open', page: { name: 'phone' } } });
     }
     const unit = st && st.unit;
-    const renderers = st && st.allProviders && Array.isArray(st.allProviders.renderer) ? st.allProviders.renderer : [];
+    access.push({ id: 'info', title: 'Information', sub: unit && unit.hmi ? [hmiNames([unit.hmi]), unit.firmware].filter(Boolean).join(' · ') : 'Versions',
+        plain: true, vicon: 'display', iconColor: 'text', right: 'chevron', act: { do: 'open', page: { name: 'information' } } });
     return {
         note: { text: m.note || '' },
         look: { sel: LOOKS.indexOf(lookOf(m)), acts: LOOKS.map((l) => ({ do: 'look', look: l })) },
         repos: srcs ? { items: srcs.map(sourceRow), empty: 'None' } : { items: [], empty: '' },
         addRepo: srcs ? button('Add source', { do: 'add-source' }, { vicon: 'plus', style: 'tinted', color: BLUE }) : hidden,
         access: { items: access },
-        connLabel: { text: access.length ? 'ACCESS' : 'HEAD UNIT' },
-        unit: { text: unit && unit.hmi ? [hmiNames([unit.hmi]), unit.firmware].filter(Boolean).join(' · ') : '' },
-        versions: { text: [st && st.updater ? `Updater ${st.updater.version}` : '', m.version ? `Store ${m.version}` : '',
-            renderers.length ? `Renderer ${renderers.map((r) => `${r.id} ${r.version}`).join(', ')}` : ''].filter(Boolean).join(' · ') },
+        connLabel: { text: 'ACCESS' },
         checkNow: m.connected ? button(st.catalog && st.catalog.checking ? 'Checking' : 'Check now', { do: 'check' },
             { vicon: 'refresh', style: 'outline', size: 26 }) : hidden,
         restart: canRestart(m) ? button('Restart head unit', { do: 'open', page: { name: 'confirm', kind: 'restart' } },
@@ -560,23 +564,37 @@ function phoneView(m) {
 
 /* How the car gets internet: the head unit has none of its own; the uplink
  * gives it through a USB device. */
-const INTERNET_STEPS = [
-    'The head unit has no internet of its own. Plug one of these into a USB port in the car:',
-    '·  a USB LTE stick with a SIM card that has mobile data (e.g. Huawei E3372h)',
-    '·  a USB network adapter, cabled to a mobile router',
-    '·  an Android phone: Settings > Network > Hotspot & tethering > USB tethering on',
-    '·  an iPhone: Personal Hotspot on, phone unlocked, tap Trust when it asks',
-    'Within a minute this page says Connected and the Store finds new apps and updates.',
-    'No internet at all? Apps on a USB stick show under USB.'
-].join('\n');
+const INTERNET_WAYS = [
+    { vicon: 'lteStick', title: 'USB LTE stick', text: 'A USB LTE stick with a SIM card that has mobile data (e.g. Huawei E3372h), in a USB port in the car.' },
+    { vicon: 'ethernet', title: 'USB network adapter', text: 'A USB network adapter in a USB port, cabled to a mobile router.' },
+    { vicon: 'android', title: 'Android phone', text: 'Cable it to a USB port, then on the phone: Settings > Network > Hotspot & tethering > USB tethering on.' },
+    { vicon: 'iphone', title: 'iPhone', text: 'Cable it to a USB port, Personal Hotspot on, the phone unlocked; tap Trust when it asks.' }
+];
+const INTERNET_STEPS = 'Within a minute this page says Connected. No internet at all? Apps on a USB stick show under USB.';
 
 function internetView(m) {
     const online = !!(m.connected && m.st && m.st.online);
     return {
         title: { text: 'Internet' },
         status: { text: !m.connected ? '' : online ? 'Connected' : 'Not connected', color: online ? GREEN : AMBER },
+        ways: { items: INTERNET_WAYS },
         steps: { text: INTERNET_STEPS }
     };
+}
+
+/* Settings > Information: the head unit, then the version of everything on it (the Store's sources' components that
+ * are installed, apps then tools) and what each renderer is. */
+function informationView(m) {
+    const st = m.connected ? m.st : null;
+    const unit = st && st.unit;
+    const items = [];
+    const row = (id, title, sub, right) => items.push({ id, title, sub, subColor: DIM, plain: true, right: right ? `chip:${right}` : '', chipColor: DIM });
+    if (unit) row('unit', unit.hmi ? hmiNames([unit.hmi]) : 'Head unit', unit.firmware || '', '');
+    if (m.version) row('store', 'Store', 'robertn_store', m.version);
+    if (st && st.updater) row('updater', 'Updater', 'mgu-updater', st.updater.version);
+    const on = comps(m).filter((c) => c.installed && c.id !== 'robertn_store' && c.id !== 'mgu-updater');
+    on.filter((c) => !isTool(c)).concat(on.filter(isTool)).forEach((c) => row(c.id, c.title, [c.id, isTool(c) ? 'tool' : 'app', srcName(m, c)].filter(Boolean).join(' · '), c.installed));
+    return { title: { text: 'Information' }, status: { text: st ? plural(on.length + 2, 'component') : '', color: DIM }, list: { items, empty: m.connected ? '' : 'Not connected' } };
 }
 
 /* The Store's looks (Settings): iDrive 7, the idrive7-apps kit's screens,
@@ -709,6 +727,7 @@ function view(m) {
     case 'login': values = loginView(m); break;
     case 'phone': values = phoneView(m); break;
     case 'internet': values = internetView(m); break;
+    case 'information': values = informationView(m); break;
     case 'type': values = typeView(m, page); break;
     case 'wifi': values = wifiView(m); break;
     case 'prefer': values = preferView(m); break;
