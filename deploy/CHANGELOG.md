@@ -1,5 +1,9 @@
 # Deploy tool changelog
 
+## 0.6.4
+
+- `"preUninstall": [<script>, <arg>...]` in a tool's `component.json` (`deploy/hu artifact` keeps it): the script, one of the tool's files, runs with `sh` as root from `current/` before the tool is uninstalled, for at most 5 minutes; its output is shown. A script that fails keeps the tool installed, so what it set up outside its folder is never left behind without it. The CarPlay multitouch tool takes its patch back out with it.
+
 ## 0.6.3
 
 - iDrive 7 with MainApp 8.1.1: app installs and updates work. MainApp 8.1.1 records no install source for an app, so an install counts as done once the app's registry entry, its files at the new version and its keychain are there. It does not update apps when it starts, so an update that cannot be made in place restarts the app manager once and then has it update the app in place.

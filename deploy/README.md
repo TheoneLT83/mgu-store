@@ -193,7 +193,7 @@ tool itself):
   description, files[{path, mode, sha256}], units[{name}], enable, recmgr,
   restart}`, `dropins[{unit, name}]` (each read from `from`), and `internet`
   with `uids`, `mguHmi`, `mguProvides`, `keepRunning`, `crashNames` and
-  `postInstall` when the tool declares them;
+  `postInstall` and `preUninstall` when the tool declares them;
 - members are sorted, owned 0:0, with the listed modes (`component.json` and
   units 0644) and one mtime: `SOURCE_DATE_EPOCH` when set, else the packer's
   fixed one (`tools/oap_pack.js`, which also writes the gzip header's OS byte
@@ -715,6 +715,14 @@ health check), `sh <root>/current/<script> <arg>...` runs as root from
 for at most 5 minutes (`MGU_DEPLOY_POST_INSTALL_MS`). Its output is shown; a
 failure or the time limit is a warning, and the install stands. mgu-render
 makes its HMI page template this way.
+
+**Pre-uninstall.** `"preUninstall": ["<script>", "<arg>", ...]` names one
+of the tool's files and its arguments: `uninstall <id>` runs
+`sh <root>/current/<script> <arg>...` as root from `current/` before
+anything of the tool is removed, for at most 5 minutes. Its output is shown.
+A failure or the time limit keeps the tool installed, and the uninstall
+fails with the reason: what the tool set up outside its folder (a stock
+unit's drop-in, say) is never left without it.
 
 **Health check.** Every unit the tool restarts or starts is read with
 `systemctl show -p ActiveState -p NRestarts` right after, and again

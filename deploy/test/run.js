@@ -4108,6 +4108,42 @@ function testPostInstall() {
         log().length === 3, refused.out);
 }
 
+/* preUninstall (the CarPlay multitouch tool): the tool's script runs from current/ before the
+ * tool goes; a script that fails keeps the tool */
+function testPreUninstall() {
+    const root = fakeRoot({ recmgr: ['fixture-tool'] });
+    const art = (version, exit, cmd) => {
+        const dir = fixtureCopy(version, (c) => {
+            c.files.push({ path: 'pre.sh', from: 'pre.sh', mode: '0644' });
+            c.preUninstall = cmd || ['pre.sh', 'remove'];
+        });
+        fs.writeFileSync(path.join(dir, 'pre.sh'), `printf '%s|%s\\n' "$PWD" "$1" >> "${T}/pre-${version}.log"; echo bye ${version}; exit ${exit}\n`);
+        const out = fs.mkdtempSync(path.join(T, 'art-'));
+        const r = hu(['artifact', dir, '--out', out]);
+        if (r.status !== 0) {
+            throw new Error(`deploy/hu artifact failed: ${r.stderr}`);
+        }
+        return path.join(out, `fixture-tool@${version}.tgz`);
+    };
+    const log = (v) => (fs.existsSync(path.join(T, `pre-${v}.log`)) ? fs.readFileSync(path.join(T, `pre-${v}.log`), 'utf8') : '')
+        .split('\n').filter(Boolean);
+    const tool = root.p('var/opt/fixture-tool');
+    const bad = root.run(['install', '--artifact', art('0.5.0', 4), '--yes']);
+    check('preUninstall: kept by deploy/hu artifact, not run at install', bad.status === 0 &&
+        readJson(path.join(tool, 'current/component.json')).preUninstall.join() === 'pre.sh,remove' && log('0.5.0').length === 0, bad.out);
+    const kept = root.run(['uninstall', 'fixture-tool', '--yes']);
+    check('preUninstall: a script that fails keeps the tool, the reason shown', kept.status !== 0 && fs.existsSync(path.join(tool, 'current')) &&
+        log('0.5.0').length === 1 && kept.out.includes('pre.sh exited 4; fixture-tool stays installed') && kept.out.includes('bye 0.5.0'), kept.out);
+    const ok = root.run(['install', '--artifact', art('0.6.0', 0), '--yes']);
+    const gone = root.run(['uninstall', 'fixture-tool', '--yes']);
+    check('preUninstall: runs from current/ with its arguments before the tool is removed', ok.status === 0 && gone.status === 0 &&
+        !fs.existsSync(tool) && log('0.6.0').length === 1 && /\|remove$/.test(log('0.6.0')[0]) &&
+        log('0.6.0')[0].indexOf(path.join('fixture-tool', 'versions', '0.6.0')) >= 0, `${gone.out}\n${log('0.6.0')}`);
+    const refused = root.run(['install', '--artifact', art('0.7.0', 0, ['nope.sh']), '--yes']);
+    check('preUninstall: a script that is not one of its files is refused', refused.status !== 0 &&
+        refused.out.includes('preUninstall is a list: one of its files, then its arguments'), refused.out);
+}
+
 /* keepRunning (mgu-render, a renderer package): an update leaves the running service running */
 function testKeepRunning() {
     const root = fakeRoot({ recmgr: ['fixture-tool'] });
@@ -4953,6 +4989,7 @@ const SUITES = [
     testI7Takeover,
     testKeepRunning,
     testPostInstall,
+    testPreUninstall,
     testId8Apps,
     testId8Inplace,
     testId8Guard,

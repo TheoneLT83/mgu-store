@@ -1212,6 +1212,11 @@ function validateTool(file, dir, c) {
         !c.files.some(function (f) { return f.path === c.postInstall[0]; }))) {
         throw refuse(file + ': postInstall is a list: one of its files, then its arguments');
     }
+    if (c.preUninstall !== undefined && (!Array.isArray(c.preUninstall) || !c.preUninstall.length ||
+        !c.preUninstall.every(function (x) { return typeof x === 'string'; }) ||
+        !c.files.some(function (f) { return f.path === c.preUninstall[0]; }))) {
+        throw refuse(file + ': preUninstall is a list: one of its files, then its arguments');
+    }
     return { kind: 'tool', file: file, dir: dir, component: c, id: c.id, version: c.version,
         hmi: hmiList(c.mguHmi, file + ' component.json'), hmiFrom: c.mguHmi ? 'declared' : null,
         provides: c.mguProvides || null };
@@ -1898,6 +1903,23 @@ function postInstall(c, root) {
     ((r.stdout || '') + (r.stderr || '')).split('\n').forEach(function (l) { if (l.trim()) say('  ' + l); });
     if (r.error || r.status !== 0) {
         warn(c.id + ': ' + c.postInstall[0] + (r.error ? ': ' + r.error.message : ' exited ' + (r.status === null ? r.signal : r.status)));
+    }
+}
+/* A tool's preUninstall: its script (one of its files) with the arguments
+ * after it, run by sh as root from current/ before anything of the tool is
+ * removed, for at most postInstallMs. Its output is shown; a script that
+ * fails keeps the tool installed (what it set up outside its folder would
+ * be left without it). */
+function preUninstall(c, root) {
+    var cur = path.join(root, 'current');
+    say(c.id + ': ' + c.preUninstall.join(' '));
+    var r = cp.spawnSync(CFG.sh, [path.join(cur, c.preUninstall[0])].concat(c.preUninstall.slice(1)), {
+        cwd: cur, encoding: 'utf8', timeout: CFG.postInstallMs, killSignal: 'SIGKILL', maxBuffer: 1 << 20
+    });
+    ((r.stdout || '') + (r.stderr || '')).split('\n').forEach(function (l) { if (l.trim()) say('  ' + l); });
+    if (r.error || r.status !== 0) {
+        throw fail(c.id + ': ' + c.preUninstall[0] + (r.error ? ': ' + r.error.message : ' exited ' + (r.status === null ? r.signal : r.status)) +
+            '; ' + c.id + ' stays installed');
     }
 }
 /* Undoes one failed tool install. With no version to return to, a tool
@@ -2817,6 +2839,7 @@ function uninstallTool(id, state) {
     if (!tools.length) throw refuse(id + ': no installed tool with that id');
     var c = tools[0].component, root = tools[0].root;
     say('uninstalling tool ' + id + ' ' + c.version);
+    if (c.preUninstall) preUninstall(c, root);
     /* the stock bundles go back first; a failed revert keeps the tool */
     if (id === 'app-privacy' && privacyRevert()) privacyReverted();
     (c.units || []).forEach(function (u) {
