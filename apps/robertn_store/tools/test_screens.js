@@ -225,7 +225,8 @@ f = laterOf({});
 eq([f.values.grid.items.map((t) => [t.id, t.sub, t.badge]), f.values.nav.items[1].badge],
     [[['car_vitals', 'Restart pending', ''], ['doom', 'Restart pending', 'installed']], ''], 'tiles; not counted as an update');
 f = laterOf({ tab: 'installed' });
-eq([f.values.apps.items.map((i) => [i.id, i.right, i.chipAct]), f.values.updateAll.hidden], [[['doom', 'chip:Restart pending', null]], true]);
+eq([f.values.apps.items.map((i) => [i.id, i.right, i.chipAct]), f.values.updateAll.text], [[['doom', 'chip:Restart pending', null]], 'Check for updates'],
+    'a pending restart is no update to install');
 // with the updater's nextStart: a queued first install has Remove (drops it), a queued removal none; a failed apply shows why
 later.components = [Object.assign({}, later.components[0], { nextStart: 'install' }),
     Object.assign({}, later.components[1], { status: 'installed', installed: '1.0.1', nextStart: 'remove' })];
@@ -261,7 +262,9 @@ eq(text(f, 'text'), 'robertn · TheoneLT83/mgu-store');
 
 // Installed: Update all for what can update now; a row's Update chip is no button (the row opens its page)
 f = screen('installed');
-eq(f.labels[4], 'Update all (1)', 'DOOM downloads and Extended dashboard waits: one update left');
+eq(f.labels[4], 'Install all updates (1)', 'DOOM downloads and Extended dashboard waits: one update left');
+const noUp = screen('installed', {}, { components: fixture.state().components.map((c) => Object.assign({}, c, { status: c.installed ? 'installed' : c.status })) });
+eq([noUp.values.updateAll.text, noUp.values.updateAll.act], ['Check for updates', { do: 'check' }], 'no update: Check for updates');
 ok(!f.items.some((i) => i.label === 'Update'), 'the Update chip is not pressed on its own');
 eq(f.items.find((i) => i.label === 'Extended dashboard' || i.act && i.act.page && i.act.page.id === 'gauges').act.do, 'open', 'its row opens the page');
 ok(f.labels.indexOf('Display bridge') >= 0 && f.labels.indexOf('M Vitals') < 0, 'installed ones only');

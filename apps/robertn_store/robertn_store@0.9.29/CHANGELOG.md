@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.29
+
+Installed: Install all updates (n) when there are updates, else Check for updates, which looks for new ones (as Settings' Check now).
+
 ## 0.9.28
 
 The controller gate's logo drew with a call the renderer's recorder does not have: the tool grid stopped with an error and its tiles did not open.
