@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.31
+
+iDrive 7 full screen: the HMI's clock and status icons show at the title strip's right end again (the page's background covered them: the screens lost the strip's setting on the way to the drawing).
+
 ## 0.9.30
 
 Check for updates with no internet and no USB stick: the button says No internet for a moment.

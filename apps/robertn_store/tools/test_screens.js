@@ -501,3 +501,17 @@ f = screen('store', {}, { components: [Object.assign(fixture.state().components[
 eq([f.values.grid.items[0].icon, f.icons], ['key:/run/mgu-updater/icons/doom.png', ['/run/mgu-updater/icons/doom.png']]);
 
 console.log(`screens: ${fixture.screens().length} screens in ${Object.keys(UNITS).length} boxes, ${checks} checks pass`);
+
+// iDrive 7 full screen: the HMI's status icons (the title strip's right end) stay visible - nothing drawn there
+{
+    const { play } = require(path.join(__dirname, '..', 'src', 'kit_record.js'));
+    const { Canvas } = require(path.join(__dirname, '..', 'src', 'kit_canvas.js'));
+    const full = UNITS['iDrive 7 full screen'];
+    ['store', 'installed', 'settings'].forEach((tab) => {
+        const fr = frame(fixture.model({ look: 'id7', tab }), { textScale: 1, focus: -1, scroll: {}, layout: full.layout });
+        const cv = new Canvas(fr.rec.w, fr.rec.h);
+        play(fr.rec.words(), cv);
+        const alpha = (x, y) => cv.d[(y * cv.w + x) * 4 + 3];
+        eq([alpha(1500, 30), alpha(1800, 60), alpha(300, 30)], [0, 0, 255], `full screen ${tab}: the status icons' corner see-through, the header drawn`);
+    });
+}

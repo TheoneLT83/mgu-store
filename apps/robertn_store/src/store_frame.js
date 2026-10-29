@@ -163,7 +163,8 @@ function itemsOf(st, page, look) {
  * scroll. */
 function screenOf(v, scroll, layout) {
     const def = (layout || SCREENS).screens.find((s) => s.name === v.screen);
-    return { kind: 'gpu', name: def.name, theme: v.look === 'id7' ? 'idrive7' : def.theme, bg: 'theme',
+    // head: the full-screen layout's title strip, filled only as far as the header (am_gpu.js record)
+    return { kind: 'gpu', name: def.name, theme: v.look === 'id7' ? 'idrive7' : def.theme, bg: 'theme', head: def.head,
         components: def.components.map((c) => {
             const opts = Object.assign({}, c.opts, v.values[c.name] || {});
             if (layout) {
