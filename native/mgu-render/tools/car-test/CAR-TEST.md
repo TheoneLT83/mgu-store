@@ -23,6 +23,56 @@ plays, and says what they see.
 | `probe.js` | runs on the unit (Node 8): Wayland globals, GPU, CPU per second; read-only |
 | `kit.js` | `install-test.sh`'s version checks, on the Mac |
 | `test_probe.js` | `node test_probe.js`: the probe against a fake compositor |
+| `trace.js` | the per-frame trace of a drag as a step-by-step breakdown, on the Mac (`node test_trace.js`) |
+
+## Short check: swipes, 30 and 60 fps, page changes
+
+The branch's mgu-render and Store with the per-frame trace; renderer
+restarts with nothing on screen, no head-unit restart. About 25 minutes.
+
+1. `k status` (the published versions, `embed: zero-copy`), `k stats on`.
+2. Owner: open the Store on its list. `k drag before`: quick swipes.
+   Owner: close the Store.
+3. `k install`, `k restart --off-screen`. Owner: open the Store and wait a
+   second (the drag's layers are made ahead).
+4. `k drag swipes30`: the owner swipes the list in short quick strokes,
+   lifting the finger between them. `k drag drag30`: one slow drag up and
+   down without lifting. `k drag pages30`: the owner opens apps from the
+   list and goes back, and switches tabs, several times. The owner says
+   what flickers, if anything. Owner: close the Store.
+5. `k ab fps.robertn_store=60`, `k restart --off-screen`. Owner: open the
+   Store. `k drag swipes60`, `k drag drag60`, `k drag pages60`, as in 4;
+   the owner says what flickers, during the drags and when the page
+   changes. Owner: close the Store.
+6. `k restore`, `k restart --off-screen`, `k status`.
+
+`<name>.trace.txt`: each step's median and p90, and the Store's work per
+touch: a touch's first drag frame, the release (settle), whole page builds
+and the drag layers made ahead.
+
+## Short check: one drag, traced
+
+`install` puts on only what is newer on the branch. With the unit's
+mgu-render already drawing zero-copy, a renderer restart with nothing on
+screen starts a new mgu-render; no head-unit restart. About 15 minutes:
+
+1. `k status` (the published versions, `embed: zero-copy`), `k stats on`.
+2. Owner: open the Store on its list. `k drag before` while the owner drags
+   the list. Owner: close the Store.
+3. `k install`, then `k restart --off-screen` when it installed mgu-render.
+4. Owner: open the Store on its list. `k drag after`; the owner says whether
+   the list moves whole and smoothly. Owner: close the Store.
+5. `k restore`, then `k restart --off-screen` when it put mgu-render back;
+   `k status`.
+
+Each `<name>.txt` has the probe's per-second table with the fastest core's
+clock (`cpu MHz`) and the clock policy; each `<name>.stats` has mgu-render's
+lines and the Store's. With mgu-render 0.5.2 and the Store 0.9.11 or later,
+`<name>.trace.txt` has each step's median and p90 over the frames of the
+drag (`trace.js`, from `<name>.render-trace` and `<name>.store-trace`): what
+a frame waited for before its build, the build, the socket, the wait in
+mgu-render before its draw, the draw, the commit and the HMI's callback,
+and the time from one frame to the next.
 
 ## Before the car
 
@@ -88,8 +138,8 @@ restart, not a renderer restart.
 1. Owner: close the Store (HOME).
 2. `k install`. It records the installed versions, copies the published
    release (every artifact checked against the catalog), builds HEAD's
-   mgu-render (and the Store, when the branch has a newer version) and
-   installs them with the unit's own deploy tool (the deploy tool itself
+   mgu-render and Store, each when the branch has a newer version than the
+   unit, and installs them with the unit's own deploy tool (the deploy tool itself
    is not changed). A few minutes; a Store install waits for the app
    manager. It refuses, changing nothing, when it cannot record the
    versions, when the unit's versions are not the published ones, or when

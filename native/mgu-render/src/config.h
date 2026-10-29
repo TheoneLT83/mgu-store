@@ -5,6 +5,7 @@
 
 #define CFG_MAX_YIELD 16
 #define CFG_MAX_SHARED_YIELD 8
+#define CFG_MAX_APP_FPS 8
 
 struct cfg {
     char socket_path[108];      /* our own socket (the socket unit's; bound here when not socket-activated) */
@@ -38,11 +39,15 @@ struct cfg {
     char controller_lib[64];    /* its library name, looked for in the HMI's maps */
     char record_dir[128];       /* debug: each connection's incoming bytes to <dir>/<app>-<pid>-<n>.bin */
     int verbose;
+    int fps;                    /* frames a second for every app that asks for a rate (FPS), in its place; 0: its own */
+    struct { char app[64]; int fps; } app_fps[CFG_MAX_APP_FPS];   /* fps.<app>: the same for one app */
+    int n_app_fps;
 };
 
 void cfg_defaults(struct cfg *c);
 int cfg_set(struct cfg *c, const char *key, const char *value);   /* 0, or -1 (logged) */
 int cfg_load(struct cfg *c, const char *path);
 int cfg_set_pair(struct cfg *c, const char *pair);
+int cfg_fps(const struct cfg *c, const char *app);   /* app's fps setting, else the global one */
 
 #endif

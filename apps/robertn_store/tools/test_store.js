@@ -146,6 +146,7 @@ const WIFI = { enabled: true, link: 'idle', saved: [], scanning: false, error: n
 const gpuLog = [];
 let fpsAsked = null;
 const frames = [];
+const dropped = [];                     // layers the Store dropped
 class RenderClient extends EventEmitter {
     constructor() {
         super();
@@ -165,6 +166,7 @@ class RenderClient extends EventEmitter {
     fps(n) { fpsAsked = n; }
     grab(on) { this.grabbing = on; }
     frame(rec) { frames.push(rec); return true; }
+    dropLayer(id) { dropped.push(id); }
 }
 // FrontCCU: the sample callback the app subscribes with
 let frontCcu = null;
@@ -943,6 +945,144 @@ function runDrawn() {
             ['Store', 'Settings', 'All', 'DOOM'], 'items in focus order: side menu, filters, tiles');
         eq([lastText(proxy(1, 0)), lastText(proxy(1, 7))], [' ', ' '], 'proxies unlabelled: the HMI never shows the names');
         eq(last(new RegExp(`^${proxy(1, 12)}\\.Visible`)), `${proxy(1, 12)}.Visible=0`, 'unused proxies hidden');
+        // a drag moves the grid's rows: each move one frame of two cached layers (the page as the drag started,
+        // the rows); the release keeps them, and the next drag draws from them
+        const many = Object.assign({}, st, { components: st.components.concat(Array.from({ length: 30 }, (_, i) =>
+            comp({ id: `x${i}`, title: `Extra ${i}`, version: '1.0.0', installed: null, status: 'available' }))) });
+        app._client.emit('state', many);
+        const g = drawn.regions.find((r) => r.max > 0);
+        eq(!!g, true, 'a grid that scrolls');
+        const n0 = frames.length, x0 = g.x + 40, y0 = g.y + g.h - 20;
+        gpu.emit('touch', 'down', x0, y0);
+        [30, 80, 160, 400].forEach((dy) => gpu.emit('touch', 'move', x0, y0 - dy));
+        const moves = frames.slice(n0);
+        eq([moves.length, moves.every((f) => !!f.layersUsed && f.layersUsed.size === 2)], [4, true], 'a frame of two layers each move');
+        eq(drawn.scroll[g.key] > 1, true, 'the rows scrolled');
+        const layers = [...moves[0].layersUsed].sort();
+        const d0 = dropped.length;
+        gpu.emit('touch', 'up', x0, y0 - 400);
+        const top = drawn.scroll[g.key], first = drawn.items.find((i) => i.label === 'DOOM');
+        eq([frames.length - n0, dropped.length - d0, Math.round(first.y)], [4, 0, Math.round(g.y - top * g.step)],
+            'the release: no frame built, the layers kept, items where the rows came to rest');
+        gpu.emit('touch', 'down', x0, y0);
+        gpu.emit('touch', 'move', x0, y0 + 60);
+        eq([...frames[frames.length - 1].layersUsed].sort(), layers, 'the next drag: the same layers');
+        // a release while a frame is pending: its last position drawn at the TICK, from the same layers
+        gpu.waiting = true;
+        gpu.emit('touch', 'move', x0, y0 + 100);
+        const n4 = frames.length;
+        gpu.emit('touch', 'up', x0, y0 + 100);
+        gpu.waiting = false;
+        gpu.emit('tick');
+        eq([frames.length - n4, [...frames[frames.length - 1].layersUsed].sort()], [1, layers], 'the last position at the TICK');
+        // a state change during a drag waits for its release: the drag frames keep their layers (a frame pending
+        // at the renderer: drawn at its TICK); the release builds the page from the new state and drops them
+        gpu.emit('touch', 'down', x0, y0);
+        gpu.emit('touch', 'move', x0, y0 - 40);
+        gpu.waiting = true;
+        const n2 = frames.length, d1 = dropped.length;
+        const fresh = Object.assign({}, many, { components: many.components.concat([comp({ id: 'fresh', title: 'Fresh', version: '1.0.0', installed: null, status: 'available' })]) });
+        app._client.emit('state', fresh);
+        gpu.emit('touch', 'move', x0, y0 - 80);
+        eq(frames.length, n2, 'nothing sent while a frame is pending');
+        gpu.waiting = false;
+        gpu.emit('tick');
+        eq([frames.length - n2, [...frames[frames.length - 1].layersUsed].sort(), dropped.length - d1], [1, layers, 0],
+            'at the TICK: a drag frame of the same layers, none dropped');
+        gpu.emit('touch', 'up', x0, y0 - 80);
+        eq([dropped.slice(d1).sort(), drawn.items.some((i) => i.label === 'Fresh')], [layers, true],
+            'the release: the page built from the new state, the drag\'s layers dropped');
+        // a state the page was built from already: nothing built
+        const n3 = frames.length;
+        app._client.emit('state', fresh);
+        eq(frames.length, n3, 'the same state: nothing built');
+        // a drag the rows cannot follow (past the top) draws nothing
+        drawn.scroll = {};
+        drawn.render();
+        const n1 = frames.length;
+        gpu.emit('touch', 'down', x0, g.y + 20);
+        [40, 80, 120].forEach((dy) => gpu.emit('touch', 'move', x0, g.y + 20 + dy));
+        eq(frames.length - n1, 0, 'no drag frames where the rows cannot move');
+        gpu.emit('touch', 'up', x0, g.y + 140);
+        // the renderer's connection lost mid-drag: the gesture ends with it
+        gpu.emit('touch', 'down', x0, y0);
+        gpu.emit('touch', 'move', x0, y0 - 40);
+        gpu.emit('close');
+        eq([drawn.touch, drawn.drag], [null, null], 'a lost connection ends the drag');
+        gpu.emit('ready', { w: 1920, h: 720 }, { version: 1, modes: ['layer', 'embed'], embedBox: { x: 104, y: 88, w: 1796, h: 632 },
+            appArea: { x: 108, y: 82, w: 1790, h: 638 }, controller: false, touch: true, pixmap: true });
+        app._states[host(1)].emit('visible', { visible: true });
+        drawn.scroll = {};
+        app._client.emit('state', many);
+        return tick(400);
+    }).then(() => {
+        // the page stayed: its grid's layers made ahead, the first drag frame draws from them
+        const d = drawn.drag, g = drawn.regions.find((r) => r.max > 0), x0 = g.x + 40, y0 = g.y + g.h - 20;
+        eq([!!d, d && d.gen === drawn.gen, d && d.key], [true, true, g.key], 'layers made ahead for the grid');
+        const ahead = [d.baseLayer.layerId, d.rowsLayer.layerId].sort();
+        gpu.emit('touch', 'down', x0, y0);
+        gpu.emit('touch', 'move', x0, y0 - 40);
+        eq([...frames[frames.length - 1].layersUsed].sort(), ahead, 'the first drag frame from them');
+        gpu.emit('touch', 'up', x0, y0 - 40);
+        // the host's cells forgotten (an HMI restore): the same state draws nothing but writes the proxies again
+        const n7 = frames.length, w0 = writes.length;
+        app._forgetWritten();
+        app._client.emit('state', app._st);
+        eq([frames.length - n7, writes.slice(w0).some((w) => w.startsWith(proxy(1, 0)))], [0, true], 'proxies written again, nothing drawn');
+        // an unchanged state during a drag: the release keeps the layers, nothing built
+        const n8 = frames.length, d3 = dropped.length;
+        gpu.emit('touch', 'down', x0, y0);
+        gpu.emit('touch', 'move', x0, y0 - 40);
+        app._client.emit('state', app._st);
+        gpu.emit('touch', 'up', x0, y0 - 40);
+        eq([frames.length - n8, [...(frames[frames.length - 1].layersUsed || [])].sort(), dropped.length - d3], [1, ahead, 0],
+            'an unchanged state during a drag: one drag frame, the layers kept');
+        // hidden: the kept layers dropped at once
+        const d2 = dropped.length;
+        drawn.suspend(true);
+        eq(dropped.slice(d2).sort(), ahead, 'hidden: the drag\'s layers dropped');
+        drawn.suspend(false);
+        // BACK (the HMI's focus back on the page below) ends a touch on the page left
+        drawn.push({ name: 'app', id: 'doom' });
+        gpu.emit('touch', 'down', 300, 300);
+        app._states[host(1)].emit('focus', { focus: true });
+        eq([drawn.stack.length, drawn.touch], [1, null], 'BACK: the touch on the page left ended');
+        // another page during a drag, a frame pending: the frame at the TICK is the new page built whole, the
+        // same as a build of it now (no drag frame of the page before)
+        const whole = () => Array.from(require(path.join(SRC, 'store_frame.js')).frame(drawn._model(), { textScale: drawn.scale,
+            focus: drawn.focus, scroll: Object.assign({}, drawn.scroll), layout: drawn.layout }).rec.words());
+        gpu.emit('touch', 'down', x0, y0);
+        gpu.emit('touch', 'move', x0, y0 - 40);
+        gpu.waiting = true;
+        gpu.emit('touch', 'move', x0, y0 - 80);
+        const n5 = frames.length;
+        drawn.push({ name: 'app', id: 'doom' });
+        gpu.emit('touch', 'move', x0, y0 - 120);
+        eq(frames.length, n5, 'nothing sent while a frame is pending');
+        gpu.waiting = false;
+        gpu.emit('tick');
+        const shown = frames[frames.length - 1];
+        eq([frames.length - n5, drawn.touch, !shown.layersUsed || !shown.layersUsed.size, Array.from(shown.words())],
+            [1, null, true, whole()], 'the new page whole at the TICK; the drag ended with the page');
+        gpu.emit('touch', 'up', x0, y0 - 120);
+        drawn.pop();
+        // a new page with a picture not decoded yet: its first frame waits for it
+        const pic = path.join(__dirname, '..', require('../mgu-app.json').tree, 'rhmiData', 'variantGroups', 'Common', 'images', 'store_icon.png');
+        const extra = Array.from({ length: 30 }, (_, i) => comp({ id: `x${i}`, title: `Extra ${i}`, version: '1.0.0', installed: null, status: 'available' }));
+        app._client.emit('state', Object.assign({}, st, { components: st.components.concat(extra, [comp({ id: 'pictured', title: 'Pictured',
+            version: '1.0.0', installed: null, status: 'available', icon: pic })]) }));
+        const n6 = frames.length;
+        drawn.push({ name: 'app', id: 'pictured' });
+        eq(frames.length, n6, 'held while its picture is decoded');
+        return tick(150).then(() => {
+            const f = frames[frames.length - 1];
+            eq([frames.length - n6, f.images && f.images.size > 0, Array.from(f.words())], [1, true, whole()],
+                'then shown whole, with its picture');
+            drawn.pop();
+            drawn.scroll = {};
+            app._client.emit('state', st);
+        });
+    }).then(() => {
         // focus moves with the HMI's
         app._components[proxy(1, 9)].emit('focus', { value: true });
         eq(drawn.focus, 9);
@@ -1454,24 +1594,32 @@ function runTiming() {
     const { Timing } = require(path.join(SRC, 'store_drawn.js'));
     const file = path.join(ROOT, 'stats-log');
     const out = path.join(ROOT, 'store-stats.log');
+    const traceOut = path.join(ROOT, 'store-trace.log');
     const lines = [];
-    const t = new Timing(file, out);
+    const t = new Timing(file, out, traceOut);
+    const traced = () => { try { return fs.readFileSync(traceOut, 'utf8').split('\n').filter(Boolean); } catch (e) { return []; } };
     const read = () => { lines.length = 0; try { lines.push(...fs.readFileSync(out, 'utf8').split('\n').filter(Boolean)); } catch (e) { /* none yet */ } };
     const second = () => new Promise((r) => { t._second(); setTimeout(() => { read(); r(); }, 50); });
-    const busy = () => { t.builds = 2; t.build = 3; t.buildMax = 2; t.frames = 2; t.send = 0.4; t.touches = 5; t.touchMs = 4; };
+    const busy = () => { Object.assign(t, { builds: 2, build: 3, buildMax: 2, model: 1, layout: 1.6, drags: 4, dragMs: 0.8, frames: 6, send: 1.2, touches: 5, touchMs: 4 }); };
     busy();
+    t.trace('send', 1);
     return second().then(() => {
-        eq([t.on, lines.length], [false, 0], 'no stats-log: off, nothing logged');
+        eq([t.on, lines.length, traced().length], [false, 0, 0], 'no stats-log: off, nothing logged or traced');
         fs.writeFileSync(file, '');
         busy();
         return second();
     }).then(() => {
         eq([t.on, lines.length], [true, 0], 'stats-log appeared: on from the next second');
         busy();
+        t.trace('build-start', 7, 'drag');
+        t.trace('send', 7);
         return second();
     }).then(() => {
         eq(lines.length, 1);
-        eq(/^\d{4}-\d\d-\d\dT[\d:.]+Z stats store: 2 builds avg 1\.5 ms max 2\.0 ms, 2 frames sent avg 0\.2 ms, 5 touch events 4 ms, cpu \d+ %$/.test(lines[0]), true, lines[0]);
+        const tr = traced();
+        eq([tr.length, /^\d+ S build-start 7 drag$/.test(tr[0]), /^\d+ S send 7 $/.test(tr[1]), Number(tr[1].split(' ')[0]) >= Number(tr[0].split(' ')[0])],
+            [2, true, true, true], 'trace lines: monotonic microseconds, the step, its count');
+        eq(/^\d{4}-\d\d-\d\dT[\d:.]+Z stats store: 2 builds avg 1\.5 ms max 2\.0 ms \(model 0\.5, layout 0\.8\), 4 drag frames avg 0\.2 ms, 6 frames sent avg 0\.2 ms, 5 touch events 4 ms, cpu \d+ %$/.test(lines[0]), true, lines[0]);
         fs.unlinkSync(file);
         busy();
         return second();

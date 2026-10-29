@@ -1,5 +1,11 @@
 # mgu-render changelog
 
+## 0.5.4
+
+- `fps` and `fps.<app>` (0): the frames a second an app that asks for a rate (FPS) gets, in place of the rate it asks; for every such app, or for one (`fps.robertn_store = 60`). Display-bridge apps ask for none and are not paced by it.
+- While `/run/mgu-render/stats-log` exists, each step of an app's frames and touches goes to `/run/mgu-render/trace.log` (`<us> R <step> <n> <app>`, CLOCK_MONOTONIC): touch in and forwarded, TICK sent, frame received, draw start and end, commit, the HMI's frame callback; `tools/car-test/trace.js` lines it up with the Store's.
+- (robertnisipeanu/mgu-store mgu-render 0.5.2, pull requests #45-#46.)
+
 ## 0.5.3
 
 - The older GPU renderers are set aside at install (`mgu-render-retire.sh`, run by the new postInstall `mgu-render-install.sh` before the page template): idrive7-apps' `mgu-renderd.service` and `idrive7-renderd.service`, IterioDev's `mgu-renderd.service`. Their unit files move to `/var/opt/mgu-renderd/retired/`; nothing is stopped while the HMI runs, and from the next start mgu-render serves their apps (in their protocols) and the controller gate. Beside one of them the apps kept drawing through it, and the gate stayed connected to it.

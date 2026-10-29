@@ -7,6 +7,10 @@
  * focus ring use the same list. No I/O (tools/test_screens.js).
  *
  *   frame(model, { textScale, focus, scroll, layout }) -> { screen, rec, items, regions, icons }
+ *   layoutOf(model, frame()'s options) -> its items, regions and icons, without drawing (a focus out of view
+ *   scrolls as in frame())
+ *   dragOf(model, { textScale, scroll, layout }, key) -> what a drag of grid or list key draws (store_drawn.js)
+ *   dragFrame(drag, baseLayer, rowsLayer, from, top, textScale) -> one frame of that drag
  *
  * model.look: 'id7' or 'id8' (Settings), else the head unit's own
  * (store_ui.js lookOf); it picks the theme and the fonts.
@@ -24,6 +28,8 @@
 const SCREENS = require('./am_screens.js');
 const { record } = require('./am_gpu.js');
 const { Recorder } = require('./kit_record.js');
+const { withAlpha } = require('./kit_canvas.js');
+const { theme: kitTheme } = require('./kit_themes.js');
 const { view, icons } = require('./store_ui.js');
 const { tabCells } = require('./am_widgets.js');
 const { gridView, listView, navItems, rightBoxes, keyBoxes, shown, chipBoxes } = require('./am_store_widgets.js');
@@ -163,7 +169,63 @@ function screenOf(v, scroll, layout) {
         }) };
 }
 
-function frame(m, opts) {
+/* record()'s options for a layout (null: the iDrive 8 design). */
+const recordOpts = (layout, textScale) => (layout ? { textScale: textScale || 1, design: layout.design,
+    area: { x: 0, y: 0, w: layout.design.w, h: layout.design.h } } : { textScale: textScale || 1, view: 'id8' });
+
+/* A drag of grid or list key, so a drag frame moves its rows without the
+ * frame built again: rec, the frame as it is without the grid's or list's
+ * rows (what is behind them shows between them); box, step (a row's
+ * height), rows (their count), shown (rows the box holds), max (the
+ * largest scroll); bar, the grid's scroll bar colour (null: a list, no
+ * bar); and draw(from, n): rows from..from+n drawn from 0, 0, n * step
+ * high. null when key is not on the screen or has nothing to scroll. */
+function dragOf(m, opts, key) {
+    const o = opts || {};
+    const layout = o.layout || null;
+    const st = screenOf(view(m), o.scroll || {}, layout);
+    const c = st.components.find((x) => `${st.name}.${x.name}` === key);
+    if (!c || (c.gpu !== 'appGrid' && c.gpu !== 'appList') || c.opts.hidden) {
+        return null;
+    }
+    const b = { x: c.x, y: c.y, w: c.w, h: c.h };
+    const grid = c.gpu === 'appGrid';
+    const g = grid ? gridView(b, c.opts) : listView(b, c.opts);
+    if (g.max <= 0) {
+        return null;
+    }
+    const step = grid ? g.th : g.rh;
+    const ro = recordOpts(layout, o.textScale);
+    const without = Object.assign({}, st, { components: st.components.map((x) => (x === c
+        ? Object.assign({}, c, { opts: Object.assign({}, c.opts, { hidden: true }) }) : x)) });
+    const draw = (from, n) => record({ kind: 'gpu', name: st.name, theme: st.theme, bg: 'none',
+        components: [Object.assign({}, c, { x: 0, y: 0, h: n * step, opts: Object.assign({}, c.opts, { top: from, bar: false }) })] },
+    Object.assign({}, ro, { design: { w: b.w, h: n * step }, area: { x: 0, y: 0, w: b.w, h: n * step } }));
+    return { rec: record(without, ro), box: b, step, rows: grid ? g.rows : g.all.length, shown: grid ? g.shown : g.n, max: g.max,
+        bar: grid ? withAlpha(kitTheme(st.theme).text, 0.25) : null, draw };
+}
+
+/* A frame of a drag (dragOf's d): baseLayer, the layer of d.rec, and
+ * rowsLayer, the layer of d.draw(from, n), drawn with the rows at scroll
+ * top (rows) in the box, and the grid's scroll bar. */
+function dragFrame(d, baseLayer, rowsLayer, from, top, textScale) {
+    const b = d.box;
+    const r = new Recorder(d.rec.w, d.rec.h, { textScale: textScale || 1 });
+    r.clear([0, 0, 0, 0]);
+    r.blit(baseLayer, 0, 0);
+    r.clip(b.x, b.y, b.w, b.h);
+    r.blit(rowsLayer, b.x, b.y + (from - top) * d.step);
+    r.noclip();
+    if (d.bar && d.max > 0) {
+        const h = b.h * d.shown / d.rows;
+        r.roundRect(b.x + b.w - 6, b.y + (b.h - h) * top / d.max, 6, h, 3, d.bar);
+    }
+    return r;
+}
+
+/* frame() without the drawing: what can be pressed and where, the scrolling
+ * regions and the pictures. */
+function layoutOf(m, opts) {
     const o = opts || {};
     const scroll = o.scroll || {};
     const v = view(m);
@@ -178,14 +240,19 @@ function frame(m, opts) {
         st = screenOf(v, scroll, layout);
         laid = itemsOf(st, page, v.look);
     }
-    const rec = record(st, layout ? { textScale: o.textScale || 1, design: layout.design,
-        area: { x: 0, y: 0, w: layout.design.w, h: layout.design.h } } : { textScale: o.textScale || 1, view: 'id8' });
-    const f = laid.items[o.focus];
+    return { st, look: v.look, screen: v.screen, items: laid.items, regions: laid.regions, icons: icons(v), values: v.values };
+}
+
+function frame(m, opts) {
+    const o = opts || {};
+    const l = layoutOf(m, o);
+    const rec = record(l.st, recordOpts(o.layout || null, o.textScale));
+    const f = l.items[o.focus];
     if (f && !f.reveal) {
         // the iDrive 7 look's boxes are square
-        rec.strokeRoundRect(f.x - 8, f.y - 8, f.w + 16, f.h + 16, v.look === 'id7' ? Math.min(f.r + 8, 12) : f.r + 8, 5, FOCUS);
+        rec.strokeRoundRect(f.x - 8, f.y - 8, f.w + 16, f.h + 16, l.look === 'id7' ? Math.min(f.r + 8, 12) : f.r + 8, 5, FOCUS);
     }
-    return { screen: v.screen, rec, items: laid.items, regions: laid.regions, icons: icons(v), values: v.values };
+    return { screen: l.screen, rec, items: l.items, regions: l.regions, icons: l.icons, values: l.values };
 }
 
 const inside = (r, x, y) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
@@ -202,4 +269,4 @@ function hit(items, x, y) {
     return -1;
 }
 
-module.exports = { frame, hit, placement };
+module.exports = { frame, layoutOf, dragOf, dragFrame, hit, placement };

@@ -157,7 +157,7 @@ function appGrid(cv, t, b, o) {
     });
     cv.noclip();
     if (!g.all.length && o.empty) mid(cv, o.empty, b.x + b.w / 2, b.y + b.h / 2, 36, t.dim, { align: 'center' });
-    if (g.max > 0) {                    // scroll bar
+    if (g.max > 0 && o.bar !== false) { // scroll bar (o.bar false: none, store_frame.js's drag rows)
         const h = b.h * g.shown / g.rows, y = b.y + (b.h - h) * g.top / g.max;
         cv.roundRect(b.x + b.w - 6, y, 6, h, 3, withAlpha(t.text, 0.25));
     }

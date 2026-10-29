@@ -99,7 +99,9 @@ from the installed HmiMain3D.
   app's frames a second, render time and path are logged once a second (`stats <app>: ...`); an embed app's line
   adds the HMI's frame callbacks in that second and the time from each commit to its callback. The Store then
   appends its own line to `/dev/shm/robertn_store-stats.log` (`stats store: ...`: builds, frames sent, touch
-  events, CPU).
+  events, CPU). Each step of an app's frames and touches also goes to `/run/mgu-render/trace.log`, the Store's to
+  `/dev/shm/robertn_store-trace.log`; `node tools/car-test/trace.js <mgu-render's> <the Store's>` gives the time
+  each step takes.
 
 An update does not stop a running mgu-render (`keepRunning` in
 `component.json`): the files and units are replaced, the running daemon goes
@@ -255,6 +257,7 @@ The unit-specific ones:
 | `touch_area` | 84,0,1836,720 (`auto` by screen size) | 0,76,2880,764 |
 | `embed`, `embed_area` | 1, 104,88,1796,632 | never offered: no HmiMain3D, so no template is loaded |
 | `embed_zero_copy`, `tick_early`, `readback_pbo`, `embed_finish` | 1, 1, 1, 0 (embed: "Embed buffers") | same |
+| `fps`, `fps.<app>` | 0: an app that asks for a rate (the Store: 30) gets it; N: N frames a second in its place, for every such app or one (`fps.robertn_store = 60`) | same |
 | `foreground_gate`, `hmi_process` | node + `foreground_gate.js`, `HmiMain3D` | the gate reads `RemoteHmiApplication2` from `oap-mainapp21` |
 
 ## Apps

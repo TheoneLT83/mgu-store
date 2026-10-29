@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# A temporary test install of this branch's mgu-render (and Store, when the branch has a newer one)
+# A temporary test install of this branch's mgu-render and Store (each when the branch has a newer one)
 # on the head unit, the measurements around it, and the restore to the published versions.
 # Runs on the Mac from a mgu-store checkout; reaches the unit through deploy/hu connect.
 #
@@ -35,7 +35,9 @@ DROPIN_DIR=/run/systemd/system/mgu-render.service.d
 DROPIN=$DROPIN_DIR/car-test.conf
 STATS_FILE=/run/mgu-render/stats-log
 STORE_STATS=/dev/shm/robertn_store-stats.log    # the Store's own per-second line while stats-log is on
-AB_KEYS="embed_zero_copy tick_early readback_pbo embed_finish verbose"
+RENDER_TRACE=/run/mgu-render/trace.log          # the per-frame trace (trace.js), mgu-render's and the Store's
+STORE_TRACE=/dev/shm/robertn_store-trace.log
+AB_KEYS="embed_zero_copy tick_early readback_pbo embed_finish fps fps.robertn_store verbose"
 # on the unit: what a pid runs (its binary, else its command line)
 # shellcheck disable=SC2016
 RUNS_FN='runs() { e=$(readlink /proc/$1/exe 2>/dev/null); case "$e" in *mgu-render*) printf "%s" "$e" ;; *) tr "\0" " " </proc/$1/cmdline ;; esac; }'
@@ -166,13 +168,15 @@ cmd_install() {
 	[ -f "$pub/catalog.json" ] || die "no catalog in $pub; nothing installed" 2
 	node "$KIT/kit.js" plan "$REPO" "$work/before/status.json" "$pub/catalog.json" >"$work/plan.json" || exit 2
 	node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).notes.forEach((n) => console.log(n))' "$work/plan.json"
-	# the unit's mgu-render must be the published artifact byte for byte, or restore could not
-	# put it back
+	# an mgu-render this test replaces must be the published artifact byte for byte, or restore could
+	# not put it back
 	local pub_render
-	pub_render=$(node -e 'const p = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); console.log(p.restore.find((r) => r.id === "mgu-render").artifact)' "$work/plan.json")
-	tar -xzOf "$pub/$pub_render" component.json >"$work/published-render.component.json"
-	cmp -s "$work/published-render.component.json" "$work/before/mgu-render.component.json" ||
-		die "the unit's mgu-render is not the published $pub_render; nothing installed" 2
+	pub_render=$(node -e 'const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).restore.find((x) => x.id === "mgu-render"); console.log(r ? r.artifact : "")' "$work/plan.json")
+	if [ -n "$pub_render" ]; then
+		tar -xzOf "$pub/$pub_render" component.json >"$work/published-render.component.json"
+		cmp -s "$work/published-render.component.json" "$work/before/mgu-render.component.json" ||
+			die "the unit's mgu-render is not the published $pub_render; nothing installed" 2
+	fi
 
 	say "== building HEAD ($head)"
 	local ids
@@ -212,7 +216,11 @@ cmd_install() {
 	say "== now"
 	show_renderer
 	[ $rc -eq 0 ] || die "the install failed (exit $rc); the deploy tool rolled it back. Run restore to check the versions" $rc
-	say "Installed. mgu-render runs the test build from its next start, which is to be on a freshly started HMI: with no app on screen, run: $0 reboot --off-screen"
+	if [ -n "$pub_render" ]; then
+		say "Installed. mgu-render runs the test build from its next start: with no app on screen, $0 restart --off-screen when the unit's mgu-render draws zero-copy (k status: embed: zero-copy), else $0 reboot --off-screen"
+	else
+		say "Installed. The Store runs the test build from its next opening; mgu-render stays as it is (no restart)"
+	fi
 }
 
 cmd_restore() {
@@ -221,7 +229,7 @@ cmd_restore() {
 	open_link
 	say "== clearing the test settings"
 	ab_clear
-	on_unit "rm -f $STATS_FILE $STORE_STATS"
+	on_unit "rm -f $STATS_FILE $STORE_STATS $RENDER_TRACE $STORE_TRACE"
 
 	say "== uploading the published versions"
 	on_unit "rm -rf $UNIT_TMP && mkdir -p $UNIT_TMP"
@@ -269,7 +277,11 @@ cmd_restore() {
 	done_dir="$STATE/restored-$(date '+%Y%m%d-%H%M%S')"
 	mv "$TEST" "$done_dir"
 	rm -rf "$d"
-	say "Restored (record moved to $done_dir). Finish with a head-unit restart, so the published mgu-render starts on a fresh HMI: with no app on screen, run: $0 reboot --off-screen"
+	if grep -q '^mgu-render ' "$done_dir/installed"; then
+		say "Restored (record moved to $done_dir). The published mgu-render runs from its next start: with no app on screen, $0 restart --off-screen (after a readback run in this HMI run: $0 reboot --off-screen)"
+	else
+		say "Restored (record moved to $done_dir). mgu-render was not changed: no restart"
+	fi
 }
 
 cmd_restart() {
@@ -350,12 +362,17 @@ cmd_ab() {
 	for p in "${ARGS[@]}"; do
 		k=${p%%=*}; v=${p#*=}
 		case " $AB_KEYS " in *" $k "*) ;; *) die "unknown setting $k (one of: $AB_KEYS)" 2 ;; esac
-		case "$v" in 0|1) ;; *) die "$k takes 0 or 1" 2 ;; esac
-		keys="$keys $k"; sets="$sets -s $k=$v"
+		case "$k" in
+			fps|fps.*) case "$v" in 0|[1-9]|[1-9][0-9]|[1-9][0-9][0-9]|1000) ;; *) die "$k takes frames a second, 0..1000 (0: the app's own)" 2 ;; esac
+				keys="$keys 0..1000" ;;                    # the fps settings' own error text: only a renderer with them has it
+			*) case "$v" in 0|1) ;; *) die "$k takes 0 or 1" 2 ;; esac
+				keys="$keys $k" ;;
+		esac
+		sets="$sets -s $k=$v"
 	done
 	on_unit "set -e
 		b=/var/opt/mgu-render/current/mgu-render
-		for k in$keys; do grep -q \"\$k\" \"\$b\" || { echo \"the installed mgu-render does not know \$k: not set\" >&2; exit 2; }; done
+		for k in$keys; do grep -qF \"\$k\" \"\$b\" || { echo \"the installed mgu-render does not know \$k: not set\" >&2; exit 2; }; done
 		line=\$(sed -n 's/^ExecStart=//p' /etc/systemd/system/mgu-render.service | tail -n 1)
 		[ -n \"\$line\" ] || { echo 'no ExecStart in mgu-render.service' >&2; exit 2; }
 		mkdir -p $DROPIN_DIR
@@ -369,7 +386,7 @@ cmd_stats() {
 	open_link
 	case "$(arg 0)" in
 		on) on_unit "[ -d /run/mgu-render ] && touch $STATS_FILE" || die "/run/mgu-render is not there (mgu-render.socket not running)"; say "stats-log on" ;;
-		off) on_unit "rm -f $STATS_FILE $STORE_STATS"; say "stats-log off" ;;
+		off) on_unit "rm -f $STATS_FILE $STORE_STATS $RENDER_TRACE $STORE_TRACE"; say "stats-log off" ;;
 		*) die "usage: $0 stats on|off" 2 ;;
 	esac
 }
@@ -398,7 +415,7 @@ cmd_drag() {
 	upload "$KIT/probe.js" "$UNIT_PROBE"
 	say "measuring $secs s from the next line: the owner drags the Store's list now, without stopping"
 	on_unit "t0=\$(date '+%Y-%m-%d %H:%M:%S')
-		if [ -f $STORE_STATS ]; then : > $STORE_STATS; fi
+		for f in $STORE_STATS $RENDER_TRACE $STORE_TRACE; do if [ -f \$f ]; then : > \$f; fi; done
 		node $UNIT_PROBE cpu $secs --gpu-freq --json /tmp/mgu-probe-$name.json
 		journalctl -u mgu-render --since \"\$t0\" -o cat 2>/dev/null | grep -E ' stats | fps, render |embed: ' > /tmp/mgu-probe-$name.stats
 		cat $STORE_STATS >> /tmp/mgu-probe-$name.stats 2>/dev/null
@@ -407,6 +424,11 @@ cmd_drag() {
 	on_unit "cat /tmp/mgu-probe-$name.stats; rm -f /tmp/mgu-probe-$name.stats" >"$RESULTS/$name.stats"
 	say "journal stats lines ($RESULTS/$name.stats):"
 	if [ -s "$RESULTS/$name.stats" ]; then cat "$RESULTS/$name.stats"; else say "  none (stats-log off, or a renderer without it)"; fi
+	sleep 1                                   # the Store writes its trace once a second
+	on_unit "cat $RENDER_TRACE 2>/dev/null; true" >"$RESULTS/$name.render-trace"
+	on_unit "cat $STORE_TRACE 2>/dev/null; true" >"$RESULTS/$name.store-trace"
+	say "per-frame trace ($RESULTS/$name.render-trace, .store-trace):"
+	node "$KIT/trace.js" "$RESULTS/$name.render-trace" "$RESULTS/$name.store-trace" | tee "$RESULTS/$name.trace.txt"
 }
 
 cmd_sh() {

@@ -1451,7 +1451,7 @@ class Store extends OnlineApp {
         this._renderLogin(connected ? st.login : null);
         this._renderPhone(web);
         if (this._drawnUi()) {
-            this._drawn.render();
+            this._drawn.refresh();
         }
     }
 

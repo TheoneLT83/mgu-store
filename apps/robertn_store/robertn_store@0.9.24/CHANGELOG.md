@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.24
+
+Dragging a list or grid moves its rows without building the page again:
+the page without them and the rows around the ones shown are drawn once
+and kept by the renderer, and each drag frame places the rows, which takes
+a fraction of a millisecond in place of a whole page build. They are drawn
+ahead once a page with a scrolling list has stayed for 0.3 s, kept from one
+swipe to the next while the page shows the same, and dropped while the
+Store is hidden. Another page ends a drag, and its first frame waits up to
+0.1 s for its pictures, so a page is shown whole. The rows stop on
+whole pixels, where a press then finds them. A new state from the updater
+or a picture decoded during a drag waits for its release (pictures redraw
+the cached rows); a state the page shows already builds nothing. While mgu-render's
+stats-log is on, the Store's line also splits its builds into model and
+layout and counts the drag frames, and each step of its frames and touches
+goes to `/dev/shm/robertn_store-trace.log` beside mgu-render's trace. (robertnisipeanu/mgu-store 0.9.11, pull requests #44-#46.)
+
 ## 0.9.23
 
 The controller pushed up, down, left or right moves the focus to the nearest item that way; pushed left with nothing there goes back a page, or out of the Store from its top page.

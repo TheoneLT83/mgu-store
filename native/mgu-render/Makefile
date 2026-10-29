@@ -58,6 +58,8 @@ in-build: build/$(OUT)/mgu-render
 in-test: build/$(OUT)/mgu-render
 	$(CC) $(CFLAGS) -o build/$(OUT)/test_dialect test/test_dialect.c src/dialect.c
 	build/$(OUT)/test_dialect
+	$(CC) $(CFLAGS) -o build/$(OUT)/test_config test/test_config.c src/config.c src/log.c
+	build/$(OUT)/test_config
 	$(CC) $(CFLAGS) -o build/$(OUT)/test_dbr test/test_dbr.c src/dbr.c
 	build/$(OUT)/test_dbr
 	$(CC) $(CFLAGS) -o build/$(OUT)/test_touch test/test_touch.c

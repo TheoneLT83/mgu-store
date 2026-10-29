@@ -64,13 +64,16 @@ function plan(repo, statusFile, catalogFile) {
     const comps = require(path.join(repo, 'release', 'release.js')).components(repo);
     const branch = {};
     comps.forEach((c) => { branch[c.id] = c; });
-    const ids = ['mgu-render'];
+    // what this branch has newer than the unit; the same version stays as it is
+    const ids = [];
     const notes = [];
-    const store = branch.robertn_store;
-    const sc = cmp(store.version, have.robertn_store);
-    if (sc > 0) ids.push('robertn_store');
-    else if (sc === 0) notes.push(`robertn_store ${store.version} on this branch is the installed version: the Store stays as it is`);
-    else refuse(`this branch has robertn_store ${store.version}, older than the installed ${have.robertn_store}`);
+    ['mgu-render', 'robertn_store'].forEach((id) => {
+        const c = cmp(branch[id].version, have[id]);
+        if (c > 0) ids.push(id);
+        else if (c === 0) notes.push(`${id} ${branch[id].version} on this branch is the installed version: it stays as it is`);
+        else refuse(`this branch has ${id} ${branch[id].version}, older than the installed ${have[id]}`);
+    });
+    if (!ids.length) refuse('this branch has nothing newer than the unit has; nothing is installed');
     // each requirement met by the unit, or by a component this install brings
     ids.forEach((id) => {
         const req = branch[id].requires || {};
