@@ -115,12 +115,13 @@ function itemsOf(st, page) {
                 const y = b.y + (k - v.top) * v.rh;
                 const out = k < v.top || k + 1 > v.top + v.n + EPS;
                 const reveal = out ? { key, top: k < v.top ? k : k + 1 - v.n } : undefined;
-                items.push({ x: b.x, y, w: b.w, h: v.rh - gap, r: 22, label: it.title, act: it.act, reveal, box: b });
+                items.push({ x: b.x, y, w: b.w, h: v.rh - gap, r: 22, label: it.title, act: it.act, reveal, box: b, list: key });
                 if (it.chipAct) {
                     const chip = rightBoxes({ x: b.x, y, w: b.w, h: v.rh - gap }, it, measure, o.ctlK).find((rb) => rb.kind === 'chip');
                     if (chip) {
                         const ch = 72 * (o.ctlK || 1);
-                        items.push({ x: chip.x, y: y + (v.rh - gap - ch) / 2, w: chip.w - 12, h: ch, r: ch / 2, label: chip.arg, act: it.chipAct, reveal, box: b });
+                        items.push({ x: chip.x, y: y + (v.rh - gap - ch) / 2, w: chip.w - 12, h: ch, r: ch / 2, label: chip.arg, act: it.chipAct, reveal, box: b,
+                            list: key });
                     }
                 }
             });

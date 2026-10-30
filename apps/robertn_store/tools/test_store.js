@@ -1520,34 +1520,32 @@ function runDrawn() {
             eq(drawn.focus, 5, 'with the controller gate the renderer\'s dial counts instead');
             drawn.controller = false;
         }
-        // Installed puts what runs or waits first: a focus the Store moves stays on its item as the rows move, the HMI's on its proxy
+        // Installed puts what runs or waits first; while the focus is on a row the rows stay where they are, so it stays on its row
         const inst = (doom) => Object.assign({}, st, { components: [
             comp({ id: 'alpha', title: 'Alpha', version: '1.0.0', installed: '1.0.0', status: 'installed' }),
             comp({ id: 'beta', title: 'Beta', version: '1.0.0', installed: '1.0.0', status: 'installed' }),
-            comp(Object.assign({ id: 'doom', title: 'DOOM', version: '1.0.1', installed: '1.0.0', status: 'update' }, doom))] });
+            comp(Object.assign({ id: 'doom', title: 'DOOM', version: '1.0.1', installed: '1.0.1', status: 'installed', pendingReboot: true }, doom))] });
+        const done = { pendingReboot: false };
         const rows = () => drawn.items.map((i) => i.label).filter((l) => ['Alpha', 'Beta', 'DOOM'].indexOf(l) >= 0);
         const focused = () => (drawn.items[drawn.focus] || {}).label;
-        const proxies = drawn.embedProxies;
         drawn.setTab('installed');
+        drawn.focus = 0;
         app._client.emit('state', inst({}));
-        eq(rows(), ['DOOM', 'Alpha', 'Beta'], 'an update first');
-        drawn.controller = true;
-        drawn.focus = drawn.items.findIndex((i) => i.label === 'Beta');
-        drawn.render();
-        app._client.emit('state', inst({ status: 'installed', installed: '1.0.1' }));
-        eq([rows(), focused()], [['Alpha', 'Beta', 'DOOM'], 'Beta'], 'updated: DOOM last, the focus on Beta');
+        eq(rows(), ['DOOM', 'Alpha', 'Beta'], 'a restart pending first');
+        app._client.emit('state', inst(done));
+        eq([rows(), focused()], [['Alpha', 'Beta', 'DOOM'], 'Store'], 'the focus on the side menu: restarted, DOOM last');
         app._client.emit('state', inst({}));
-        eq(focused(), 'Beta', 'an update again: the focus still on Beta');
-        drawn.focus = drawn.items.findIndex((i) => i.label === 'DOOM');
-        drawn.render();
-        app._client.emit('state', inst({ status: 'installed', installed: '1.0.1' }));
-        eq(focused(), 'DOOM', 'the focus goes down with DOOM');
-        drawn.controller = false;
-        drawn.embedProxies = true;
-        const at = drawn.focus;
-        app._client.emit('state', inst({}));
-        eq([drawn.focus, focused()], [at, 'Update'], 'the HMI\'s focus: on its proxy, now DOOM\'s Update');
-        drawn.embedProxies = proxies;
+        // the HMI's focus on Beta's proxy
+        const beta = drawn.items.findIndex((i) => i.label === 'Beta');
+        app._components[proxy(1, beta)].emit('focus', { value: true });
+        app._client.emit('state', inst(done));
+        eq([rows(), focused()], [['DOOM', 'Alpha', 'Beta'], 'Beta'], 'the focus on a row: the rows stay, the focus on Beta');
+        app._client.emit('state', Object.assign(inst(done), { components: inst(done).components.concat([
+            comp({ id: 'gamma', title: 'Gamma', version: '1.0.0', installed: '1.0.0', status: 'installed' })]) }));
+        eq(drawn.items.map((i) => i.label).filter((l) => ['Alpha', 'Beta', 'DOOM', 'Gamma'].indexOf(l) >= 0), ['DOOM', 'Alpha', 'Beta', 'Gamma'],
+            'a row installed meanwhile: after them');
+        app._components[proxy(1, 0)].emit('focus', { value: true });
+        eq([rows(), focused()], [['Alpha', 'Beta', 'DOOM'], 'Store'], 'the focus off the rows: in order again');
         drawn.setTab('store');
         app._client.emit('state', st);
         // a popup over a layer page hides the layer

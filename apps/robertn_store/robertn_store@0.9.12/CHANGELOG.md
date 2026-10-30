@@ -5,8 +5,8 @@
 Installed lists the apps and the tools that something runs or waits on
 first: an install, update or removal running or queued, an update, a
 failure, a restart pending. The rest follow, each part in the catalog's
-order, and a row moves as its state changes. A focus the Store moves itself
-(the controller dial) stays on its row as the rows move.
+order, and a row moves as its state changes, except while the focus is on
+one of the lists' rows, which then stay where they are.
 
 ## 0.9.11
 

@@ -49,7 +49,8 @@ USB, Settings) beside:
 - **Installed**: apps and head-unit tools, each with its version and
   source, its update (a press on Update installs it) or state, and Update all.
   The ones with something running or waiting (an install, update or removal,
-  a queued one, an update, a failure, a restart pending) come first.
+  a queued one, an update, a failure, a restart pending) come first; while
+  the focus is on a row, the rows stay where they are.
 - **USB**: the components of the sticks' sources.
 - **Settings**: the sources (each opens its page: channel, account,
   components, error, Remove with a confirm step, and while a sign-in does
