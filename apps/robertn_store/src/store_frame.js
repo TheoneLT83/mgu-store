@@ -31,6 +31,7 @@ const { view, icons } = require('./store_ui.js');
 const { tabCells } = require('./am_widgets.js');
 const { gridView, listView, navItems, rightBoxes, keyBoxes, shown } = require('./am_store_widgets.js');
 const { compact } = require('./store_compact.js');
+const { t } = require('./i18n.js');
 
 /* The part of the design the renderer's box shows: the screens' content
  * (the side menu at x 126 to the right edge, the title at y 114 to the
@@ -41,6 +42,8 @@ const FOCUS = '#ffffff';
 const EPS = 1e-6;                         // rows: a scrolled row this close to the edge counts as shown
 const SIZES = ['rowH', 'tileH', 'size'];  // a layout's own sizes: kept over the values' (made for the design)
 const measure = new Recorder(1, 1);       // text widths, as drawn
+const WORDS = ['text', 'title', 'label', 'empty', 'items'];   // a layout's own words, in the display language
+const AFTER_GAP = 24;                     // a text placed after another (opts.after): the room between them
 
 /* The layout for box w x h and its placement: the scale and offset
  * (device = logical * scale + o) and the part of the layout it shows
@@ -136,21 +139,34 @@ function itemsOf(st, page) {
     return { items: items.filter((it) => it.act), regions };
 }
 
+/* A layout's options with its words in the display language. */
+function translated(opts) {
+    const out = Object.assign({}, opts);
+    WORDS.filter((k) => typeof out[k] === 'string' && out[k]).forEach((k) => { out[k] = t(out[k]); });
+    return out;
+}
+
 /* The screen object am_gpu.js draws: the layout's components with the
  * values over their own options (a layout's own SIZES kept) and the kept
- * scroll. */
+ * scroll. A text with opts.after starts at least AFTER_GAP right of the
+ * end of that one's text. */
 function screenOf(v, scroll, layout) {
     const def = (layout || SCREENS).screens.find((s) => s.name === v.screen);
+    const components = def.components.map((c) => {
+        const opts = Object.assign(translated(c.opts), v.values[c.name] || {});
+        if (layout) {
+            SIZES.filter((k) => c.opts[k] !== undefined).forEach((k) => { opts[k] = c.opts[k]; });
+        }
+        if (c.gpu === 'appGrid' || c.gpu === 'appList') {
+            opts.top = scroll[`${def.name}.${c.name}`] || 0;
+        }
+        return Object.assign({}, c, { opts });
+    });
     return { kind: 'gpu', name: def.name, theme: def.theme, bg: 'theme',
-        components: def.components.map((c) => {
-            const opts = Object.assign({}, c.opts, v.values[c.name] || {});
-            if (layout) {
-                SIZES.filter((k) => c.opts[k] !== undefined).forEach((k) => { opts[k] = c.opts[k]; });
-            }
-            if (c.gpu === 'appGrid' || c.gpu === 'appList') {
-                opts.top = scroll[`${def.name}.${c.name}`] || 0;
-            }
-            return Object.assign({}, c, { opts });
+        components: components.map((c) => {
+            const a = c.opts.after && components.find((o) => o.name === c.opts.after);
+            const end = a && a.opts.text ? a.x + measure.textWidth(a.opts.text, a.opts.size, { font: a.opts.font }) + AFTER_GAP : 0;
+            return end > c.x ? Object.assign({}, c, { x: Math.round(end), w: Math.max(0, c.w - Math.round(end - c.x)) }) : c;
         }) };
 }
 

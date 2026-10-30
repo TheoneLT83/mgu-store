@@ -17,6 +17,10 @@ It installs:
 iDrive 8 is tested in an emulator only, not yet on a real car. On iDrive 8,
 installs and removals take effect at the next head-unit restart.
 
+The Store follows the head unit's display language: English or Simplified
+Chinese. The Chinese translation is by
+[JackieZ123430](https://github.com/JackieZ123430).
+
 ## Screenshots
 
 The Store: apps and head-unit tools from every source.

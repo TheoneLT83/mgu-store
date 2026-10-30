@@ -39,8 +39,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Store",
-                "type": "Text"
+                "value": "SID_STORE_STORE",
+                "type": "StringId"
               }
             }
           ]
@@ -61,8 +61,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Check for updates",
-                "type": "Text"
+                "value": "SID_STORE_CHECK_FOR_UPDATES",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -145,8 +145,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Apps",
-                "type": "Text"
+                "value": "SID_STORE_APPS",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -187,8 +187,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Head-unit tools",
-                "type": "Text"
+                "value": "SID_STORE_HEAD_UNIT_TOOLS",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -229,8 +229,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Restart head unit",
-                "type": "Text"
+                "value": "SID_STORE_RESTART_HEAD_UNIT",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -271,8 +271,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Sources",
-                "type": "Text"
+                "value": "SID_STORE_SOURCES",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -313,8 +313,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Phone access",
-                "type": "Text"
+                "value": "SID_STORE_PHONE_ACCESS",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -379,8 +379,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Apps",
-                "type": "Text"
+                "value": "SID_STORE_APPS",
+                "type": "StringId"
               }
             }
           ]
@@ -445,8 +445,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Head-unit tools",
-                "type": "Text"
+                "value": "SID_STORE_HEAD_UNIT_TOOLS",
+                "type": "StringId"
               }
             }
           ]
@@ -511,8 +511,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Restart head unit?",
-                "type": "Text"
+                "value": "SID_STORE_RESTART_HEAD_UNIT_Q",
+                "type": "StringId"
               }
             }
           ]
@@ -533,8 +533,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Cancel",
-                "type": "Text"
+                "value": "SID_STORE_CANCEL",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -575,8 +575,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Restart",
-                "type": "Text"
+                "value": "SID_STORE_RESTART",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -619,8 +619,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Sources",
-                "type": "Text"
+                "value": "SID_STORE_SOURCES",
+                "type": "StringId"
               }
             }
           ]
@@ -663,8 +663,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Phone access",
-                "type": "Text"
+                "value": "SID_STORE_PHONE_ACCESS",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -747,8 +747,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Add source",
-                "type": "Text"
+                "value": "SID_STORE_ADD_SOURCE",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -789,8 +789,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Accounts",
-                "type": "Text"
+                "value": "SID_STORE_ACCOUNTS",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -833,8 +833,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Source",
-                "type": "Text"
+                "value": "SID_STORE_SOURCE",
+                "type": "StringId"
               }
             }
           ]
@@ -855,8 +855,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Channel",
-                "type": "Text"
+                "value": "SID_STORE_CHANNEL",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -897,8 +897,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Install on GitHub",
-                "type": "Text"
+                "value": "SID_STORE_INSTALL_ON_GITHUB",
+                "type": "StringId"
               }
             }
           ]
@@ -958,8 +958,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Source",
-                "type": "Text"
+                "value": "SID_STORE_SOURCE",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -1000,8 +1000,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Account",
-                "type": "Text"
+                "value": "SID_STORE_ACCOUNT",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -1042,8 +1042,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Components",
-                "type": "Text"
+                "value": "SID_STORE_COMPONENTS",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -1084,8 +1084,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Remove",
-                "type": "Text"
+                "value": "SID_STORE_REMOVE",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -1150,8 +1150,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Sign in with GitHub",
-                "type": "Text"
+                "value": "SID_STORE_SIGN_IN_WITH_GITHUB",
+                "type": "StringId"
               }
             }
           ]
@@ -1233,8 +1233,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Cancel",
-                "type": "Text"
+                "value": "SID_STORE_CANCEL",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -1299,8 +1299,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Remove source?",
-                "type": "Text"
+                "value": "SID_STORE_REMOVE_SOURCE_Q",
+                "type": "StringId"
               }
             }
           ]
@@ -1321,8 +1321,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Cancel",
-                "type": "Text"
+                "value": "SID_STORE_CANCEL",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -1363,8 +1363,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Remove",
-                "type": "Text"
+                "value": "SID_STORE_REMOVE",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -1407,8 +1407,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Remove?",
-                "type": "Text"
+                "value": "SID_STORE_REMOVE_Q",
+                "type": "StringId"
               }
             }
           ]
@@ -1451,8 +1451,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Cancel",
-                "type": "Text"
+                "value": "SID_STORE_CANCEL",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -1493,8 +1493,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Remove",
-                "type": "Text"
+                "value": "SID_STORE_REMOVE",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -1537,8 +1537,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Phone access",
-                "type": "Text"
+                "value": "SID_STORE_PHONE_ACCESS",
+                "type": "StringId"
               }
             }
           ]
@@ -1559,8 +1559,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Phone access",
-                "type": "Text"
+                "value": "SID_STORE_PHONE_ACCESS",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -1664,8 +1664,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Accounts",
-                "type": "Text"
+                "value": "SID_STORE_ACCOUNTS",
+                "type": "StringId"
               }
             }
           ]
@@ -1728,8 +1728,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Sign in with GitHub",
-                "type": "Text"
+                "value": "SID_STORE_SIGN_IN_WITH_GITHUB",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -1792,8 +1792,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Add token",
-                "type": "Text"
+                "value": "SID_STORE_ADD_TOKEN",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -1836,8 +1836,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Remove account?",
-                "type": "Text"
+                "value": "SID_STORE_REMOVE_ACCOUNT_Q",
+                "type": "StringId"
               }
             }
           ]
@@ -1902,8 +1902,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Cancel",
-                "type": "Text"
+                "value": "SID_STORE_CANCEL",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -1944,8 +1944,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Remove",
-                "type": "Text"
+                "value": "SID_STORE_REMOVE",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -1988,8 +1988,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Add source",
-                "type": "Text"
+                "value": "SID_STORE_ADD_SOURCE",
+                "type": "StringId"
               }
             }
           ]
@@ -2074,8 +2074,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Sign in with GitHub",
-                "type": "Text"
+                "value": "SID_STORE_SIGN_IN_WITH_GITHUB",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -2116,8 +2116,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Add token",
-                "type": "Text"
+                "value": "SID_STORE_ADD_TOKEN",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",
@@ -2158,8 +2158,8 @@
           "rows": [
             {
               "PrimaryText": {
-                "value": "Try again",
-                "type": "Text"
+                "value": "SID_STORE_TRY_AGAIN",
+                "type": "StringId"
               },
               "FrequencyText": {
                 "value": "",

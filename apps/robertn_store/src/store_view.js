@@ -1,4 +1,5 @@
 'use strict';
+const { t: tr } = require('./i18n.js');
 /**
  * The Store's texts, from mgu-updater's state (native/mgu-updater/js/updater.js
  * state()): the status line, each row's second column, what a press on a
@@ -22,7 +23,7 @@ function percent(busy) {
 const HMI_NAMES = { ID7: 'iDrive 7', ID8: 'iDrive 8' };
 
 function hmiNames(list) {
-    return (list || []).map((h) => HMI_NAMES[h] || h).join(' and ');
+    return (list || []).map((h) => HMI_NAMES[h] || h).join(tr(' and '));
 }
 
 /* A version the updater says is not for this head unit (compat "no"): it
@@ -71,27 +72,27 @@ function withSources(rows, sources) {
 /* The second column of a component's row. */
 function rowState(row, busy) {
     if (busy && busy.id === row.id) {
-        return busy.phase === 'download' ? `${percent(busy)}%` : PHASE[busy.phase] || 'Installing';
+        return busy.phase === 'download' ? `${percent(busy)}%` : tr(PHASE[busy.phase] || 'Installing');
     }
     if (row.queued) {
-        return 'Waiting';
+        return tr("Waiting");
     }
     if (notForUnit(row)) {
-        return 'Not for this head unit';
+        return tr("Not for this head unit");
     }
     if (row.blocked) {
-        return row.installed ? `Installed ${row.installed}` : 'Not installable';
+        return row.installed ? tr("Installed {0}", row.installed) : tr("Not installable");
     }
     if (row.error) {
-        return 'Failed, retry';
+        return tr("Failed, retry");
     }
     if (startPending(row)) {
-        return 'Restart pending';
+        return tr("Restart pending");
     }
     switch (row.status) {
-    case 'update': return `Update ${row.revision && row.version === row.installed ? row.revision : row.version}`;
-    case 'available': return `Install ${row.version}`;
-    default: return row.pendingReboot ? 'Restart pending' : `Installed ${row.installed}`;
+    case 'update': return tr("Update {0}", row.revision && row.version === row.installed ? row.revision : row.version);
+    case 'available': return tr("Install {0}", row.version);
+    default: return row.pendingReboot ? tr("Restart pending") : tr("Installed {0}", row.installed);
     }
 }
 
@@ -128,10 +129,10 @@ function groupState(rows, busy) {
         return rowState(busyRow, busy);
     }
     if (rows.some((r) => r.error)) {
-        return 'Failed';
+        return tr("Failed");
     }
     const updates = rows.filter((r) => r.status === 'update' && !notForUnit(r) && !r.blocked && !startPending(r)).length;
-    return updates ? `${updates} update${updates > 1 ? 's' : ''}` : '';
+    return updates ? (updates > 1 ? tr('{0} updates', updates) : tr('{0} update', updates)) : '';
 }
 
 /* The start screen's status line. Unreachable, the updater has either run
@@ -139,33 +140,33 @@ function groupState(rows, busy) {
  * not yet, which after the first install over SSH is until the next start. */
 function statusLine(st, connected, secret) {
     if (!connected) {
-        return secret ? 'Updater not running' : 'Restart the head unit to finish setup';
+        return secret ? tr("Updater not running") : tr("Restart the head unit to finish setup");
     }
     if (st.rebooting) {
-        return 'Restarting';
+        return tr("Restarting");
     }
     if (st.privacy && st.privacy !== 'patched') {
-        return 'App privacy patch not in effect';
+        return tr("App privacy patch not in effect");
     }
     const failed = st.components.find((c) => c.error && listed(c));
     if (failed && !st.busy) {
         return `${failed.title}: ${failed.error}`;
     }
     if (st.rebootError && !st.busy) {
-        return `Restart failed: ${st.rebootError}`;
+        return tr("Restart failed: {0}", st.rebootError);
     }
     if (st.catalog.checking) {
-        return 'Checking for updates';
+        return tr("Checking for updates");
     }
-    const checked = st.catalog.checkedAt ? `checked ${clock(st.catalog.checkedAt)}` : 'not checked yet';
+    const checked = st.catalog.checkedAt ? tr("checked {0}", clock(st.catalog.checkedAt)) : tr("not checked yet");
     if (!st.online) {
-        return `Offline, ${checked}`;
+        return tr("Offline, {0}", checked);
     }
     if (st.catalog.error) {
-        return `Check failed: ${st.catalog.error}`;
+        return tr("Check failed: {0}", st.catalog.error);
     }
     const updates = st.components.filter((c) => c.status === 'update' && !notForUnit(c) && !c.blocked && !startPending(c)).length;
-    return `${updates ? `${updates} update${updates > 1 ? 's' : ''}` : 'Up to date'}, ${checked}`;
+    return `${updates ? (updates > 1 ? tr('{0} updates', updates) : tr('{0} update', updates)) : tr("Up to date")}, ${checked}`;
 }
 
 /* ---- sources ---- */
@@ -179,16 +180,16 @@ function sourceLabel(src) {
 /* The second column of a source's row: what needs the owner, else the
  * account that reads it. */
 function sourceState(src) {
-    return SOURCE_STATE[src.status] || (src.usb ? 'USB' : sourceAccount(src) || 'OK');
+    return (SOURCE_STATE[src.status] && tr(SOURCE_STATE[src.status])) || (src.usb ? 'USB' : sourceAccount(src) || 'OK');
 }
 
 /* The second column of the start screen's Sources row: what needs the
  * owner. */
 function sourcesState(sources) {
     if (sources.some((s) => s.status === 'auth-needed')) {
-        return 'Sign in';
+        return tr("Sign in");
     }
-    return sources.some((s) => s.status === 'error') ? 'Error' : '';
+    return sources.some((s) => s.status === 'error') ? tr("Error") : '';
 }
 
 function sourceActions(src) {
@@ -199,9 +200,9 @@ function sourceActions(src) {
 function sourceChannel(src) {
     const channel = src.channel || '';
     if (channel.indexOf('branch:') === 0) {
-        return `Branch ${channel.slice(7)}`;
+        return tr("Branch {0}", channel.slice(7));
     }
-    return { releases: 'Releases', tags: 'Tags', branch: 'Branch' }[channel] || '';
+    return { releases: tr("Releases"), tags: tr("Tags"), branch: tr("Branch") }[channel] || '';
 }
 
 function sourceAccount(src) {
@@ -217,10 +218,10 @@ function tokenLabel(token) {
 /* The second column of an account's row. */
 function tokenState(token) {
     if (token.rejected) {
-        return 'Rejected';
+        return tr("Rejected");
     }
     const n = (token.usedBy || []).length;
-    return n ? `${n} source${n > 1 ? 's' : ''}` : 'Unused';
+    return n ? (n > 1 ? tr('{0} sources', n) : tr('{0} source', n)) : tr("Unused");
 }
 
 /* The sources an account reads, by label. */
@@ -236,22 +237,22 @@ function accountsState(tokens) {
     if (tokens.length === 1) {
         return tokenLabel(tokens[0]);
     }
-    return tokens.length ? `${tokens.length} accounts` : 'None';
+    return tokens.length ? tr("{0} accounts", tokens.length) : tr("None");
 }
 
 /* The sign-in page's status line, or the updater's refusal to start it. */
 function loginStatus(login, refusal) {
     if (refusal) {
-        return `Sign-in failed: ${refusal}`;
+        return tr("Sign-in failed: {0}", refusal);
     }
     if (!login) {
-        return 'Starting';
+        return tr("Starting");
     }
     switch (login.status) {
-    case 'pending': return 'Waiting for sign-in';
-    case 'done': return 'Signed in';
-    case 'expired': return 'Code expired';
-    default: return login.error ? `Sign-in failed: ${login.error}` : 'Sign-in failed';
+    case 'pending': return tr("Waiting for sign-in");
+    case 'done': return tr("Signed in");
+    case 'expired': return tr("Code expired");
+    default: return login.error ? tr("Sign-in failed: {0}", login.error) : tr("Sign-in failed");
     }
 }
 
@@ -263,7 +264,7 @@ function loginCode(login) {
 /* ---- phone access ---- */
 
 function phoneState(web) {
-    return web.enabled ? 'On' : 'Off';
+    return web.enabled ? tr("On") : tr("Off");
 }
 
 /* What the Phone access page shows while the page is on: the QR code and
@@ -336,33 +337,33 @@ function pickOptions(probe) {
     if (!probe || probe.status !== 'ok') {
         return [];
     }
-    return (probe.releases ? [{ label: 'Releases', sub: '', channel: 'releases' }] : [])
-        .concat(probe.tags ? [{ label: 'Tags', sub: '', channel: 'tags' }] : [])
+    return (probe.releases ? [{ label: tr("Releases"), sub: '', channel: 'releases' }] : [])
+        .concat(probe.tags ? [{ label: tr("Tags"), sub: '', channel: 'tags' }] : [])
         .concat((Array.isArray(probe.branches) ? probe.branches : []).filter((b) => branchName(b) === b)
-            .map((b) => ({ label: b, sub: b === probe.defaultBranch ? 'Default branch' : 'Branch', channel: `branch:${b}` })));
+            .map((b) => ({ label: b, sub: b === probe.defaultBranch ? tr("Default branch") : tr("Branch"), channel: `branch:${b}` })));
 }
 
 /* The repo picker's status: '' once there is something to pick. */
 function probeStatus(probe) {
     if (!probe) {
-        return 'Checking';
+        return tr("Checking");
     }
     switch (probe.status) {
     case 'ok': return '';
-    case 'auth-needed': return 'Not found or private';
-    case 'offline': return 'Offline';
-    case 'rate-limited': return 'GitHub rate limit reached';
-    default: return probe.error ? String(probe.error) : 'Failed';
+    case 'auth-needed': return tr("Not found or private");
+    case 'offline': return tr("Offline");
+    case 'rate-limited': return tr("GitHub rate limit reached");
+    default: return probe.error ? String(probe.error) : tr("Failed");
     }
 }
 
 /* The Accounts page's status line: Add token's progress or refusal. */
 function tokenMessage(m) {
     switch (m.kind) {
-    case 'checking': return 'Checking token';
-    case 'added': return `Added ${m.label}`;
-    case 'speller': return `Text entry failed: ${m.error}`;
-    case 'refused': return `Add token failed: ${m.error}`;
+    case 'checking': return tr("Checking token");
+    case 'added': return tr("Added {0}", m.label);
+    case 'speller': return tr("Text entry failed: {0}", m.error);
+    case 'refused': return tr("Add token failed: {0}", m.error);
     default: return '';
     }
 }
@@ -370,10 +371,10 @@ function tokenMessage(m) {
 /* The Sources page's status line. */
 function sourcesMessage(m) {
     switch (m.kind) {
-    case 'invalid-source': return `Not owner/repo or https://host/path: ${m.text}`;
-    case 'checking': return `Checking ${m.repo}`;
-    case 'speller': return `Text entry failed: ${m.error}`;
-    case 'refused': return `${m.op === 'source-remove' ? 'Remove' : 'Add source'} failed: ${m.error}`;
+    case 'invalid-source': return tr("Not owner/repo or https://host/path: {0}", m.text);
+    case 'checking': return tr("Checking {0}", m.repo);
+    case 'speller': return tr("Text entry failed: {0}", m.error);
+    case 'refused': return tr("{0} failed: {1}", m.op === 'source-remove' ? tr("Remove") : tr("Add source"), m.error);
     default: return '';
     }
 }
