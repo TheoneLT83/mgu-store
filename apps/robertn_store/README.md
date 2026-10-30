@@ -155,7 +155,7 @@ about 3,040 rows of the renderer's shared 2048 x 4096 glyph texture.
 | `Gauges` · `Update a1b2c3d` | update to a branch's new commit (same version, new revision) |
 | `Display bridge demo` · `Install 1.0.0` | install |
 | `Network driver` · `Install 0.2.0` | install (an optional component) |
-| `Vehicle control` · `Installed 1.0.0` | nothing; *Remove?* when the catalog marks it `uninstallable` |
+| `Vehicle control` · `Installed 1.0.0` | nothing; *Remove?* when the updater marks it `uninstallable` (every app but the Store) |
 | `DOOM` · `42%` / `Verifying` / `Building` / `Installing` / `Removing` | nothing (in progress) |
 | `Extended dashboard` · `Waiting` | nothing (queued) |
 | `Display bridge` · `Restart pending` | nothing (installed; active after the next reboot) |

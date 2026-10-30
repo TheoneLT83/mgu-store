@@ -131,7 +131,7 @@ stick holding `catalog.json` at its root, in `mgu-repo/` or
 | `build` | `"unit"`: the artifact is a source package, built on the head unit (an app only) |
 | `requires` | `{"<id>": "<min version>"}`: installed first |
 | `optional` | listed, never offered as an update until installed |
-| `uninstallable` | the Store offers Remove |
+| `uninstallable` | the Store offers a tool's Remove (every app but the Store has one) |
 | `mguHmi` | the head units it is for |
 | `mguProvides` | a tool's capability (`renderer`); the tool kit's `component.json` names it too |
 

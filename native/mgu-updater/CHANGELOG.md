@@ -1,5 +1,9 @@
 # Updater changelog
 
+## 0.8.7
+
+- Every installed app can be removed, whatever its source's listing says (`uninstallable`): an app a repository or catalog lists without it (the idrive7-apps apps) shows Remove in the Store as an imported one does. The Store, the updater, the deploy tool and what the updater requires are never removable, whichever source lists them; a tool still needs `uninstallable: true`.
+
 ## 0.8.5
 
 - Without a GitHub token (GitHub allows such a car 60 API requests an hour), a public GitHub source's files at a commit, its icons and its tarball come from raw.githubusercontent.com and codeload.github.com, which are not counted against that limit: a branch source no longer spends one request per app at each new commit. With the limit spent, a releases source (the Store's own) reads its catalog release's catalog.json from the download link instead of failing with 'GitHub rate limit reached'. Conf `github_raw` names the raw host (none when `github_api` names another server).

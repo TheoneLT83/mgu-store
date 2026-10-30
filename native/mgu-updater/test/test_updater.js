@@ -1960,8 +1960,8 @@ function testSources(certs) {
                 priv({ op: 'uninstall', id: 'robertn_demo' }), priv({ op: 'uninstall', id: 'opt_tool' })]);
         })
         .then((errs) => {
-            ok('uninstall: privileged; refused while something installed requires it, for what its source does not mark, and when not installed',
-                errs[0] === 'forbidden' && /Needs needs base_tool/.test(errs[1]) && /cannot be removed/.test(errs[2]) && /cannot be removed/.test(errs[3]),
+            ok('uninstall: privileged; refused while something installed requires it, when not installed, and for a tool its source does not mark',
+                errs[0] === 'forbidden' && /Needs needs base_tool/.test(errs[1]) && errs[2] === 'robertn_demo is not installed' && /cannot be removed/.test(errs[3]),
                 JSON.stringify(errs));
             const phases = [];
             const t = setInterval(() => {
@@ -3078,6 +3078,8 @@ function testIdrive7(certs) {
     };
     installed('car_vitals', '2.13.0', 12450);
     installed('my_kitapp', '0.1.0', 12449);
+    // an app the repository lists without uninstallable, put there by its installer
+    installed('redline', '1.0.0', 12451);
     // the icon the car's app list shows: the installed package's first entry point's, under rhmiData/resources
     const png = (n, fill) => Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.alloc(n, fill)]);
     const carIcon = png(70, 1);
@@ -3091,7 +3093,8 @@ function testIdrive7(certs) {
     // GitHub requests that read an icon (or the application.json naming a source package's)
     const iconReads = (from) => seen.slice(from).filter((x) => /\/contents\/[^?]*(icon\.png|application\.json)/.test(x.url)).map((x) => x.url.split('?')[0]);
     let mark = seen.length;
-    fs.writeFileSync(`${deployLog}.idrive7`, JSON.stringify([{ id: 'car_vitals', version: '2.13.0' }, { id: 'my_kitapp', version: '0.1.0' }]));
+    fs.writeFileSync(`${deployLog}.idrive7`, JSON.stringify([{ id: 'car_vitals', version: '2.13.0' }, { id: 'my_kitapp', version: '0.1.0' },
+        { id: 'redline', version: '1.0.0' }]));
     ghRepo('TheoneLT83/idrive7-apps');
     gh.repos['TheoneLT83/idrive7-apps'].branches.main = ghCommit('TheoneLT83/idrive7-apps', {
         'mgu-repo.json': JSON.stringify({ schema: 1, components: [{ id: 'car_vitals', kind: 'app', path: 'apps/car_vitals', mguHmi: ['ID7'],
@@ -3144,6 +3147,15 @@ function testIdrive7(certs) {
             const mine = comp('my_kitapp');
             ok('idrive7: an imported app keeps a row, installed and removable', mine.source === 'imported' && mine.status === 'installed' &&
                 mine.uninstallable === true, JSON.stringify(mine));
+            const rl = comp('redline');
+            ok('idrive7: an installed app the repository lists without uninstallable is removable', rl.source === 'idrive7-apps' &&
+                rl.installed === '1.0.0' && rl.uninstallable === true, JSON.stringify(rl));
+            return ask(conf.socket, { op: 'uninstall', id: 'redline', secret: u.secret })
+                .then((err) => until(() => comp('redline'), (r) => !u.busy && r.status === 'available', 30000, 'redline removed').then(() => err));
+        })
+        .then((err) => {
+            ok('idrive7: its Remove runs the deploy tool\'s uninstall; it shows not installed', err === null &&
+                /^uninstall redline --yes$/m.test(fs.readFileSync(deployLog, 'utf8')) && !comp('redline').installed, `${err} ${JSON.stringify(comp('redline'))}`);
             return until(() => u.src.get('idrive7-apps').icons, (x) => !x, 30000, 'icons fetched');
         })
         .then(() => {
@@ -3319,6 +3331,94 @@ function testIcons() {
             ok('icons: an app no longer installed drops its icon at the clean-up', !u.appIcons.has('twin') && file && !fs.existsSync(file),
                 `${Array.from(u.appIcons.keys())} ${file}`);
             u.server.close();
+        });
+}
+
+/* Remove on iDrive 8: an installed app its catalog does not mark
+ * uninstallable, and one whose install waits for the next start, can be
+ * removed; the Store, the updater and the deploy tool never. */
+function testAppRemove() {
+    const { Updater } = require('../js/updater');
+    const M = path.join(T, 'appremove');
+    const opt = path.join(M, 'opt');
+    const oap = path.join(M, 'oap');
+    const state = path.join(M, 'state');
+    const cat = path.join(M, 'cat');
+    [M, opt, oap, state, cat, path.join(M, 'shm'), path.join(M, 'media')].forEach(mkdirp);
+    const deployLog = path.join(M, 'deploy.log');
+    fs.writeFileSync(deployLog, '');
+    Object.assign(process.env, { TOOL_ROOT: opt, OAP_ROOT: oap, FAKE_DEPLOY_LOG: deployLog, FAKE_UNIT_HMI: 'ID8',
+        FAKE_PENDING: 'next_app=installs at the next start' });
+    delete process.env.FAKE_LEASE;
+    const deploySh = path.join(M, 'mgu-deploy.sh');
+    fs.writeFileSync(deploySh, DEPLOY_SH, { mode: 0o755 });
+    const tool = (id, version) => {
+        mkdirp(path.join(opt, id, 'versions', version));
+        fs.writeFileSync(path.join(opt, id, 'versions', version, 'component.json'), JSON.stringify({ id, kind: 'tool', version }));
+        fs.symlinkSync(`versions/${version}`, path.join(opt, id, 'current'));
+    };
+    tool('mgu-deploy', '0.6.0');
+    tool('mgu-updater', '0.8.0');
+    const installed = (id, version, uid) => {
+        mkdirp(path.join(oap, 'oap_12201', 'data', 'apps'));
+        mkdirp(path.join(oap, `oap_${uid}`, 'source'));
+        fs.writeFileSync(path.join(oap, 'oap_12201', 'data', 'apps', `${id}.json`), JSON.stringify({ userId: uid }));
+        fs.writeFileSync(path.join(oap, `oap_${uid}`, 'source', 'package.json'), JSON.stringify({ name: id, version }));
+    };
+    installed('robertn_store', '0.9.0', 12470);
+    installed('cat_app', '1.0.0', 12471);
+    // listed without uninstallable, as the built-in catalog lists them
+    publish(cat, [entry(appTgz(cat, 'robertn_store', '0.9.0'), 'app', 'Store'), entry(appTgz(cat, 'cat_app', '1.0.0'), 'app', 'Cat'),
+        entry(appTgz(cat, 'next_app', '1.0.0'), 'app', 'Next'), entry(toolKit(cat, 'mgu-deploy', '0.6.0', {}), 'tool', 'Deploy tool'),
+        entry(toolKit(cat, 'mgu-updater', '0.8.0', {}), 'tool', 'Updater')].map((e) => Object.assign(e, { mguHmi: ['ID7', 'ID8'] })), { schema: 2 });
+    const sources = path.join(M, 'sources.json');
+    fs.writeFileSync(sources, JSON.stringify({ schema: 1, sources: [{ id: 'mgu-store', type: 'file', path: cat, builtin: true }] }));
+    const conf = {
+        sources, credentials_dir: path.join(M, 'cred'), state_dir: state, tool_root: opt, oap_root: oap, mainapp_uid: '12201',
+        store_app: 'robertn_store', deploy: deploySh, lease: path.join(M, 'lease.json'), ca_file: '',
+        github_api: API, github_web: GH_WEB, github_client_id: '', builtin_repo: 'robertnisipeanu/mgu-store',
+        fetch_uid: String(FETCH_UID), fetch_gid: String(FETCH_UID), build_uid: '12995', build_gid: '12995',
+        build_timeout_s: '3', build_max_bytes: String(8 << 20), repo_max_bytes: String(8 << 20),
+        mounts: path.join(M, 'mounts'), usb_roots: path.join(M, 'media'), web_secret: path.join(M, 'web-secret'), web_uid: '12996', web_gid: '12202',
+        socket: path.join(M, 'shm', 'updater.sock'), socket_group: 'staff', deploy_tool: 'mgu-deploy', uplink_tool: 'mgu-uplink',
+        bootstrap_check_s: '6', privacy_tool: '', reboot: ''
+    };
+    fs.writeFileSync(conf.mounts, 'proc /proc proc rw 0 0\n');
+    const u = new Updater(conf);
+    const comp = (id) => u.state().components.find((c) => c.id === id) || {};
+    const remove = (id) => ask(conf.socket, { op: 'uninstall', id, secret: u.secret });
+    const done = () => {
+        delete process.env.FAKE_UNIT_HMI;
+        delete process.env.FAKE_PENDING;
+        u.server.close();
+    };
+    return u.serve()
+        .then(() => u.refresh())
+        .then(() => u.check())
+        .then(() => {
+            const c = comp('cat_app');
+            ok('iDrive 8: an installed app its catalog does not mark uninstallable is removable', u.unit.hmi === 'ID8' &&
+                c.installed === '1.0.0' && c.uninstallable === true, JSON.stringify(c));
+            const n = comp('next_app');
+            ok('iDrive 8: so is one whose install waits for the next start', n.nextStart === 'install' && n.uninstallable === true, JSON.stringify(n));
+            ok('the Store, the updater and the deploy tool are never removable', comp('robertn_store').installed === '0.9.0' &&
+                ['robertn_store', 'mgu-updater', 'mgu-deploy'].every((id) => comp(id).uninstallable === false),
+                JSON.stringify(['robertn_store', 'mgu-updater', 'mgu-deploy'].map(comp)));
+            return Promise.all(['robertn_store', 'mgu-updater', 'mgu-deploy'].map(remove));
+        })
+        .then((errs) => {
+            ok('their Remove is refused', errs.every((e) => /cannot be removed/.test(e || '')) && !/^uninstall/m.test(fs.readFileSync(deployLog, 'utf8')),
+                JSON.stringify(errs));
+            return remove('cat_app');
+        })
+        .then((err) => until(() => comp('cat_app'), (r) => !u.busy && !r.queued && r.status === 'available', 30000, 'cat_app removed').then(() => err))
+        .then((err) => {
+            ok('iDrive 8: the app\'s Remove runs the deploy tool\'s uninstall', err === null &&
+                /^uninstall cat_app --yes$/m.test(fs.readFileSync(deployLog, 'utf8')) && !comp('cat_app').installed, `${err} ${JSON.stringify(comp('cat_app'))}`);
+            done();
+        }, (e) => {
+            done();
+            throw e;
         });
 }
 
@@ -4438,6 +4538,7 @@ function main() {
             .then(() => testAppManager(certs, pubDir).catch((e) => ok('App Manager scenario', false, e.stack)))
             .then(() => testIdrive7(certs).catch((e) => ok('idrive7-apps installer scenario', false, e.stack)))
             .then(() => testIcons().catch((e) => ok('icons scenario', false, e.stack)))
+            .then(() => testAppRemove().catch((e) => ok('app remove scenario', false, e.stack)))
             .then(() => testPythonRepo().catch((e) => ok('python repo scenario', false, e.stack)))
             .then(() => testIdClash().catch((e) => ok('id clash scenario', false, e.stack)))
             .then(() => testDaemon(certs, pubDir))
