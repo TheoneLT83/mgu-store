@@ -1629,6 +1629,65 @@ class AppManagementController{constructor(){this.queuedRecursiveRetry=makeMethod
 
 /* Uninstall through the running manager's own uninstall (its tile goes at
  * once), or else the bounce: not confirmed, or no manager running. */
+/* MainApp's update unregisters the app and removes its folders before it
+ * generates the app's SOME/IP interfaces; a manifest it rejects there fails
+ * the update (UPDATE_FAILED) with the app neither registered nor startable.
+ * The rollback leaves the previous version installed and registered, at
+ * once (the manager restarted, loading it again) and after a restart. */
+function testRejectedUpdate() {
+    const c = inplaceRoot('reject', { minUp: 1 });
+    const h = c.root.home(13001);
+    write(path.join(h, 'rhmiData', 'application.json'), '{"fixture":true}\n');
+    const folders = () => treeHash(h, (rel) => /^(data|kvs|security|share)(\/|$)/.test(rel)).hash;
+    const before = folders();
+    const entry = fs.readFileSync(c.root.entry('fixture_app'));
+    const r = c.root.run(['install', '--artifact', appArtifact('fixture_app', '1.1.0', true), '--yes']);
+    check('rejected update: fails with the manager\'s reason, rolled back', r.status === 1 &&
+        r.out.includes('mgu-deploy: the app manager could not update fixture_app 1.1.0: UPDATE_FAILED') &&
+        c.root.managerLog().includes('rejected update fixture_app uid 13001'), `${r.out}\n${c.root.managerLog().join('\n')}`);
+    check('rejected update: the app\'s source, interfaces and HMI data are back as they were',
+        folders() === before && fs.readFileSync(c.root.entry('fixture_app')).equals(entry), r.out);
+    check('rejected update: the manager is restarted once, so it loads the app again',
+        c.root.kills().length === 2 && c.root.kills()[1].pid === c.mgr.pid &&
+        !c.root.managerLog().some((l) => l.startsWith('init-failed fixture_app')) &&
+        r.out.includes('restarting it so it loads fixture_app 1.0.0 again'), `${r.out}\n${c.root.managerLog().join('\n')}`);
+    cp.spawnSync(path.join(HERE, 'fake_kill.sh'), [String(c.root.managerPid())], { env: c.root.env });
+    check('rejected update: after a restart fixture_app 1.0.0 is still installed and registered as uid 13001',
+        c.root.kills().length === 3 && readJson(c.root.entry('fixture_app')).userId === 13001 && folders() === before &&
+        !c.root.managerLog().some((l) => l.startsWith('init-failed fixture_app')) &&
+        JSON.stringify(c.root.state().apps.fixture_app) === JSON.stringify({ uid: 13001, version: '1.0.0' }),
+    c.root.managerLog().join('\n'));
+    check('rejected update: no copy of the app\'s folders is left',
+        !fs.readdirSync(c.root.p('var/opt/mgu-deploy')).some((n) => n.startsWith('app-home-')), fs.readdirSync(c.root.p('var/opt/mgu-deploy')).join(' '));
+
+    // a rejected fresh install: MainApp removed what it made, the rollback the rest, no restart
+    const f = inplaceRoot('reject', { minUp: 1 }, { FAKE_INPLACE_REASON: 'APP_INSTALLATION_FAILED' });
+    const homes = fs.readdirSync(f.root.p('var/opt/public/oap')).length;
+    const fr = f.root.run(['install', '--artifact', appArtifact('second_app', '1.0.0', true), '--yes']);
+    check('rejected fresh install: nothing of it is left, the manager is not restarted', fr.status === 1 &&
+        fr.out.includes('could not install second_app 1.0.0: APP_INSTALLATION_FAILED') && f.root.kills().length === 1 &&
+        !fs.existsSync(f.root.entry('second_app')) && !fs.existsSync(f.root.preinstalled('second_app', '1.0.0')) &&
+        !('second_app' in (readJsonOrNull(f.root.p(`var/opt/public/oap/oap_${MGR}/data/custom_apps.json`)) || {})) &&
+        fs.readdirSync(f.root.p('var/opt/public/oap')).length === homes, fr.out);
+
+    // iDrive 8: MainApp-21 is not restarted; it loads the app from its folders at its next start
+    const e = id8LiveRoot('reject');
+    const app8 = (v) => rhmiApp('live8', v, ['ID8'], { npm: true, acl: ACL, marked: true });
+    write(e.root.pre21('live8', '1.0.0'), fs.readFileSync(app8('1.0.0')));
+    write(e.root.entry('live8'), JSON.stringify({ userId: 13006, installationSource: 'PREINSTALLED' }));
+    write(e.root.p('var/opt/public/oap/oap_13006/source/package.json'), JSON.stringify({ name: 'live8', version: '1.0.0' }));
+    write(e.root.p('var/opt/public/oap/oap_13006/someipInterfaces/acl.json'), '{}\n');
+    write(e.root.p('var/opt/public/oap/oap_13006/security/joynrKeyChain.json'), '{}');
+    const h8 = e.root.home(13006);
+    const folders8 = () => treeHash(h8, (rel) => /^(data|kvs|security|share)(\/|$)/.test(rel)).hash;
+    const before8 = folders8();
+    const er = e.root.run(['install', '--artifact', app8('1.1.0'), '--yes']);
+    check('rejected update, iDrive 8: rolled back with the app\'s folders and entry, back from the next start, no restart',
+        er.status === 1 && e.root.managerLog().includes('rejected update live8 uid 13006') && folders8() === before8 &&
+        readJson(e.root.entry('live8')).userId === 13006 && e.root.kills().length === 0 &&
+        er.out.includes('live8 1.0.0 is back from the next start of the head unit'), `${er.out}\n${e.root.managerLog().join('\n')}`);
+}
+
 function testInplaceUninstall() {
     const custom = (root) => readJsonOrNull(root.p(`var/opt/public/oap/oap_${MGR}/data/custom_apps.json`)) || {};
     const gone = (root) => !fs.existsSync(root.entry('fixture_app')) && !fs.existsSync(root.home(13001)) &&
@@ -5072,6 +5131,7 @@ const SUITES = [
     testInplaceKeepCopy,
     testInplaceHook,
     testInplaceUninstall,
+    testRejectedUpdate,
     testLocalOnlyListed,
     testHealth,
     testRollback,

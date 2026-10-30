@@ -44,7 +44,7 @@ var cp = require('child_process');
 
 /* deploy/component.json's version; bumped when a file under deploy/unit/
  * changes. */
-var VERSION = '0.6.7';
+var VERSION = '0.6.8';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -77,6 +77,8 @@ var CFG = {
     tar: env('MGU_DEPLOY_TAR', 'tar'),
     df: env('MGU_DEPLOY_DF', 'df'),
     setquota: env('MGU_DEPLOY_SETQUOTA', 'setquota'),
+    getfacl: env('MGU_DEPLOY_GETFACL', 'getfacl'),
+    setfacl: env('MGU_DEPLOY_SETFACL', 'setfacl'),
     sh: env('MGU_DEPLOY_SH', '/bin/sh'),
     run: env('MGU_DEPLOY_RUN', '/run/mgu-deploy'),
     node: env('MGU_DEPLOY_NODE', '/usr/bin/node'),
@@ -1075,7 +1077,7 @@ function acquireLock() {
 /* Files a killed run left: its staging, rootfs-window and temp files (named
  * after its pid, gone now), its in-place request, and a deploy/hu kit
  * folder a day old. */
-var RUN_TEMP = /^(?:stage-|window-|main\.fallback-|CertificateManager\.tmp-|lock\.|\.mgu-deploy-probe-)(\d+)(?:\.sh|\.js)?$|^write-(\d+)-\d+$|\.(?:tmp|partial|old)-(\d+)$/;
+var RUN_TEMP = /^(?:stage-|window-|main\.fallback-|CertificateManager\.tmp-|app-home-|lock\.|\.mgu-deploy-probe-)(\d+)(?:\.sh|\.js)?$|^write-(\d+)-\d+$|\.(?:tmp|partial|old)-(\d+)$/;
 function pidAlive(pid) {
     if (pid === process.pid) return true;
     try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
@@ -3281,9 +3283,16 @@ function id8LiveTouched(id, version) {
     if (version) pkgs.push(path.join(preinstalledDir(), id + '@' + version + '.tgz'));
     return DAS.map(dasFile).concat([appEntryFile(id)], pkgs, fallbackTouched());
 }
-function rollbackAppId8(backup, state) {
+/* With an update's saved folders (tx.saved), those MainApp-21 changed go
+ * back too: MainApp-21, never restarted here, loads the app from them at
+ * its next start, with its uid and data. */
+function rollbackAppId8(backup, state, tx) {
     var fb = fallbackPresent();
     restoreSnapshot(backup);
+    if (tx && tx.saved && restoreAppFolders(tx.saved)) {
+        say('MainApp-21 unregistered ' + tx.saved.id + ' during the update: ' + tx.saved.id + ' ' + tx.saved.version +
+            ' is back from the next start of the head unit');
+    }
     if (fallbackPresent() !== fb) { runOk(CFG.systemctl, ['daemon-reload']); settleFallback(); }
     pruneCreatedDirs(state);
 }
@@ -3366,7 +3375,14 @@ function copyTree(src, dst) {
         fs.mkdirSync(dst, st.mode & 0o7777);
         fs.readdirSync(src).forEach(function (n) { copyTree(path.join(src, n), path.join(dst, n)); });
     } else fs.writeFileSync(dst, fs.readFileSync(src), { mode: st.mode & 0o7777 });
-    if (!FAKE) { try { fs.lchownSync(dst, st.uid, st.gid); } catch (e) { /* kept as root's */ } }
+    if (st.isSymbolicLink()) {
+        /* Node 8 has lchown on macOS only */
+        if (!FAKE) run('chown', ['-h', st.uid + ':' + st.gid, dst], { allowFail: true });
+        return;
+    }
+    if (!FAKE) fs.chownSync(dst, st.uid, st.gid);
+    /* the mode as it was, whatever the umask took off (after chown, which clears setuid) */
+    fs.chmodSync(dst, st.mode & 0o7777);
 }
 /* Moves p into bin under its own path (/var/opt/x -> <bin>/var/opt/x). A
  * path on the read-only root is copied here and deleted in the rootfs
@@ -4714,12 +4730,12 @@ function cmdInstall(args) {
             var tx = {}, backup = takeSnapshot('install', artifactTouched(a));
             attempted = true;
             if (a.kind === 'app' && !id8) {
-                beginAppTx(tx);
+                beginAppTx(tx, a, decisions[a.id].existing);
                 state.inflight = { id: a.id, version: a.version, pid: process.pid, boot: bootId() };
                 state.placed = Object.assign({}, state.placed);
                 state.placed[a.id] = { version: a.version, sha256: sha256File(a.file) };
                 saveState(state);
-            }
+            } else if (a.kind === 'app' && decisions[a.id].existing) saveAppFolders(tx, a, decisions[a.id].existing);
             try {
                 if (a.kind === 'tool') installTool(a, state, tx);
                 else if (id8) installAppId8(a, state, decisions[a.id], backup);
@@ -4727,15 +4743,17 @@ function cmdInstall(args) {
                 syncDropIns();
                 /* a tool's earlier current folder stays until here, for a rollback */
                 if (tx.legacy) rmrf(tx.legacy);
+                if (tx.saved) rmrf(tx.saved.dir);
                 endAppRecord(state, a.id);
                 done.push(a.id + ' ' + a.version);
             } catch (e) {
                 process.stderr.write(a.id + ' ' + a.version + ' failed: ' + e.message + '\n');
                 try {
                     if (a.kind === 'tool') rollbackTool(a, tx, backup, e, state);
-                    else if (id8) rollbackAppId8(backup, state);
+                    else if (id8) rollbackAppId8(backup, state, tx);
                     else rollbackApp(a, tx, backup, state);
                     endAppRecord(state, a.id);
+                    if (tx.saved) rmrf(tx.saved.dir);
                 } catch (e2) { process.stderr.write('rollback failed: ' + e2.message + '\n'); }
                 if (done.length) {
                     say('installed before this failure, and kept: ' + done.join(', '));
@@ -4753,11 +4771,59 @@ function cmdInstall(args) {
     return 0;
 }
 /* What an app install may leave behind: app homes the manager created,
- * the fallback app list and the fallback itself. */
-function beginAppTx(tx) {
+ * the fallback app list and the fallback itself; for an update, the app's
+ * folders MainApp's update removes, copied aside. */
+function beginAppTx(tx, a, existing) {
     tx.homes = fs.existsSync(CFG.oap) ? fs.readdirSync(CFG.oap) : [];
     tx.custom = fs.existsSync(customAppsFile()) ? sha256File(customAppsFile()) : null;
     tx.fallback = fallbackPresent();
+    if (existing) saveAppFolders(tx, a, existing);
+}
+/* MainApp's update of an app unregisters it (its tile goes), deletes its
+ * registry entry and removes these folders before it builds the new
+ * version's; when its installer then rejects the new version (a manifest
+ * generateSomeipInterfaces refuses: UPDATE_FAILED), they stay gone, and
+ * at its next start MainApp drops an app without its acl.json. */
+var UPDATE_REMOVES = ['source', 'someipInterfaces', 'rhmiData', 'rhmiDataStartWidget'];
+function folderDigest(dir) {
+    if (!lstatOrNull(dir)) return 'absent';
+    return walk(dir, '', []).map(function (e) {
+        var st = e.stat;
+        return [e.rel, st.mode, st.uid, st.gid, st.size, st.mtime.getTime(),
+            st.isSymbolicLink() ? fs.readlinkSync(e.path) : ''].join(':');
+    }).sort().join('\n');
+}
+/* Copied with their owners and modes; their ACLs (MainApp's grants to
+ * the HMI's resource group and the app's groups, without which the HMI
+ * cannot read the tile's icon) in getfacl's record. */
+function saveAppFolders(tx, a, existing) {
+    var home = appHome(existing.uid), present = [];
+    tx.saved = { id: a.id, uid: existing.uid, version: existing.version,
+        dir: path.join(DEPLOY_DIR, 'app-home-' + process.pid), digests: {} };
+    rmrf(tx.saved.dir);
+    mkdirp(tx.saved.dir, 0o700);
+    UPDATE_REMOVES.forEach(function (n) {
+        var p = path.join(home, n);
+        tx.saved.digests[n] = folderDigest(p);
+        if (lstatOrNull(p)) { copyTree(p, path.join(tx.saved.dir, n)); present.push(p); }
+    });
+    if (FAKE || !present.length) return;
+    tx.saved.acl = path.join(tx.saved.dir, 'acl.txt');
+    fs.writeFileSync(tx.saved.acl, runOk(CFG.getfacl, ['-R', '-p'].concat(present)).stdout, { mode: 0o600 });
+}
+/* The saved folders that changed go back; true when any did. */
+function restoreAppFolders(saved) {
+    var home = appHome(saved.uid), changed = UPDATE_REMOVES.filter(function (n) {
+        return folderDigest(path.join(home, n)) !== saved.digests[n];
+    });
+    changed.forEach(function (n) {
+        var p = path.join(home, n), from = path.join(saved.dir, n);
+        rmrf(p);
+        if (lstatOrNull(from)) copyTree(from, p);
+    });
+    if (changed.length && saved.acl) runOk(CFG.setfacl, ['--restore=' + saved.acl]);
+    if (changed.length) say('put back ' + changed.join(', ') + ' of ' + saved.id + ' ' + saved.version + ' in ' + home);
+    return changed.length > 0;
 }
 /* The snapshot puts the registry entry, the preinstalled package,
  * custom_apps.json and the fallback back; an app home the manager created
@@ -4766,6 +4832,7 @@ function beginAppTx(tx) {
 function rollbackApp(a, tx, backup, state) {
     say('rolling back ' + a.id + ' ' + a.version + ' from ' + backup);
     restoreSnapshot(backup);
+    var reload = !!tx.saved && restoreAppFolders(tx.saved);
     if (fs.existsSync(CFG.oap)) {
         fs.readdirSync(CFG.oap).forEach(function (n) {
             if (tx.homes.indexOf(n) >= 0 || !/^oap_\d+$/.test(n)) return;
@@ -4777,6 +4844,13 @@ function rollbackApp(a, tx, backup, state) {
     if (fallbackPresent() !== tx.fallback) runOk(CFG.systemctl, ['daemon-reload']);
     if (fallbackPresent() !== tx.fallback || custom !== tx.custom) settleFallback();
     pruneCreatedDirs(state);
+    /* the running manager no longer has the app registered: a restarted
+     * one loads it from its registry entry and folders, tile and all */
+    if (reload && managerSoon()) {
+        say('the app manager unregistered ' + a.id + ' during the update: restarting it so it loads ' + a.id + ' ' +
+            tx.saved.version + ' again');
+        bounceManager();
+    }
     say('the app-privacy patch stays applied (app-privacy remains installed)');
 }
 /* Our apps: registry entries whose source is marked mguLocalOnly. An

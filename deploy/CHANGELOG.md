@@ -1,5 +1,9 @@
 # Deploy tool changelog
 
+## 0.6.8
+
+- An app update the app manager rejects (`UPDATE_FAILED`, for example a manifest naming an interface the head unit does not have) leaves the previous version installed, registered and with its tile. The manager unregisters the app and removes its source, SOME/IP interfaces and HMI data before it rejects the new version; the rollback puts these back with their owners, modes and ACLs. On iDrive 7 the app manager then restarts once and shows the tile at once. On iDrive 8 the app is back from the next start of the head unit, with its uid and data.
+
 ## 0.6.7
 
 - iDrive 7: an app install that finds no app manager running (no MainApp node child within 30 s) fails once those 30 s pass and is rolled back, with no 600 s wait for an install nothing makes. The output says to restart the head unit and run the install again, and shows what tells why: MainApp's folder and version, oapcontroller's state and drop-ins, the head unit's uptime, the mounts over `main.js`, the processes running as MainApp's uid, the node, MainApp and oapcontroller processes, and oapcontroller's last lines about MainApp.
