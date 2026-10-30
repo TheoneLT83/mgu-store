@@ -1065,7 +1065,7 @@ function runDrawn() {
         gpu.emit('touch', 'up', x0, y0 - 120);
         drawn.pop();
         // a new page with a picture not decoded yet: its first frame waits for it
-        const pic = path.join(__dirname, '..', 'robertn_store@0.9.11', 'rhmiData', 'variantGroups', 'Common', 'images', 'store_icon.png');
+        const pic = path.join(__dirname, '..', 'robertn_store@0.9.12', 'rhmiData', 'variantGroups', 'Common', 'images', 'store_icon.png');
         const extra = Array.from({ length: 30 }, (_, i) => comp({ id: `x${i}`, title: `Extra ${i}`, version: '1.0.0', installed: null, status: 'available' }));
         app._client.emit('state', Object.assign({}, st, { components: st.components.concat(extra, [comp({ id: 'pictured', title: 'Pictured',
             version: '1.0.0', installed: null, status: 'available', icon: pic })]) }));
@@ -1520,6 +1520,36 @@ function runDrawn() {
             eq(drawn.focus, 5, 'with the controller gate the renderer\'s dial counts instead');
             drawn.controller = false;
         }
+        // Installed puts what runs or waits first: a focus the Store moves stays on its item as the rows move, the HMI's on its proxy
+        const inst = (doom) => Object.assign({}, st, { components: [
+            comp({ id: 'alpha', title: 'Alpha', version: '1.0.0', installed: '1.0.0', status: 'installed' }),
+            comp({ id: 'beta', title: 'Beta', version: '1.0.0', installed: '1.0.0', status: 'installed' }),
+            comp(Object.assign({ id: 'doom', title: 'DOOM', version: '1.0.1', installed: '1.0.0', status: 'update' }, doom))] });
+        const rows = () => drawn.items.map((i) => i.label).filter((l) => ['Alpha', 'Beta', 'DOOM'].indexOf(l) >= 0);
+        const focused = () => (drawn.items[drawn.focus] || {}).label;
+        const proxies = drawn.embedProxies;
+        drawn.setTab('installed');
+        app._client.emit('state', inst({}));
+        eq(rows(), ['DOOM', 'Alpha', 'Beta'], 'an update first');
+        drawn.controller = true;
+        drawn.focus = drawn.items.findIndex((i) => i.label === 'Beta');
+        drawn.render();
+        app._client.emit('state', inst({ status: 'installed', installed: '1.0.1' }));
+        eq([rows(), focused()], [['Alpha', 'Beta', 'DOOM'], 'Beta'], 'updated: DOOM last, the focus on Beta');
+        app._client.emit('state', inst({}));
+        eq(focused(), 'Beta', 'an update again: the focus still on Beta');
+        drawn.focus = drawn.items.findIndex((i) => i.label === 'DOOM');
+        drawn.render();
+        app._client.emit('state', inst({ status: 'installed', installed: '1.0.1' }));
+        eq(focused(), 'DOOM', 'the focus goes down with DOOM');
+        drawn.controller = false;
+        drawn.embedProxies = true;
+        const at = drawn.focus;
+        app._client.emit('state', inst({}));
+        eq([drawn.focus, focused()], [at, 'Update'], 'the HMI\'s focus: on its proxy, now DOOM\'s Update');
+        drawn.embedProxies = proxies;
+        drawn.setTab('store');
+        app._client.emit('state', st);
         // a popup over a layer page hides the layer
         if (mode === 'layer') {
             app._states[host(1)].emit('focus', { focus: false });

@@ -149,6 +149,16 @@ function tileState(c, busy) {
     return { sub: 'Installed', subColor: GREEN, badge: 'installed', progress: -1 };
 }
 
+/* Whether something runs or waits on the component, as tileState tells it:
+ * its install or removal, a queued one, a failure, a restart pending or an
+ * update. */
+function pending(c, busy) {
+    if ((busy && busy.id === c.id) || c.queued) {
+        return true;
+    }
+    return !notForUnit(c) && !c.blocked && !!(c.error || startPending(c) || c.status === 'update' || c.pendingReboot);
+}
+
 function tile(m, c, busy) {
     return Object.assign(iconOf(c), { id: c.id, title: c.title, src: srcName(m, c), act: { do: 'open', page: pageOf(c) } }, tileState(c, busy));
 }
@@ -188,7 +198,9 @@ function storeView(m) {
 
 function installedView(m) {
     const busy = busyOf(m);
-    const all = comps(m).filter((c) => c.installed);
+    // the ones something runs or waits on first, each part in the catalog's order
+    const installed = comps(m).filter((c) => c.installed);
+    const all = installed.filter((c) => pending(c, busy)).concat(installed.filter((c) => !pending(c, busy)));
     const apps = all.filter((c) => !isTool(c));
     const tools = all.filter(isTool);
     const updates = all.filter((c) => c.status === 'update' && rowAction(c, busy) === 'install');

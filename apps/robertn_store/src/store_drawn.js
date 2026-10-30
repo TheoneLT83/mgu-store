@@ -161,6 +161,8 @@ class Drawn extends EventEmitter {
         this.settleKey = null;              // a released drag's region whose last position is still to be drawn
         this.prebuild = null;
         this.pageAt = 0;                    // when the page last changed (_page)
+        this.pages = 0;                     // counts page changes (_page)
+        this.itemsPage = -1;                // the page the items are of
         this.held = null;                   // a new page's frame held for its pictures
         this.showing = false;               // _updateShow's frame: sent at once
         this.retired = [];                  // layers to drop once the next frame is sent
@@ -263,6 +265,7 @@ class Drawn extends EventEmitter {
      * first frame shows it whole (render: its pictures too). */
     _page() {
         this.pageAt = msNow();
+        this.pages++;
         this.touch = null;
         this.settleKey = null;
     }
@@ -455,12 +458,16 @@ class Drawn extends EventEmitter {
             same = false;
         }
         this.drawn = json;
-        this.drawnFocus = this.focus;
         const tm = t0 ? msNow() : 0;
+        if (!same) {
+            this._keepFocus(m);
+        }
+        this.drawnFocus = this.focus;
         const r = frame(m, { textScale: this.scale, focus: this.focus, scroll: this.scroll, layout: this.layout });
         if (t0) { this.timing.model += tm - t0; this.timing.layout += msNow() - tm; }
         const rec = r.rec;
         this.items = r.items;
+        this.itemsPage = this.pages;
         this.regions = r.regions;
         this._proxies();
         this._pictures(r.icons);
@@ -497,6 +504,26 @@ class Drawn extends EventEmitter {
         this.dirty = false;
         this.sentAt = now;
         this._send(rec, b0, b1, 'whole');
+    }
+
+    /* The focus on the item it was on where the page's items moved (the
+     * Installed lists put what runs or waits first), while the Store moves
+     * the focus itself (the controller gate, or FrontCCU in embed mode): the
+     * HMI's focus on a proxy stays where it was. */
+    _keepFocus(m) {
+        const was = this.itemsPage === this.pages && this.items[this.focus];
+        if (!was || !(this.controller || (this.mode === 'embed' && !this.embedProxies))) {
+            return;
+        }
+        const key = JSON.stringify(was.act);
+        const items = layoutOf(m, { focus: -1, scroll: Object.assign({}, this.scroll), layout: this.layout }).items;
+        if (items[this.focus] && JSON.stringify(items[this.focus].act) === key) {
+            return;
+        }
+        const i = items.findIndex((it) => JSON.stringify(it.act) === key);
+        if (i >= 0) {
+            this.focus = i;
+        }
     }
 
     /* The model may have changed (the updater's state, pictures decoded): built again now, or, while a drag
