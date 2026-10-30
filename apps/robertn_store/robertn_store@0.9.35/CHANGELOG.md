@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.35
+
+- Settings > Internet: Wi-Fi first, with its steps (the phone's hotspot on, Scan on the Wi-Fi page, the phone's
+  network and its password), then iPhone, Android phone and USB LTE stick; the USB network adapter card is gone.
+- iDrive 7 full screen: the HMI's bright line under its clock and status icons is covered by the header's dim edge,
+  which runs the whole width, as in the idrive7-apps.
+
 ## 0.9.34
 
 The Store asks for 60 frames a second, as upstream 0.9.11 (mgu-render's fps.robertn_store can set another). Merged with robertnisipeanu/mgu-store #52-#56.

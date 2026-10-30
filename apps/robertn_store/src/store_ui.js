@@ -567,12 +567,13 @@ function phoneView(m) {
 }
 
 /* How the car gets internet: the head unit has none of its own; the uplink
- * gives it through a USB device. */
+ * gives it through its Wi-Fi or a USB device. */
 const INTERNET_WAYS = [
-    { vicon: 'lteStick', title: 'USB LTE stick', text: 'A USB LTE stick with a SIM card that has mobile data (e.g. Huawei E3372h), in a USB port in the car.' },
-    { vicon: 'ethernet', title: 'USB network adapter', text: 'A USB network adapter in a USB port, cabled to a mobile router.' },
+    { vicon: 'wifi', title: 'Wi-Fi', text: ['Turn the phone\'s hotspot on.', 'Here, open Settings > Wi-Fi and tap Scan.',
+        'Pick the phone\'s network, type its password and tap Connect.'] },
+    { vicon: 'iphone', title: 'iPhone', text: 'Cable it to a USB port, Personal Hotspot on, the phone unlocked; tap Trust when it asks.' },
     { vicon: 'android', title: 'Android phone', text: 'Cable it to a USB port, then on the phone: Settings > Network > Hotspot & tethering > USB tethering on.' },
-    { vicon: 'iphone', title: 'iPhone', text: 'Cable it to a USB port, Personal Hotspot on, the phone unlocked; tap Trust when it asks.' }
+    { vicon: 'lteStick', title: 'USB LTE stick', text: 'A USB LTE stick with a SIM card that has mobile data (e.g. Huawei E3372h), in a USB port in the car.' }
 ];
 const INTERNET_STEPS = 'Within a minute this page says Connected. No internet at all? Apps on a USB stick show under USB.';
 

@@ -108,12 +108,6 @@ const ICONS = {
     lteStick(cv, x, y, s, c) { const w = s * 0.06, f = faint(c);
         cv.strokeRoundRect(x + s * 0.3, y + s * 0.36, s * 0.4, s * 0.5, s * 0.06, w, c); cv.roundRect(x + s * 0.38, y + s * 0.86, s * 0.24, s * 0.1, 2, c);
         [0.16, 0.24, 0.32].forEach((h, i) => cv.roundRect(x + s * (0.36 + i * 0.1), y + s * (0.3 - h), s * 0.07, s * h, 2, i === 2 ? f : c)); },
-    // a USB network adapter: the network jack with its cable
-    ethernet(cv, x, y, s, c) { const p = P(x, y, s), w = s * 0.07;
-        cv.strokeRoundRect(x + s * 0.2, y + s * 0.2, s * 0.6, s * 0.46, s * 0.05, w, c);
-        cv.polyline([p(0.36, 0.66), p(0.36, 0.56), p(0.64, 0.56), p(0.64, 0.66)], w * 0.8, c);
-        for (const u of [0.34, 0.44, 0.56, 0.66]) cv.line(...p(u, 0.3), ...p(u, 0.4), w * 0.6, c);
-        cv.line(...p(0.5, 0.66), ...p(0.5, 0.9), w, c); },
     // Android: the robot's head with its antennas and eyes, and its body
     android(cv, x, y, s, c) { const cx = x + s / 2, w = s * 0.06, p = P(x, y, s);
         cv.arc(cx, y + s * 0.44, 0, s * 0.26, -90, 90, c);

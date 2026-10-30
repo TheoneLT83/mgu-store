@@ -482,8 +482,9 @@ eq(text(screen('offline'), 'subtitle'), 'Restart the head unit to finish setup')
 // internet: the page says whether the car is online and how to connect it; offline, the Store points to it
 f = screen('internet');
 eq([own(f), text(f, 'status')], [['Back'], 'Connected']);
-eq(f.values.ways.items.map((w) => [w.vicon, w.title]), [['lteStick', 'USB LTE stick'], ['ethernet', 'USB network adapter'], ['android', 'Android phone'], ['iphone', 'iPhone']], 'the ways to connect, a card each');
-ok(/USB tethering/.test(f.values.ways.items[2].text) && /Personal Hotspot/.test(f.values.ways.items[3].text), 'how, on the phones');
+eq(f.values.ways.items.map((w) => [w.vicon, w.title]), [['wifi', 'Wi-Fi'], ['iphone', 'iPhone'], ['android', 'Android phone'], ['lteStick', 'USB LTE stick']], 'the ways to connect, a card each');
+ok(/USB tethering/.test(f.values.ways.items[2].text) && /Personal Hotspot/.test(f.values.ways.items[1].text), 'how, on the phones');
+eq(f.values.ways.items[0].text.length, 3, 'Wi-Fi: the hotspot, Scan, the network and its password, as steps');
 eq(text(screen('internet-offline'), 'status'), 'Not connected');
 eq(text(screen('store-no-internet'), 'subtitle'), 'No internet: Settings > Internet shows how to connect the car');
 // every character on these screens is in the baked fonts (tools/bake_fonts.py TEXT); others draw as '?'
@@ -513,6 +514,9 @@ console.log(`screens: ${fixture.screens().length} screens in ${Object.keys(UNITS
         play(fr.rec.words(), cv);
         const alpha = (x, y) => cv.d[(y * cv.w + x) * 4 + 3];
         eq([alpha(1500, 30), alpha(1800, 60), alpha(300, 30)], [0, 0, 255], `full screen ${tab}: the status icons' corner see-through, the header drawn`);
+        const px = (x, y) => Array.from(cv.d.slice((y * cv.w + x) * 4, (y * cv.w + x) * 4 + 4));
+        eq([alpha(1500, 76), px(1500, 79)], [255, px(100, 79)],
+            `full screen ${tab}: the HMI's strip edge under the status icons covered, the header's edge the whole width`);
     });
 }
 

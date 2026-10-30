@@ -36,7 +36,7 @@ function qr(cv, t, b, o) {
 }
 
 /* Ways to do something, side by side (Settings > Internet): o.items [{ vicon, title, text }], each a card with its logo
- * on a disc at the top, its name and its text wrapped under it. */
+ * on a disc at the top, its name and its text wrapped under it (text a list: numbered steps, each from a new line). */
 function ways(cv, t, b, o) {
     const items = Array.isArray(o.items) ? o.items : [];
     if (!items.length) return;
@@ -52,7 +52,13 @@ function ways(cv, t, b, o) {
         vicon(cv, it.vicon, cx - d * 0.32, cy - d * 0.32, d * 0.64, t.text);
         const ty = cy + d / 2 + ts * 1.4;
         cv.text(W.fit(cv, String(it.title || ''), cw - 32, ts, 'bold'), cx, ty, ts, t.text, { align: 'center', font: 'bold' });
-        W.wrap(cv, String(it.text || ''), x + 20, ty + ts * 0.5, cw - 40, xs, t.dim, Math.max(1, Math.floor((b.y + b.h - ty - ts * 0.5 - 12) / (xs * 1.25))));
+        const steps = Array.isArray(it.text) ? it.text.map((s, k) => `${k + 1}. ${s}`) : [String(it.text || '')];
+        let y = ty + ts * 0.5, left = Math.max(1, Math.floor((b.y + b.h - y - 12) / (xs * 1.25)));
+        for (const s of steps) {
+            if (left < 1) break;
+            const n = W.wrap(cv, s, x + 20, y, cw - 40, xs, t.dim, left);
+            y += n * xs * 1.25; left -= n;
+        }
     });
 }
 
