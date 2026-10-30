@@ -3289,12 +3289,12 @@ function id8LiveTouched(id, version) {
 function rollbackAppId8(backup, state, tx) {
     var fb = fallbackPresent();
     restoreSnapshot(backup);
+    if (fallbackPresent() !== fb) { runOk(CFG.systemctl, ['daemon-reload']); settleFallback(); }
+    pruneCreatedDirs(state);
     if (tx && tx.saved && restoreAppFolders(tx.saved)) {
         say('MainApp-21 unregistered ' + tx.saved.id + ' during the update: ' + tx.saved.id + ' ' + tx.saved.version +
             ' is back from the next start of the head unit');
     }
-    if (fallbackPresent() !== fb) { runOk(CFG.systemctl, ['daemon-reload']); settleFallback(); }
-    pruneCreatedDirs(state);
 }
 /* The package and the das lines in one rootfs window, the custom_apps.json
  * entry after them; what they replace is in the install's snapshot. */
@@ -4832,7 +4832,6 @@ function restoreAppFolders(saved) {
 function rollbackApp(a, tx, backup, state) {
     say('rolling back ' + a.id + ' ' + a.version + ' from ' + backup);
     restoreSnapshot(backup);
-    var reload = !!tx.saved && restoreAppFolders(tx.saved);
     if (fs.existsSync(CFG.oap)) {
         fs.readdirSync(CFG.oap).forEach(function (n) {
             if (tx.homes.indexOf(n) >= 0 || !/^oap_\d+$/.test(n)) return;
@@ -4846,7 +4845,7 @@ function rollbackApp(a, tx, backup, state) {
     pruneCreatedDirs(state);
     /* the running manager no longer has the app registered: a restarted
      * one loads it from its registry entry and folders, tile and all */
-    if (reload && managerSoon()) {
+    if (tx.saved && restoreAppFolders(tx.saved) && managerSoon()) {
         say('the app manager unregistered ' + a.id + ' during the update: restarting it so it loads ' + a.id + ' ' +
             tx.saved.version + ' again');
         bounceManager();

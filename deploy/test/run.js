@@ -1627,8 +1627,6 @@ class AppManagementController{constructor(){this.queuedRecursiveRetry=makeMethod
     stopHooked(st.root);
 }
 
-/* Uninstall through the running manager's own uninstall (its tile goes at
- * once), or else the bounce: not confirmed, or no manager running. */
 /* MainApp's update unregisters the app and removes its folders before it
  * generates the app's SOME/IP interfaces; a manifest it rejects there fails
  * the update (UPDATE_FAILED) with the app neither registered nor startable.
@@ -1688,6 +1686,8 @@ function testRejectedUpdate() {
         er.out.includes('live8 1.0.0 is back from the next start of the head unit'), `${er.out}\n${e.root.managerLog().join('\n')}`);
 }
 
+/* Uninstall through the running manager's own uninstall (its tile goes at
+ * once), or else the bounce: not confirmed, or no manager running. */
 function testInplaceUninstall() {
     const custom = (root) => readJsonOrNull(root.p(`var/opt/public/oap/oap_${MGR}/data/custom_apps.json`)) || {};
     const gone = (root) => !fs.existsSync(root.entry('fixture_app')) && !fs.existsSync(root.home(13001)) &&
