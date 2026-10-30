@@ -39,8 +39,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Store",
-                "type": "Text"
+                "value": "SID_STORE_STORE",
+                "type": "StringId"
               }
             }
           ]
@@ -61,8 +61,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Check for updates",
-                "type": "Text"
+                "value": "SID_STORE_CHECK_FOR_UPDATES",
+                "type": "StringId"
               }
             }
           ]
@@ -109,8 +109,8 @@
           "rows": [
             {
               "Text1stCol": {
-                "value": "Apps",
-                "type": "Text"
+                "value": "SID_STORE_APPS",
+                "type": "StringId"
               },
               "Text2ndCol": {
                 "value": "",
@@ -135,8 +135,8 @@
           "rows": [
             {
               "Text1stCol": {
-                "value": "Head-unit tools",
-                "type": "Text"
+                "value": "SID_STORE_HEAD_UNIT_TOOLS",
+                "type": "StringId"
               },
               "Text2ndCol": {
                 "value": "",
@@ -161,8 +161,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Restart head unit",
-                "type": "Text"
+                "value": "SID_STORE_RESTART_HEAD_UNIT",
+                "type": "StringId"
               }
             }
           ]
@@ -183,8 +183,8 @@
           "rows": [
             {
               "Text1stCol": {
-                "value": "Sources",
-                "type": "Text"
+                "value": "SID_STORE_SOURCES",
+                "type": "StringId"
               },
               "Text2ndCol": {
                 "value": "",
@@ -209,8 +209,8 @@
           "rows": [
             {
               "Text1stCol": {
-                "value": "Phone access",
-                "type": "Text"
+                "value": "SID_STORE_PHONE_ACCESS",
+                "type": "StringId"
               },
               "Text2ndCol": {
                 "value": "",
@@ -243,8 +243,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Apps",
-                "type": "Text"
+                "value": "SID_STORE_APPS",
+                "type": "StringId"
               }
             }
           ]
@@ -299,8 +299,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Head-unit tools",
-                "type": "Text"
+                "value": "SID_STORE_HEAD_UNIT_TOOLS",
+                "type": "StringId"
               }
             }
           ]
@@ -355,8 +355,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Restart head unit?",
-                "type": "Text"
+                "value": "SID_STORE_RESTART_HEAD_UNIT_Q",
+                "type": "StringId"
               }
             }
           ]
@@ -377,8 +377,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Cancel",
-                "type": "Text"
+                "value": "SID_STORE_CANCEL",
+                "type": "StringId"
               }
             }
           ]
@@ -399,8 +399,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Restart",
-                "type": "Text"
+                "value": "SID_STORE_RESTART",
+                "type": "StringId"
               }
             }
           ]
@@ -429,8 +429,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Sources",
-                "type": "Text"
+                "value": "SID_STORE_SOURCES",
+                "type": "StringId"
               }
             }
           ]
@@ -473,8 +473,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Phone access",
-                "type": "Text"
+                "value": "SID_STORE_PHONE_ACCESS",
+                "type": "StringId"
               }
             }
           ]
@@ -521,8 +521,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Add source",
-                "type": "Text"
+                "value": "SID_STORE_ADD_SOURCE",
+                "type": "StringId"
               }
             }
           ]
@@ -543,8 +543,8 @@
           "rows": [
             {
               "Text1stCol": {
-                "value": "Accounts",
-                "type": "Text"
+                "value": "SID_STORE_ACCOUNTS",
+                "type": "StringId"
               },
               "Text2ndCol": {
                 "value": "",
@@ -577,8 +577,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Source",
-                "type": "Text"
+                "value": "SID_STORE_SOURCE",
+                "type": "StringId"
               }
             }
           ]
@@ -599,8 +599,8 @@
           "rows": [
             {
               "Text1stCol": {
-                "value": "Channel",
-                "type": "Text"
+                "value": "SID_STORE_CHANNEL",
+                "type": "StringId"
               },
               "Text2ndCol": {
                 "value": "",
@@ -625,8 +625,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Install on GitHub",
-                "type": "Text"
+                "value": "SID_STORE_INSTALL_ON_GITHUB",
+                "type": "StringId"
               }
             }
           ]
@@ -686,8 +686,8 @@
           "rows": [
             {
               "Text1stCol": {
-                "value": "Source",
-                "type": "Text"
+                "value": "SID_STORE_SOURCE",
+                "type": "StringId"
               },
               "Text2ndCol": {
                 "value": "",
@@ -712,8 +712,8 @@
           "rows": [
             {
               "Text1stCol": {
-                "value": "Account",
-                "type": "Text"
+                "value": "SID_STORE_ACCOUNT",
+                "type": "StringId"
               },
               "Text2ndCol": {
                 "value": "",
@@ -738,8 +738,8 @@
           "rows": [
             {
               "Text1stCol": {
-                "value": "Components",
-                "type": "Text"
+                "value": "SID_STORE_COMPONENTS",
+                "type": "StringId"
               },
               "Text2ndCol": {
                 "value": "",
@@ -764,8 +764,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Remove",
-                "type": "Text"
+                "value": "SID_STORE_REMOVE",
+                "type": "StringId"
               }
             }
           ]
@@ -816,8 +816,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Sign in with GitHub",
-                "type": "Text"
+                "value": "SID_STORE_SIGN_IN_WITH_GITHUB",
+                "type": "StringId"
               }
             }
           ]
@@ -899,8 +899,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Cancel",
-                "type": "Text"
+                "value": "SID_STORE_CANCEL",
+                "type": "StringId"
               }
             }
           ]
@@ -951,8 +951,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Remove source?",
-                "type": "Text"
+                "value": "SID_STORE_REMOVE_SOURCE_Q",
+                "type": "StringId"
               }
             }
           ]
@@ -973,8 +973,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Cancel",
-                "type": "Text"
+                "value": "SID_STORE_CANCEL",
+                "type": "StringId"
               }
             }
           ]
@@ -995,8 +995,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Remove",
-                "type": "Text"
+                "value": "SID_STORE_REMOVE",
+                "type": "StringId"
               }
             }
           ]
@@ -1025,8 +1025,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Remove?",
-                "type": "Text"
+                "value": "SID_STORE_REMOVE_Q",
+                "type": "StringId"
               }
             }
           ]
@@ -1069,8 +1069,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Cancel",
-                "type": "Text"
+                "value": "SID_STORE_CANCEL",
+                "type": "StringId"
               }
             }
           ]
@@ -1091,8 +1091,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Remove",
-                "type": "Text"
+                "value": "SID_STORE_REMOVE",
+                "type": "StringId"
               }
             }
           ]
@@ -1121,8 +1121,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Phone access",
-                "type": "Text"
+                "value": "SID_STORE_PHONE_ACCESS",
+                "type": "StringId"
               }
             }
           ]
@@ -1143,8 +1143,8 @@
           "rows": [
             {
               "Text1stCol": {
-                "value": "Phone access",
-                "type": "Text"
+                "value": "SID_STORE_PHONE_ACCESS",
+                "type": "StringId"
               },
               "Text2ndCol": {
                 "value": "",
@@ -1238,8 +1238,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Accounts",
-                "type": "Text"
+                "value": "SID_STORE_ACCOUNTS",
+                "type": "StringId"
               }
             }
           ]
@@ -1286,8 +1286,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Sign in with GitHub",
-                "type": "Text"
+                "value": "SID_STORE_SIGN_IN_WITH_GITHUB",
+                "type": "StringId"
               }
             }
           ]
@@ -1330,8 +1330,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Add token",
-                "type": "Text"
+                "value": "SID_STORE_ADD_TOKEN",
+                "type": "StringId"
               }
             }
           ]
@@ -1360,8 +1360,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Remove account?",
-                "type": "Text"
+                "value": "SID_STORE_REMOVE_ACCOUNT_Q",
+                "type": "StringId"
               }
             }
           ]
@@ -1426,8 +1426,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Cancel",
-                "type": "Text"
+                "value": "SID_STORE_CANCEL",
+                "type": "StringId"
               }
             }
           ]
@@ -1448,8 +1448,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Remove",
-                "type": "Text"
+                "value": "SID_STORE_REMOVE",
+                "type": "StringId"
               }
             }
           ]
@@ -1478,8 +1478,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Add source",
-                "type": "Text"
+                "value": "SID_STORE_ADD_SOURCE",
+                "type": "StringId"
               }
             }
           ]
@@ -1548,8 +1548,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Sign in with GitHub",
-                "type": "Text"
+                "value": "SID_STORE_SIGN_IN_WITH_GITHUB",
+                "type": "StringId"
               }
             }
           ]
@@ -1570,8 +1570,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Add token",
-                "type": "Text"
+                "value": "SID_STORE_ADD_TOKEN",
+                "type": "StringId"
               }
             }
           ]
@@ -1592,8 +1592,8 @@
           "rows": [
             {
               "Text": {
-                "value": "Try again",
-                "type": "Text"
+                "value": "SID_STORE_TRY_AGAIN",
+                "type": "StringId"
               }
             }
           ]

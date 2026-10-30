@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.13
+
+The Store is in the head unit's display language: English, or Simplified
+Chinese while the HMI is in Simplified Chinese (translated by
+JackieZ123430), and it follows a change at once, the drawn screens and the
+widget screens alike. Names, versions, sources and errors are shown as they
+are. Each language is a file in the package's `locales` folder; Chinese is
+drawn with Noto Sans SC, its common characters included, loaded only while
+Chinese is in use.
+
 ## 0.9.12
 
 Installed lists the apps and the tools that something runs or waits on

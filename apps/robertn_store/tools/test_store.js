@@ -167,14 +167,20 @@ class RenderClient extends EventEmitter {
     frame(rec) { frames.push(rec); return true; }
     dropLayer(id) { dropped.push(id); }
 }
-// FrontCCU: the sample callback the app subscribes with
+// FrontCCU: the sample callback the app subscribes with; HMIContext: the display language's, and its proxy's instance
 let frontCcu = null;
+let displayLanguage = null;
+const hmiContext = [];
 const someipBuilders = {
     buildTypedProxy: (iface, instance) => Promise.resolve({
         iface, instance,
         init: () => Promise.resolve(),
         waitUntilAvailable: () => Promise.resolve(),
-        statusRotaryEncoderState: { subscribe: (cb) => { frontCcu = cb; return Promise.resolve(); } }
+        statusRotaryEncoderState: { subscribe: (cb) => { frontCcu = cb; return Promise.resolve(); } },
+        currentDisplayLanguage: {
+            subscribe: (cb) => { displayLanguage = cb; hmiContext.push(`${iface} ${instance}`); return Promise.resolve(); },
+            getValue: () => Promise.resolve('ENGLISCH__UK')
+        }
     })
 };
 const stubs = {
@@ -1065,7 +1071,7 @@ function runDrawn() {
         gpu.emit('touch', 'up', x0, y0 - 120);
         drawn.pop();
         // a new page with a picture not decoded yet: its first frame waits for it
-        const pic = path.join(__dirname, '..', 'robertn_store@0.9.12', 'rhmiData', 'variantGroups', 'Common', 'images', 'store_icon.png');
+        const pic = path.join(__dirname, '..', 'robertn_store@0.9.13', 'rhmiData', 'variantGroups', 'Common', 'images', 'store_icon.png');
         const extra = Array.from({ length: 30 }, (_, i) => comp({ id: `x${i}`, title: `Extra ${i}`, version: '1.0.0', installed: null, status: 'available' }));
         app._client.emit('state', Object.assign({}, st, { components: st.components.concat(extra, [comp({ id: 'pictured', title: 'Pictured',
             version: '1.0.0', installed: null, status: 'available', icon: pic })]) }));
@@ -1658,7 +1664,37 @@ function runTiming() {
     });
 }
 
-run().then(runWidgetsExtra).then(runDrawn).then(runTiming).then(() => {
+/* The words follow the HMI's display language, English without a translation. */
+function runLanguage() {
+    const i18n = require(path.join(SRC, 'i18n.js'));
+    const check = () => (last(/^storeCheck\.0\.(Text|PrimaryText)=/) || '').split('=')[1];
+    const nav = () => (last(/^storeNavApps\.0\.(Text2ndCol|FrequencyText)=/) || '').split('=')[1];
+    app._setupLanguage();
+    app._setVisible(true);
+    app._forgetWritten();
+    app._client.emit('state', Object.assign({}, ST, { components: [comp({ status: 'update', version: '1.0.2' })] }));
+    return tick().then(() => {
+        eq(hmiContext, ['de.bmw.infotainment.hmi.hmicontext.HMIContext HMI_CID',
+            'de.bmw.infotainment.hmi.hmicontext2.HMIContext2 1'], 'both HMI contexts of the CID');
+        eq([check(), nav()], ['Check for updates', '1 update'], 'English');
+        displayLanguage('CHINESISCH_SIMPLE');
+        return tick();
+    }).then(() => {
+        eq([check(), nav()], ['检查更新', '1 项更新'], 'Simplified Chinese: the widget screens follow');
+        displayLanguage('DEUTSCH');
+        return tick();
+    }).then(() => {
+        eq([check(), nav()], ['Check for updates', '1 update'], 'a language without a translation: English');
+        displayLanguage('CHINESISCH_SIMPLE');
+        displayLanguage(255);
+        return tick();
+    }).then(() => {
+        eq(check(), 'Check for updates', 'an invalid value: English');
+        i18n.setHmiLanguage(null);
+    });
+}
+
+run().then(runWidgetsExtra).then(runLanguage).then(runDrawn).then(runTiming).then(() => {
     cleanUp();
     console.log(`store: ${checks} checks pass`);
     process.exit(0);

@@ -36,10 +36,10 @@ function compact(W, H) {
     const nav = (sel) => el('nav', 'sideNav', M, M, RAIL, H - 2 * M, { items: NAV_ITEMS, sel, labelSize: 24 });
     const screen = (name, sel, components) => ({ kind: 'gpu', name, theme: 'm_tricolour', bg: 'theme',
         components: [nav(sel)].concat(components) });
-    // the header row: the title, then the status on its baseline
+    // the header row: the title, then the status on its baseline (moved right of a longer title)
     const HEAD = M + 64;
     const title = (t, x) => text('title', x === undefined ? X : x, M + 2, 640, 60, t, 50, 'bold');
-    const status = (name, x, w, color) => text(name, x, M + 24, w, 30, '', 23, 'label', color || DIM);
+    const status = (name, x, w, color) => text(name, x, M + 24, w, 30, '', 23, 'label', color || DIM, { after: 'title' });
     const back = () => el('back', 'vbutton', X, M, 64, 64, { text: '', vicon: 'back', style: 'round', color: '#f4f7fb' }, 'event:back');
     const BTN_H = 76;
     const GRID_Y = HEAD + 10;

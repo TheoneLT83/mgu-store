@@ -1,6 +1,6 @@
 'use strict';
 /**
- * Writes robertn_store@0.9.12's application.xml and uiDescription.json for
+ * Writes robertn_store@0.9.13's application.xml and uiDescription.json for
  * iDrive 7 (uiDescriptions/ID7) and iDrive 8 (uiDescriptions/ID8) from the
  * tables below, so container and component ids, names, widgets and cells
  * stay in lockstep.
@@ -61,6 +61,12 @@
  * state. Each depth's state has the one below as its parent (on iDrive 8
  * none, statesFor); depth 1 is the entry state while its mode is in use.
  *
+ * The widget screens' own words are string ids (SID_STORE_<WORDS>), so the
+ * HMI shows them in its display language: the RHMI text files
+ * (rhmiData/variantGroups/Common/texts) are written from them, en_GB.json in
+ * English and one per language (locales/<code>.json "rhmiTexts") in its words,
+ * English where it has none. What the app writes at runtime is text.
+ *
  * A list is one button component; the app sets its row count at runtime.
  * Ids share one space across containers, layout groups (100 + 2 * state
  * id, + 1) and components. iDrive 8's description has the hidden label
@@ -72,8 +78,9 @@
 const fs = require('fs');
 const path = require('path');
 
-const PKG = path.join(__dirname, '..', 'robertn_store@0.9.12');
+const PKG = path.join(__dirname, '..', 'robertn_store@0.9.13');
 const DIR = (hmi) => path.join(PKG, 'rhmiData', 'uiDescriptions', hmi);
+const TEXTS = path.join(PKG, 'rhmiData', 'variantGroups', 'Common', 'texts');
 const ID7 = DIR('ID7');
 const ID8 = DIR('ID8');
 const PROXIES = [48, 24, 12];
@@ -108,8 +115,13 @@ const WIDGETS = {
     }
 };
 
+/* The string id of English words: SID_STORE_ and the words in capitals,
+ * a ? as _Q. */
+const sid = (words) => `SID_STORE_${words.replace(/\?/g, ' Q').toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '')}`;
+const words = (text) => (text ? { value: sid(text), type: 'StringId' } : { value: '', type: 'Text' });
+
 function state(id, name, titleId, title, parent, components) {
-    return { id, name, titleId, title: { value: title, type: 'Text' }, parent, components };
+    return { id, name, titleId, title: words(title), titleText: title, parent, components };
 }
 
 const MAIN = {
@@ -298,7 +310,7 @@ function uiDescription(hmi) {
             const cells = {};
             Object.keys(w.cells).forEach((k) => {
                 const v = w.cells[k];
-                cells[k] = { value: v, type: typeof v === 'boolean' ? 'Bool' : 'Text' };
+                cells[k] = typeof v === 'boolean' ? { value: v, type: 'Bool' } : words(v);
             });
             components[c.id] = {
                 type: w.type,
@@ -314,12 +326,37 @@ function uiDescription(hmi) {
     return { schemaVersion: '1.3.0', containers };
 }
 
+/* The words behind the string ids, by id: the tile's and every state's and
+ * component's own. */
+function english() {
+    const out = { SID_TEMP_EMPTY: '', SID_STORE_TITLE: 'Store' };
+    ['ID7', 'ID8'].forEach((hmi) => statesFor(hmi).forEach((s) => {
+        [s.titleText].concat(s.components.map((c) => c.text))
+            .filter(Boolean).forEach((t) => { out[sid(t)] = t; });
+    }));
+    return out;
+}
+
+/* The RHMI text files: en_GB.json, and one per locale. */
+function texts() {
+    const en = english();
+    const out = { 'en_GB.json': en };
+    require('./gen_locales.js').read().forEach((l) => {
+        const file = {};
+        Object.keys(en).forEach((id) => { file[id] = Object.prototype.hasOwnProperty.call(l.words, en[id]) ? l.words[en[id]] : en[id]; });
+        out[`${l.rhmiTexts}.json`] = file;
+    });
+    return out;
+}
+
 function write() {
     ['ID7', 'ID8'].forEach((hmi) => {
         fs.mkdirSync(DIR(hmi), { recursive: true });
         fs.writeFileSync(path.join(DIR(hmi), 'application.xml'), xml(hmi));
         fs.writeFileSync(path.join(DIR(hmi), 'uiDescription.json'), JSON.stringify(uiDescription(hmi), null, 2) + '\n');
     });
+    const files = texts();
+    Object.keys(files).forEach((n) => fs.writeFileSync(path.join(TEXTS, n), JSON.stringify(files[n], null, 2) + '\n'));
 }
 
 if (require.main === module) {
@@ -332,4 +369,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { write, statesFor, widgetOf, hostName, proxyName, PROXIES, ID7, ID8 };
+module.exports = { write, texts, sid, statesFor, widgetOf, hostName, proxyName, PROXIES, ID7, ID8 };

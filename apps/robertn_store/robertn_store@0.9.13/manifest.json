@@ -67,6 +67,22 @@
         "statusRotaryEncoderState": "rs"
       }
     },
+    "de.bmw.infotainment.hmi.hmicontext.HMIContext": {
+      "instances": [
+        "HMI_CID"
+      ],
+      "attributes": {
+        "currentDisplayLanguage": "rs"
+      }
+    },
+    "de.bmw.infotainment.hmi.hmicontext2.HMIContext2": {
+      "instances": [
+        "1"
+      ],
+      "attributes": {
+        "currentDisplayLanguage": "rs"
+      }
+    },
     "de.bmw.infotainment.hmi.entrypoint2.EntryPoint2": "*",
     "de.bmw.infotainment.hmi.entrypoint2.EntryPointManager2": "*",
     "de.bmw.infotainment.hmi.remote2.RemoteHmi2": "*",

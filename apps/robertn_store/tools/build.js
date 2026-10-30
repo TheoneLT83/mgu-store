@@ -48,6 +48,7 @@ function sync(fromRel, toRel) {
 
 function main() {
     const donor = donorArg(process.argv.slice(2));
+    require('./gen_locales.js').write();
     require('./gen_rhmi.js').write();
     sync('native/mgu-updater/js/client.js', 'lib/client.js');
     sync('native/mgu-render/js/mgu_render_client.js', 'lib/mgu_render_client.js');

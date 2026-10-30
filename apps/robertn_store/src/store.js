@@ -59,7 +59,6 @@
  * when opened again.
  */
 'use strict';
-
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -67,6 +66,7 @@ const OnlineApp = require('oap-sdk/src/core/OnlineApp.js');
 const logging = require('oap-sdk/src/logging/logging');
 const someipBuilders = require('oap-sdk/src/someip/someipBuilders');
 const { UpdaterClient } = require('./client.js');
+const i18n = require('./i18n.js');
 const { qrPng } = require('./qr.js');
 const { spell } = require('./speller.js');
 const { Drawn, DEPTHS } = require('./store_drawn.js');
@@ -77,6 +77,7 @@ const { PHASE, percent, rowState, rowAction, groupState, statusLine, sourceLabel
     removable, withSources, listed } = require('./store_view.js');
 
 const logger = logging.getSDKLogger();
+const tr = i18n.t;
 
 const SOCKET = '/dev/shm/mgu-updater/updater.sock';
 /* The updater writes the privileged secret, and while the phone page is on
@@ -97,6 +98,9 @@ const TOKEN_ADD_MS = 30000;             // how long Add token says "Checking tok
 const FOCUS_BACK_MS = 2000;             // how long a page waits for the HMI to give the focus back from the speller
 const PROBE_MS = 30000;                 // how long a repo being added waits for the updater's answer
 const IF_FRONTCCU = 'de.bmw.infotainment.controlelements.FrontCCU';
+/* The HMI's context, by the instance of the CID: iDrive 7's HMI offers the first, iDrive 8's the second. */
+const HMI_CONTEXTS = [['de.bmw.infotainment.hmi.hmicontext.HMIContext', 'HMI_CID'],
+    ['de.bmw.infotainment.hmi.hmicontext2.HMIContext2', '1']];
 const UPLINK_OPS = ['uplink-prefer', 'wifi-enable', 'wifi-scan', 'wifi-connect', 'wifi-forget'];
 
 /* The drawn screens' host states and their proxies (tools/gen_rhmi.js). */
@@ -328,6 +332,7 @@ class Store extends OnlineApp {
         }
         const foregroundStart = this._startedForeground();
         return this._setupRhmi()
+            .then(() => this._setupLanguage())
             .then(() => this._setupController())
             .then(() => this._rendererAnswer())
             .then(() => this._registerEntryPoints())
@@ -361,6 +366,31 @@ class Store extends OnlineApp {
         const data = this.getVisibilityData && this.getVisibilityData();
         const reason = (data && data.reason) || this.startReason;
         return FOREGROUND_REASONS.includes(reason);
+    }
+
+    /* The words follow the HMI's display language (src/i18n.js), from
+     * whichever HMI context the HMI offers: read at start and on each
+     * change; English until then, and without it. */
+    _setupLanguage() {
+        logger.info(`languages: en ${i18n.codes().join(' ')}`);
+        HMI_CONTEXTS.forEach(([iface, instance]) => {
+            let proxy;
+            someipBuilders.buildTypedProxy(iface, instance)
+                .then((p) => { proxy = p; return proxy.init(); })
+                .then(() => proxy.waitUntilAvailable())
+                .then(() => proxy.currentDisplayLanguage.subscribe((v) => this._displayLanguage(v)))
+                .then(() => proxy.currentDisplayLanguage.getValue())
+                .then((v) => this._displayLanguage(v))
+                .catch((err) => logger.warn(`display language unavailable from ${iface}: ${err && err.message}`));
+        });
+    }
+
+    _displayLanguage(value) {
+        if (i18n.setHmiLanguage(value)) {
+            logger.info(`display language ${value}: ${i18n.language()}`);
+            this._forgetWritten();
+            this._render();
+        }
     }
 
     /* The controller for the drawn screens in embed mode (src/store_drawn.js
@@ -694,12 +724,12 @@ class Store extends OnlineApp {
     _wifiPassword(ssid) {
         this._uplinkNote = null;
         this._spell(ssid, (m) => { this._uplinkNote = sourcesMessage(m); this._render(); },
-            { label: 'Password', layout: 'text', symbols: true, go: 'Connect', min: 8, max: 63, secret: 'password' }).then((psk) => {
+            { label: tr("Password"), layout: 'text', symbols: true, go: tr("Connect"), min: 8, max: 63, secret: 'password' }).then((psk) => {
             if (!psk) {
                 return;
             }
             if (!/^[\x20-\x7e]{8,63}$/.test(psk)) {
-                this._uplinkNote = 'A Wi-Fi password is 8 to 63 letters, digits and symbols';
+                this._uplinkNote = tr("A Wi-Fi password is 8 to 63 letters, digits and symbols");
                 this._render();
                 return;
             }
@@ -1017,7 +1047,7 @@ class Store extends OnlineApp {
 
     _addSource() {
         this._note(null);
-        this._spell('Add source').then((text) => {
+        this._spell(tr("Add source")).then((text) => {
             const typed = (text || '').trim();
             if (!typed) {
                 return;
@@ -1037,7 +1067,7 @@ class Store extends OnlineApp {
      * whose it is before it stores it; the status line says what came of it. */
     _addToken() {
         this._endTokenAdd(null);
-        this._spell('GitHub token', (m) => this._accountNote(m), { secret: true }).then((text) => {
+        this._spell(tr("GitHub token"), (m) => this._accountNote(m), { secret: true }).then((text) => {
             const token = (text || '').trim();
             if (!token) {
                 return;
@@ -1348,13 +1378,13 @@ class Store extends OnlineApp {
         const st = this._st;
         const connected = this._connected && !!st;
         this._set(C.status, 'Text', connected ? statusLine(st, true) : statusLine(null, false, !!readSecret()), 'Text');
-        this._set(C.check, 'Text', connected && st.catalog.checking ? 'Checking' : 'Check for updates', 'Text');
+        this._set(C.check, 'Text', connected && st.catalog.checking ? tr("Checking") : tr("Check for updates"), 'Text');
 
         const busy = connected ? st.busy : null;
         const busyRow = busy && st.components.find((c) => c.id === busy.id);
         if (busyRow) {
             const done = busy.phase === 'download' ? percent(busy) / 100 : 1;
-            this._set(C.progress, 'TextLeft', `${PHASE[busy.phase] || 'Installing'} ${busyRow.title}`, 'Text');
+            this._set(C.progress, 'TextLeft', `${tr(PHASE[busy.phase] || 'Installing')} ${busyRow.title}`, 'Text');
             this._set(C.progress, 'TextRight', busy.phase === 'download' ? `${percent(busy)}%` : '', 'Text');
             this._set(C.progress, 'Progress', done, 'Float');
         }

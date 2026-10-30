@@ -1,4 +1,4 @@
-# robertn_store 0.9.12
+# robertn_store 0.9.13
 
 The Store: every app and head-unit tool of every source, each with its
 state, the progress of the running install, the sources, the phone page
@@ -96,6 +96,41 @@ through it once. iDrive 8 has its own widget layout
 
 On iDrive 8 the deploy tool gives the Store the id its tile needs when it
 installs it; the same package runs on iDrive 7.
+
+## Languages
+
+The Store is in the head unit's display language: English, and Simplified
+Chinese (translated by [JackieZ123430](https://github.com/JackieZ123430)).
+It reads `currentDisplayLanguage` of HMIContext (`HMI_CID`, iDrive 7) and
+HMIContext2 (`1`, iDrive 8), the manifest's proxies, at start and follows
+each change, the drawn screens and the widget
+screens alike; any other language, and a value it cannot read, is English.
+Names, versions, sources, accounts, SSIDs and the updater's errors are shown
+as they are.
+
+A language is one file, `locales/<code>.json`: the HMI's languages it is
+for (`CommonTypes.Language`), its RHMI text file and its words, each keyed
+by the English (`{0}`, `{1}` stand for the values):
+
+```json
+{ "hmiLanguages": ["CHINESISCH_SIMPLE"], "rhmiTexts": "zh_CN", "font": "chinese",
+  "words": { "Update {0}": "更新 {0}" } }
+```
+
+`tools/build.js` writes them into the Store (`src/locales.js`, by
+`tools/gen_locales.js`) and, by `tools/gen_rhmi.js`, the RHMI text file of
+each language (`rhmiData/variantGroups/Common/texts`): the widget screens'
+own words are string ids, which the HMI shows in its language, the Store's
+tile name too. `tools/test_i18n.js` checks that every word the Store shows
+has a translation in every language, with the same `{n}`, and that no
+translation is left over.
+
+Chinese is drawn with Noto Sans SC (SIL OFL, `src/LICENSE-NotoSansSC.txt`),
+baked by `tools/bake_chinese.py` into `src/font_chinese.js`, used for text
+Inter cannot draw while Chinese is the language and loaded the first time
+it is: the Store's own words at 48 px, and GB2312's 3,755 most used
+characters at 24 px, for names and descriptions. Its two atlases take
+about 3,040 rows of the renderer's shared 2048 x 4096 glyph texture.
 
 ## The widget screens
 
@@ -300,13 +335,19 @@ src/store_elements.js      the Store's own element: QR code
 src/am_screens.js          the screens (App Manager 2's screens.json, with the Store's pages)
 src/am_gpu.js, src/am_elements.js, src/am_widgets.js, src/am_store_widgets.js
                            App Manager 2's element drawing (no gauges, no HMI icon atlas)
+locales/<code>.json        a language's words (README "Languages")
+src/i18n.js                the words in the display language
+src/locales.js             the languages, written by tools/gen_locales.js
 src/kit_*.js               the kit: record, canvas, vicons, png, themes (MIT, src/LICENSE-kit.txt);
-                           kit_fonts.js maps its families onto Inter
+                           kit_fonts.js maps its families onto Inter, and Chinese onto Noto Sans SC
 src/font_regular.js, src/font_semibold.js   Inter glyph atlases (tools/bake_fonts.py)
+src/font_chinese.js        Noto Sans SC glyph atlases (tools/bake_chinese.py)
 lib/mgu_render_client.js   mgu-render's client, copied by tools/build.js
-tools/gen_rhmi.js          application.xml + uiDescription.json for iDrive 7 and 8 from one table
-tools/build.js             RHMI, lib/, the source package, and given a donor the OAP tgz
+tools/gen_locales.js       src/locales.js from locales/*.json
+tools/gen_rhmi.js          application.xml + uiDescription.json for iDrive 7 and 8 from one table, and the RHMI texts
+tools/build.js             languages, RHMI, lib/, the source package, and given a donor the OAP tgz
 tools/bake_fonts.py        the Inter atlases (Pillow, Inter 4.1's TTFs)
+tools/bake_chinese.py      the Noto Sans SC atlases (Pillow, NotoSansSC[wght].ttf of google/fonts, SHA-256 checked)
 tools/gen_screens.py       src/am_screens.js from App Manager 2's screens.json
 tools/fixture.js           an updater state with one of everything, and the drawn screens over it
 tools/test_view.js         the texts for every row, source, account, sign-in and phone state
@@ -315,20 +356,22 @@ tools/test_qr.js           the QR pictures (decoded back with zbarimg when insta
 tools/test_speller.js      src/speller.js against a fake use case factory
 tools/test_screens.js      every drawn screen in iDrive 7's and 8's boxes: in the box, values, presses, focus order, scrolling, touch
 tools/test_store.js        src/store.js's flows against stand-in SDK, RHMI, updater, speller and renderer
+tools/test_i18n.js         every language: its words, placeholders, RHMI text file, font
 tools/shots.js             screenshots of the drawn screens through mgu-render --replay
 tools/test_drag.js         a drag frame against the frame built whole, through mgu-render --replay
 tools/make_icon.py         the 140x140 tile icon
-robertn_store@0.9.12/       staged package tree (no javascript/: the build writes it)
+robertn_store@0.9.13/       staged package tree (no javascript/: the build writes it)
 ```
 
 ## Build
 
 ```sh
 cd apps/robertn_store
-node tools/build.js                                # robertn_store@0.9.12.src.tgz
-node tools/build.js --sdk <donor .tgz|.js>         # and robertn_store@0.9.12.tgz (MGU_SDK_DONOR)
+node tools/build.js                                # robertn_store@0.9.13.src.tgz
+node tools/build.js --sdk <donor .tgz|.js>         # and robertn_store@0.9.13.tgz (MGU_SDK_DONOR)
 node tools/test_view.js && node tools/test_rhmi.js && node tools/test_qr.js && node tools/test_speller.js &&
-    node tools/test_screens.js && node tools/test_store.js && STORE_HMI=ID8 node tools/test_store.js
+    node tools/test_screens.js && node tools/test_store.js && STORE_HMI=ID8 node tools/test_store.js &&
+    node tools/test_i18n.js
 (cd ../../native/mgu-render && make test) && node tools/test_drag.js && node tools/shots.js <out dir>     # screenshots
 ```
 
