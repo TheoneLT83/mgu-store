@@ -229,7 +229,8 @@ function sourceEpoch(c) {
  * packer: its source, as the emulator gate tested it. A merge commit that
  * brings the change in unaltered keeps it (history simplification follows the
  * parent it came from). An app's build also copies files in from elsewhere;
- * its artifact builds to the same bytes everywhere, so its record names those. */
+ * its artifact builds to the same bytes on the Mac and in CI (Reproducible
+ * builds), so its record names those. */
 function sourceCommit(c) {
     const packer = c.kind === 'tool' ? ['deploy/hu', 'tools/oap_pack.js'] : [];
     return git(['log', '-1', '--format=%H', 'HEAD', '--'].concat(c.shipped, packer));
@@ -246,10 +247,13 @@ function gateProblem(c, record, source, sha256) {
     if (!record) {
         return `${c.id}@${c.version} has no emulator gate record: ${run}`;
     }
-    if (record.id !== c.id || record.version !== c.version || record.source !== source ||
-        (c.kind === 'app' && record.artifactSha256 !== sha256)) {
+    if (record.id !== c.id || record.version !== c.version || record.source !== source) {
         return `${c.id}@${c.version}: the gate record is for ${record.id}@${record.version} at ${String(record.source).slice(0, 12)}, ` +
             `not this source (${source.slice(0, 12)}): ${run}`;
+    }
+    if (c.kind === 'app' && record.artifactSha256 !== sha256) {
+        return `${c.id}@${c.version}: the gate tested the artifact ${String(record.artifactSha256).slice(0, 12)}, ` +
+            `this build is ${sha256.slice(0, 12)}: ${run}`;
     }
     if (record.result !== 'pass') {
         return `${c.id}@${c.version}: the emulator gate did not pass: ${run}`;

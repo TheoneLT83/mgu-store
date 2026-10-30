@@ -501,7 +501,7 @@ function testReleaseGate() {
     const appRecord = (o) => Object.assign({ id: 'robertn_store', version: '0.9.14', source: src, result: 'pass', artifactSha256: 'f'.repeat(64) }, o);
     check('release gate: an app with the tested artifact publishes', gateProblem(app, appRecord({}), src, 'f'.repeat(64)) === null);
     check('release gate: an app whose artifact differs from the tested one is refused',
-        /not this source/.test(gateProblem(app, appRecord({}), src, 'e'.repeat(64))));
+        /the gate tested the artifact f{12}, this build is e{12}/.test(gateProblem(app, appRecord({}), src, 'e'.repeat(64))));
     check('release gate: a component outside the gate needs no record',
         gateProblem({ id: 'mgu-updater', version: '0.8.7' }, null, src) === null);
 }

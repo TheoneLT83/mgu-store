@@ -200,7 +200,7 @@ function gate(id, version, artifact, client, emuDir) {
     step('installed on its own over the published release', {
         // the same version as the published one installs nothing: there is nothing new to test
         ok: !/nothing to change/.test(inst) && now && now.version === version,
-        detail: inst.trim().split('\n').pop()
+        detail: /nothing to change/.test(inst) ? `${version} is the published version: nothing new to test` : inst.trim().split('\n').pop()
     });
     hu.restart();
 
@@ -249,8 +249,10 @@ function main(ids) {
     const started = Date.now();
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'emu-gate-'));
     const emuDir = path.join(tmp, 'emu');
-    // Ctrl-C reaches the running child too; its failure then ends the run through the cleanup below
-    process.on('SIGINT', () => {});
+    // a signal ends the run through the cleanup below (Ctrl-C reaches the running child too)
+    let stopped = null;
+    ['SIGINT', 'SIGTERM', 'SIGHUP'].forEach((sig) => process.on(sig, () => { stopped = sig; }));
+    if (process.env.EMU_GATE_KEEP) console.log(`kept after the run: VM ${VM}, emulator worktree ${emuDir}`);
     let failed = 0;
     try {
         // the stale-copy client: mgu-render's test client, built for the head unit
@@ -265,6 +267,7 @@ function main(ids) {
         run('git', ['-C', EMULATOR, 'worktree', 'add', '--detach', emuDir, 'origin/main']);
         const emuCommit = run('git', ['-C', emuDir, 'rev-parse', 'HEAD']).trim();
         for (const id of ids) {
+            if (stopped) { console.log(`stopped (${stopped})`); failed++; break; }
             const c = all.find((x) => x.id === id);
             const source = sourceCommit(c);
             console.log(`\n== ${id}@${c.version}`);
@@ -282,7 +285,7 @@ function main(ids) {
             } finally {
                 if (!process.env.EMU_GATE_KEEP) emulator(emuDir).down();
             }
-            if (!out.results.every((r) => r.ok)) { failed++; continue; }
+            if (stopped || !out.results.every((r) => r.ok)) { failed++; continue; }
             if (run('git', ['rev-parse', 'HEAD'], { cwd: REPO }).trim() !== head) {
                 console.log(`FAIL ${id}: HEAD moved during the run; run the gate again`);
                 failed++;
