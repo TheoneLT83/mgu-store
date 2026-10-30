@@ -42,6 +42,8 @@ const FPS = 60;                         // frames a second at most (mgu-render's
 const KEEPALIVE_MS = 1000;              // the renderer hides an app silent for 3 s
 const CLOSED_RESHOW_MS = 700;           // a touch outside that left the page where it was
 const STUCK_MS = 6000;                  // asked to show and off screen this long: the widget screens instead
+const RETRY_MS = 30000;                 // after a picture that showed was taken away: the drawn screens tried again
+const RETRIES = 3;                      // that often on a timer (30, 60, 120 s); an install or removal ending always retries
 const DRAG_PX = 14;
 const DRAG_ROWS_PX = 2048;                // a drag's cached rows: at most this high on the device (mgu-render takes 4096)
 const PREBUILD_MS = 300;                  // a drag's layers made ahead once the page has stayed this long
@@ -136,6 +138,7 @@ class Drawn extends EventEmitter {
         super();
         this.host = host;
         this.log = host.log;
+        this.opts = opts || {};
         this.stuckMs = opts && opts.stuckMs;
         this.gpu = (opts && opts.client) || new RenderClient('robertn_store', this.log, { kit, mode: 'layer' });
         this.gpu.fps(FPS);
@@ -162,6 +165,11 @@ class Drawn extends EventEmitter {
         this.on_ = false;
         this.onScreen = false;              // the renderer says the picture is on screen
         this.stuck = false;                 // it never was: widget screens from then on
+        this.shownOnce = false;             // the picture was on screen once: a later loss is not for good
+        this.lost = false;                  // widget screens for now, after a picture that showed was taken away
+        this.info = null;                   // the renderer's last READY info, to try the drawn screens again
+        this.retries = 0;
+        this.retryTimer = null;
         this.stuckTimer = null;
         this.dirty = false;
         this.sentAt = 0;
@@ -214,6 +222,8 @@ class Drawn extends EventEmitter {
         this.gpu.on('state', (st) => {
             this.onScreen = !!(st && st.onScreen);
             if (this.onScreen) {
+                this.shownOnce = true;
+                this.retries = 0;
                 clearTimeout(this.stuckTimer);
             } else if (this.on_) {
                 this._watchStuck();         // taken off screen while the Store still asks for it
@@ -228,6 +238,7 @@ class Drawn extends EventEmitter {
     /* At shutdown: the connection ends without switching to the widget screens. */
     close() {
         clearInterval(this.keepalive);
+        clearTimeout(this.retryTimer);
         clearTimeout(this.prebuild);
         clearTimeout(this.held);
         this.timing.close();
@@ -236,6 +247,7 @@ class Drawn extends EventEmitter {
     }
 
     _ready(info) {
+        this.info = info;
         let mode = null;
         if (info && !this.stuck) {
             if (info.modes.indexOf('embed') >= 0 && this.host.modes.indexOf('embed') >= 0) {
@@ -504,17 +516,43 @@ class Drawn extends EventEmitter {
         }, KEEPALIVE_MS) : null;
     }
 
-    /* Asked to show and not on screen for STUCK_MS: the widget screens until the Store restarts. */
+    /* Asked to show and not on screen for STUCK_MS: the widget screens. A picture that never showed
+     * (an HMI build that does not put it on screen): until the Store restarts. One that showed and was
+     * taken away (an app install restarts the app manager, which closes the Store's screen meanwhile):
+     * for now, and the drawn screens are tried again (retry). */
     _watchStuck() {
         const ms = this.stuckMs || STUCK_MS;
         clearTimeout(this.stuckTimer);
         this.stuckTimer = setTimeout(() => {
             if (this.on_ && !this.onScreen && this.mode) {
-                this.log.warn(`renderer: ${this.mode} asked to show, not on screen for ${ms / 1000} s; widget screens`);
-                this.stuck = true;
-                this._setMode(null);
+                this.log.warn(`renderer: ${this.mode} asked to show, not on screen for ${ms / 1000} s; widget screens${
+                    this.shownOnce ? ' until it can show again' : ''}`);
+                if (this.shownOnce) {
+                    this.lost = true;
+                    this._setMode(null);
+                    if (this.retries < RETRIES) {
+                        clearTimeout(this.retryTimer);
+                        this.retryTimer = setTimeout(() => this.retry(), ((this.opts && this.opts.retryMs) || RETRY_MS) * 2 ** this.retries);
+                    }
+                } else {
+                    this.stuck = true;
+                    this._setMode(null);
+                }
             }
         }, ms);
+    }
+
+    /* The drawn screens again after a picture that showed was taken away (lost): on a timer, or when an
+     * install or removal has ended. Not on screen again within STUCK_MS: the widget screens once more. */
+    retry() {
+        clearTimeout(this.retryTimer);
+        if (!this.lost || this.mode || !this.info || this.stuck) {
+            return;
+        }
+        this.lost = false;
+        this.retries++;
+        this.log.info('renderer: drawn screens again');
+        this._ready(this.info);
     }
 
     /* Draws the frame (sent while the renderer is ready and the page is

@@ -280,7 +280,13 @@ class Store extends OnlineApp {
         this._client = new UpdaterClient(SOCKET, { reconnectMs: RECONNECT_MS });
         this._client.on('state', (st) => {
             this._connected = true;
+            // an install or removal ended: the drawn screens again if they were lost meanwhile (the app
+            // manager restarted for it closes the Store's screen for a moment)
+            const ended = this._st && this._st.busy && !st.busy;
             this._st = withOwnIcon(st);
+            if (ended) {
+                this._drawn.retry();
+            }
             this._tokenAdded(st);
             this._reprobe();
             this._render();

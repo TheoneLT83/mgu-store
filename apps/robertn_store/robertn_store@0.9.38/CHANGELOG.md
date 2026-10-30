@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.38
+
+The Store no longer stays on its plain widget screens after an app install. The install restarts the app manager, which
+closes the Store's screen for a moment, and the renderer took the Store's picture off screen meanwhile: after 6 s the
+Store went to its widget screens until it was restarted. A picture that was on screen and then taken away now gives the
+widget screens only for now: the drawn screens come back when the install or removal ends, or on their own after 30, 60
+and 120 s. A picture that never showed (an HMI build that does not put it on screen) still gives the widget screens until
+the Store restarts.
+
 ## 0.9.37
 
 - Merged robertnisipeanu/mgu-store's Store 0.9.12 and 0.9.13:
