@@ -220,6 +220,16 @@ restarts), which the link replaces.
 an id. The embed surface `0x500` is on the HMI's own compositor (`wayland-1`),
 which neither community renderer connects to.
 
+**The screen's layer list.** Winston rewrites the centre screen's list on
+each `add_layer` from the calling connection's own copy (taken when it
+connected, changed only by its own requests), so a long-open connection drops
+the layers others added since. Our layer goes on through a connection made
+for that moment (`src/relist.c`), whose copy is the list as it is, so other
+programs' layers stay. A
+layer another program drops is put back on top, at once while its app is
+shown, otherwise at its next show; with no layer of ours dropping theirs, a
+renderer that puts its own layer back in turn finds nothing to answer.
+
 **Touch.** IterioDev's renderer diverts the display's touch with its own
 table (`ip touchroute`, ports 30568 in, 30569 out); ours has `ip mgu_render`
 and ports 30570 in, 30571 out, so neither removes the other's rule or takes

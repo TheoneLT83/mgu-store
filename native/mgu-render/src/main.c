@@ -60,6 +60,7 @@
 #include "log.h"
 #include "trace.h"
 #include "proto.h"
+#include "relist.h"
 #include "share.h"
 #include "touch.h"
 #include "ivi-application-client-protocol.h"
@@ -73,6 +74,8 @@
 #define GRAB_US 1500000ull           /* a GRAB holds this long unless repeated */
 #define GATE_TOUCH_US 200000ull      /* the controller gate's file is refreshed this often while held */
 #define SHARE_US 2000000ull          /* the community socket's rule is applied this often */
+#define DROP_WINDOW_US 10000000ull   /* a layer taken off while shown goes back at once at most DROP_MAX times in this */
+#define DROP_MAX 10
 #ifndef GL_BGRA_EXT
 #define GL_BGRA_EXT 0x80E1
 #endif
@@ -86,7 +89,6 @@ static struct wl_display *dpy;
 static struct wl_compositor *comp;
 static struct ivi_application *iapp;
 static struct ivi_controller *ictl;
-static struct { uint32_t id; struct ivi_controller_screen *s; } screens[16];
 static int nscreens;
 static EGLDisplay edpy;
 static EGLConfig ecfg;
@@ -119,6 +121,9 @@ typedef struct client {
     EGLSurface es;
     struct ivi_controller_surface *cs;
     struct ivi_controller_layer *cl;
+    int listed;             /* the layer is on the centre screen's list, as the compositor last said */
+    int shown_on;           /* shown at the last apply_visibility */
+    uint64_t drop_t; int drops; /* the layer taken off while shown: when the current 10 s began, how often since */
     struct wl_callback *frame_cb;
     /* frames */
     uint32_t *frame; size_t frame_words, frame_cap;
@@ -163,8 +168,8 @@ static void ccu_open(void);
 static int ccu_free(void);
 
 static void c_screen(void *d, struct ivi_controller *c, uint32_t id, struct ivi_controller_screen *s) {
-    (void)d, (void)c;
-    if (nscreens < 16) { screens[nscreens].id = id; screens[nscreens].s = s; nscreens++; }
+    (void)d, (void)c, (void)s;
+    nscreens++;
     log_debug("screen %u", id);
 }
 static void c_layer(void *d, struct ivi_controller *c, uint32_t id) { (void)d, (void)c, (void)id; }
@@ -324,9 +329,15 @@ static void origin(const client *c, float *x, float *y) {
     else { *x = (float)c->x; *y = (float)c->y; }
 }
 
+static void layer_put(client *c);
 static void apply_visibility(client *c) {
     if (!c->cl) return;
     int on = shown(c);                                     /* never show an empty or dead surface */
+    if (on && !c->shown_on) {                              /* shown: a layer taken off meanwhile goes back */
+        c->drops = 0;
+        if (!c->listed) layer_put(c);
+    }
+    c->shown_on = on;
     ivi_controller_layer_set_visibility(c->cl, on);
     ivi_controller_surface_set_visibility(c->cs, on);
     ivi_controller_commit_changes(ictl);
@@ -420,13 +431,44 @@ static void surface_destroy(client *c) {
     if (ictl) ivi_controller_commit_changes(ictl);
 }
 
-static struct ivi_controller_screen *centre_screen(void) {
-    for (int i = 0; i < nscreens; i++) if (cfg.screen_id && screens[i].id == cfg.screen_id) return screens[i].s;
-    /* winston reports the screens newest first; the centre display is the oldest (lowest id) */
-    struct ivi_controller_screen *best = NULL; uint32_t bid = 0xffffffffu;
-    for (int i = 0; i < nscreens; i++) if (screens[i].id < bid) { bid = screens[i].id; best = screens[i].s; }
-    return best;
+/* Our layer onto the centre screen, on top. Never through ictl: winston applies a screen's add_layer to the list as
+ * this connection last saw or set it, so it would drop the layers other programs (the HMI, another renderer) put on
+ * the screen since. A connection made for it sees the list as it is (relist.h). */
+static void layer_put(client *c) {
+    if (relist_put(cfg.wayland_display, cfg.screen_id, LAYER_BASE + c->slot, screen_w, screen_h) == 0) c->listed = 1;
 }
+
+/* The compositor says which screen the layer is on: none once another program set the screen's layers without it.
+ * Shown, it goes back at once; hidden, at its next show (another app is in front meanwhile, its renderer's turn). */
+static void l_screen(void *d, struct ivi_controller_layer *l, struct wl_output *o) {
+    client *c = d;
+    (void)l;
+    if (!c->cl) return;
+    if (o) { c->listed = 1; return; }
+    if (!c->listed) return;
+    c->listed = 0;
+    if (!c->shown_on) { log_info("%s: layer taken off the screen", c->app); return; }
+    uint64_t t = now_us();
+    if (t - c->drop_t > DROP_WINDOW_US) { c->drop_t = t; c->drops = 0; }
+    if (++c->drops > DROP_MAX) {
+        if (c->drops == DROP_MAX + 1)
+            log_warn("%s: layer taken off the screen more than %d times in %llu s; back at its next show", c->app, DROP_MAX,
+                     (unsigned long long)(DROP_WINDOW_US / 1000000));
+        return;
+    }
+    log_info("%s: layer taken off the screen, put back", c->app);
+    layer_put(c);
+}
+static void l_int(void *d, struct ivi_controller_layer *l, int32_t v) { (void)d, (void)l, (void)v; }
+static void l_opacity(void *d, struct ivi_controller_layer *l, wl_fixed_t v) { (void)d, (void)l, (void)v; }
+static void l_rect(void *d, struct ivi_controller_layer *l, int32_t x, int32_t y, int32_t w, int32_t h) {
+    (void)d, (void)l, (void)x, (void)y, (void)w, (void)h;
+}
+static void l_config(void *d, struct ivi_controller_layer *l, int32_t w, int32_t h) { (void)d, (void)l, (void)w, (void)h; }
+static void l_destroyed(void *d, struct ivi_controller_layer *l) { (void)d, (void)l; }
+static const struct ivi_controller_layer_listener layer_listener = {
+    l_int, l_opacity, l_rect, l_rect, l_config, l_int, l_screen, l_destroyed,
+};
 
 static int surface_create(client *c) {
     if (!dpy) return -1;
@@ -456,11 +498,11 @@ static int surface_create(client *c) {
     ivi_controller_layer_set_opacity(c->cl, wl_fixed_from_int(1));
     ivi_controller_layer_add_surface(c->cl, c->cs);
     ivi_controller_layer_set_visibility(c->cl, 0);
+    ivi_controller_layer_add_listener(c->cl, &layer_listener, c);
     ivi_controller_commit_changes(ictl);
-    struct ivi_controller_screen *scr = centre_screen();
-    if (scr) ivi_controller_screen_add_layer(scr, c->cl);   /* on top of the screen's layers */
-    else log_warn("%s: no screen to put the layer on", c->app);
-    ivi_controller_commit_changes(ictl);
+    wl_display_roundtrip(dpy);                            /* the layer exists for the connection that puts it on */
+    c->listed = 0; c->shown_on = 0; c->drops = 0;
+    layer_put(c);                                         /* on top of the screen's layers */
     wl_display_roundtrip(dpy);
     log_info("%s: surface 0x%x on layer 0x%x at %d,%d %dx%d (scale %.3f)", c->app, sid, lid, c->x, c->y, c->w, c->h, c->xf.s);
     return 0;
