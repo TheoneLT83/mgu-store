@@ -1544,6 +1544,25 @@ function runDrawn() {
             comp({ id: 'gamma', title: 'Gamma', version: '1.0.0', installed: '1.0.0', status: 'installed' })]) }));
         eq(drawn.items.map((i) => i.label).filter((l) => ['Alpha', 'Beta', 'DOOM', 'Gamma'].indexOf(l) >= 0), ['DOOM', 'Alpha', 'Beta', 'Gamma'],
             'a row installed meanwhile: after them');
+        // a page opened from a row comes back to it
+        const all4 = (o) => Object.assign(inst(o), { components: inst(o).components.concat([
+            comp({ id: 'gamma', title: 'Gamma', version: '1.0.0', installed: '1.0.0', status: 'installed' })]) });
+        app._client.emit('state', all4({}));
+        const doomAt = drawn.items.findIndex((i) => i.label === 'DOOM');
+        app._components[proxy(1, doomAt)].emit('focus', { value: true });
+        drawn.proxyPress(1, doomAt);
+        eq([drawn.top().name, drawn.top().id], ['app', 'doom'], 'DOOM\'s page');
+        app._client.emit('state', all4(done));
+        drawn.pop();
+        eq([rows(), focused()], [['DOOM', 'Alpha', 'Beta'], 'DOOM'], 'back: the rows as they were, the focus on DOOM');
+        // a drag from a row: the rows stay through it and after it, until the focus moves
+        const box = drawn.items[drawn.focus];
+        gpu.emit('touch', 'down', box.x + 40, box.y + 20);
+        gpu.emit('touch', 'move', box.x + 40, box.y + 60);
+        eq([drawn.focus, drawn._model().held && drawn._model().held.apps.slice(0, 3)], [-1, ['doom', 'alpha', 'beta']], 'a drag: the rows held');
+        gpu.emit('touch', 'up', box.x + 40, box.y + 60);
+        drawn.render();
+        eq(rows(), ['DOOM', 'Alpha', 'Beta'], 'after the drag: as they were');
         app._components[proxy(1, 0)].emit('focus', { value: true });
         eq([rows(), focused()], [['Alpha', 'Beta', 'DOOM'], 'Store'], 'the focus off the rows: in order again');
         drawn.setTab('store');

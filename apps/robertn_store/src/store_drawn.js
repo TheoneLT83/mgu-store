@@ -145,7 +145,9 @@ class Drawn extends EventEmitter {
         this.scroll = {};
         this.items = [];
         this.regions = [];
-        this.lists = null;                  // the Installed lists' rows as drawn: { apps, services } (ids)
+        this.lists = null;                  // the Installed lists' rows as drawn: { apps, services } (ids), kept under its pages
+        this.listsItems = [];               // and the Installed screen's items then
+        this.dragHeld = null;               // the rows held as a drag took the focus off them
         this.visibleHosts = new Set();      // depths whose host state is visible
         this.focusLost = false;             // the top host state lost the HMI focus (a popup)
         this.suspended = false;             // the HMI's speller is up
@@ -264,6 +266,7 @@ class Drawn extends EventEmitter {
      * first frame shows it whole (render: its pictures too). */
     _page() {
         this.pageAt = msNow();
+        this.dragHeld = null;
         this.touch = null;
         this.settleKey = null;
     }
@@ -463,8 +466,12 @@ class Drawn extends EventEmitter {
         const rec = r.rec;
         this.items = r.items;
         this.regions = r.regions;
-        this.lists = r.screen === 'installed' ? { apps: r.values.apps.items.map((i) => i.id), services: r.values.services.items.map((i) => i.id) }
-            : null;
+        if (r.screen === 'installed') {
+            this.lists = { apps: r.values.apps.items.map((i) => i.id), services: r.values.services.items.map((i) => i.id) };
+            this.listsItems = r.items;
+        } else if (this.stack.length === 1) {
+            this.lists = null;
+        }
         this._proxies();
         this._pictures(r.icons);
         if (this.drag && this.drag.gen !== this.gen) {
@@ -560,10 +567,14 @@ class Drawn extends EventEmitter {
 
     /* The Installed lists' rows as drawn while the focus is on one of them
      * (the HMI's focus stays on its proxy: the rows under it stay where they
-     * are), else null. */
+     * are; a page opened from one comes back to it), and after a drag took
+     * the focus off them until the focus moves; else null. */
     _held() {
-        const it = this.items[this.focus];
-        return this.lists && this.stack.length === 1 && this.tab === 'installed' && it && /^installed\./.test(it.list || '') ? this.lists : null;
+        if (!this.lists || this.tab !== 'installed' || this.stack.length > 1) {
+            return null;
+        }
+        const it = this.listsItems[this.focus];
+        return it && /^installed\./.test(it.list || '') ? this.lists : this.focus === -1 ? this.dragHeld : null;
     }
 
     /* Sends a frame (built from b0 to b1, us, when traced), then drops the
@@ -740,6 +751,9 @@ class Drawn extends EventEmitter {
                     return;
                 }
                 this.scroll[t.region.key] = top;
+                if (this.focus >= 0) {
+                    this.dragHeld = this._held();
+                }
                 this.focus = -1;
                 if (this.on_ && this.gpu.waiting) {
                     this.dirty = true;          // drawn on the renderer's TICK
