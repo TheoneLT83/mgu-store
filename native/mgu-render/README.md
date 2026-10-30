@@ -86,6 +86,11 @@ from the installed HmiMain3D.
   Renderer's page. HmiMain3D lacking what the template needs is not tried
   again until the stamp changes; any other failure (the time limit, a
   signal, memory or disk) is tried again at the next install.
+- After an update the deploy tool runs `render_check.js` (its `check`),
+  at once or, while the old renderer keeps running, at the next start: a
+  client must get X_READY and READY with a screen size, and 20 s later the
+  service must still run with no restart and answer again. It draws
+  nothing. A renderer that fails goes back to the version before.
 - `mgu-render-hmi.service` (before `hmi.service`, at most 30 s) generates
   nothing: with a template for the current stamp it mounts a copy of
   `bmw/widget/` in `/run` with it over the original and writes

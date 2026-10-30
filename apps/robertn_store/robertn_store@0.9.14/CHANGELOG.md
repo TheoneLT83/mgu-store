@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.14
+
+Undo update on the page of an app or tool the updater can take back to its
+version before, after a confirm step. Each connection to the updater says
+which Store version this is, so a Store update that does not start goes
+back by itself. Needs mgu-updater 0.8.7.
+
 ## 0.9.13
 
 The Store is in the head unit's display language: English, or Simplified

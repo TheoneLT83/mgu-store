@@ -1,5 +1,12 @@
 # Deploy tool changelog
 
+## 0.6.9
+
+- A tool's `check` (`component.json`: one of its files, then its arguments) runs once its new version runs, after the health check and `postInstall`: node for a `.js` file, else sh, from `current/`, for at most 5 minutes (`MGU_DEPLOY_CHECK_MS`). A failing check rolls the install back like a failed health check, its running services restarted on the previous version.
+- A new tool version that runs only from the next start of the head unit (a renderer that keeps running, a recmgr entry not loaded yet) is checked at that start: `mgu-deploy-verify.service` (enabled for `late.target`, in recmgr's list, run while `verify.json` exists) runs `verify` once the head unit has been up 150 s (`MGU_DEPLOY_VERIFY_AFTER_S`): the tool's services that start at boot must run and stay up, and its `check` must pass. One that fails goes back to the version before, its running services restarted. Each tool is checked once; the start never restarts the head unit. `status --json` reports the outcome as `last_verify`.
+- `rollback <app>` (iDrive 7): uninstall, then install the newest kept older package, with the app's data folder carried over. When that install fails, the version that was there is installed again. Every app install keeps its package, and the one of the version it replaces, in `/var/opt/mgu-deploy/kept/<id>/`; an uninstall removes them.
+- `status --json` gives each tool and app `previous`: the older version its rollback returns to, or null.
+
 ## 0.6.8
 
 - An app update the app manager rejects (`UPDATE_FAILED`, for example a manifest naming an interface the head unit does not have) leaves the previous version installed, registered and with its tile. The manager unregisters the app and removes its source, SOME/IP interfaces and HMI data before it rejects the new version; the rollback puts these back with their owners, modes and ACLs. On iDrive 7 the app manager then restarts once and shows the tile at once. On iDrive 8 the app is back from the next start of the head unit, with its uid and data.

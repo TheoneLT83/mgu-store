@@ -43,7 +43,7 @@ const { t: tr } = require('./i18n.js');
  */
 const { PHASE, percent, rowAction, statusLine, sourceLabel, sourceState, sourceActions, sourceChannel, sourceAccount,
     tokenLabel, tokenState, tokenSources, accountsState, loginStatus, loginCode, phoneState, phoneAddress, hmiNames,
-    notForUnit, removable, pickOptions, probeStatus, sourceNames, listed, startPending } = require('./store_view.js');
+    notForUnit, removable, undoable, pickOptions, probeStatus, sourceNames, listed, startPending } = require('./store_view.js');
 
 const GREEN = '#35d07f';
 const BLUE = '#3d9bff';
@@ -352,6 +352,9 @@ function appView(m, page) {
     } else if (c.pendingReboot && canRestart(m)) {
         v.primary = button(tr("Restart head unit"), { do: 'open', page: { name: 'confirm', kind: 'restart' } },
             { vicon: 'refresh', style: 'primary', color: BLUE });
+    } else if (undoable(c, busy)) {
+        v.primary = button(tr("Undo update"), { do: 'open', page: { name: 'confirm', kind: 'undo', id: c.id } },
+            { vicon: 'back', style: 'outline' });
     } else {
         v.primary = hidden;
     }
@@ -371,6 +374,9 @@ function confirmView(m, page) {
     if (page.kind === 'remove') {
         title = c ? tr("Remove {0} {1}?", named(m, c), c.installed || '').replace(' ?', '?') : tr("Remove?");
         now = button(tr("Remove"), { do: 'remove', id: page.id }, { vicon: 'trash', style: 'primary', color: RED });
+    } else if (page.kind === 'undo') {
+        title = c ? tr("Back to {0} {1}?", named(m, c), c.previous || '').replace(' ?', '?') : tr("Undo update");
+        now = button(tr("Undo update"), { do: 'undo', id: page.id }, { vicon: 'back', style: 'primary', color: BLUE });
     } else if (page.kind === 'restart') {
         title = tr("Restart head unit?");
         now = button(tr("Restart"), { do: 'restart' }, { vicon: 'refresh', style: 'primary', color: BLUE });

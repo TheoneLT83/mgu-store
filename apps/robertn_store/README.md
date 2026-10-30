@@ -1,4 +1,4 @@
-# robertn_store 0.9.13
+# robertn_store 0.9.14
 
 The Store: every app and head-unit tool of every source, each with its
 state, the progress of the running install, the sources, the phone page
@@ -42,7 +42,7 @@ USB, Settings) beside:
   Installing, Removing) with its progress; `Not installable` and why (a package of an id another source's app
   holds; installed, it shows as installed, with Remove and no update), `Not for this head unit` / `For
   iDrive 8` (that version is not offered), the failure, what an installed tool says is wrong (the updater's `problem`: `In-page drawing unavailable: <reason>` from the renderer), `Restart pending`; and what can be done:
-  Install, Update to, Try again, Restart head unit, Remove (a confirm step). A second renderer
+  Install, Update to, Try again, Restart head unit, Undo update (where the updater offers the version before; a confirm step), Remove (a confirm step). A second renderer
   installs beside the first. On iDrive 8 an app install or removal is
   queued for the next start: its row shows `Restart pending`, as a tool
   pending a restart does.
@@ -363,15 +363,15 @@ tools/test_i18n.js         every language: its words, placeholders, RHMI text fi
 tools/shots.js             screenshots of the drawn screens through mgu-render --replay
 tools/test_drag.js         a drag frame against the frame built whole, through mgu-render --replay
 tools/make_icon.py         the 140x140 tile icon
-robertn_store@0.9.13/       staged package tree (no javascript/: the build writes it)
+robertn_store@0.9.14/       staged package tree (no javascript/: the build writes it)
 ```
 
 ## Build
 
 ```sh
 cd apps/robertn_store
-node tools/build.js                                # robertn_store@0.9.13.src.tgz
-node tools/build.js --sdk <donor .tgz|.js>         # and robertn_store@0.9.13.tgz (MGU_SDK_DONOR)
+node tools/build.js                                # robertn_store@0.9.14.src.tgz
+node tools/build.js --sdk <donor .tgz|.js>         # and robertn_store@0.9.14.tgz (MGU_SDK_DONOR)
 node tools/test_view.js && node tools/test_rhmi.js && node tools/test_qr.js && node tools/test_speller.js &&
     node tools/test_screens.js && node tools/test_store.js && STORE_HMI=ID8 node tools/test_store.js &&
     node tools/test_i18n.js

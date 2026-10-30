@@ -74,12 +74,14 @@ const { typeKey, wifiOf } = require('./store_ui.js');
 const { PHASE, percent, rowState, rowAction, groupState, statusLine, sourceLabel, sourceState,
     sourcesState, sourceActions, sourceChannel, sourceAccount, tokenLabel, tokenState, tokenSources, accountsState,
     loginStatus, loginCode, phoneState, phoneAddress, parseSource, pickOptions, probeStatus, sourcesMessage, tokenMessage,
-    removable, withSources, listed } = require('./store_view.js');
+    removable, undoable, withSources, listed } = require('./store_view.js');
 
 const logger = logging.getSDKLogger();
 const tr = i18n.t;
 
 const SOCKET = '/dev/shm/mgu-updater/updater.sock';
+// the id the updater knows the Store by (updater.conf store_app)
+const APP_ID = 'robertn_store';
 /* The updater writes the privileged secret, and while the phone page is on
  * its access URL, into this app's data folder (owner this app's uid, 0400);
  * both are read again on every use. */
@@ -263,6 +265,10 @@ class Store extends OnlineApp {
         this._connected = false;
         this._client = new UpdaterClient(SOCKET, { reconnectMs: RECONNECT_MS });
         this._client.on('state', (st) => {
+            // each connection says which Store this is: the updater's word that its update started
+            if (!this._connected) {
+                this._client.send({ op: 'hello', id: APP_ID, version: this._version() });
+            }
             this._connected = true;
             this._st = st;
             this._tokenAdded(st);
@@ -279,6 +285,10 @@ class Store extends OnlineApp {
             this._render();
         });
         this._client.on('reply-error', (msg, op) => {
+            // an updater before 0.8.7 does not know hello: nothing to do
+            if (op === 'hello') {
+                return;
+            }
             // replies come in request order, so one without its op answers the last request
             const forOp = op || this._lastOp;
             this._lastOp = null;
@@ -661,6 +671,8 @@ class Store extends OnlineApp {
                 this._tokenId = act.page.id;
             } else if (act.page.name === 'confirm' && act.page.kind === 'remove') {
                 this._removeId = act.page.id;
+            } else if (act.page.name === 'confirm' && act.page.kind === 'undo') {
+                this._undoId = act.page.id;
             } else if (act.page.name === 'wifi') {
                 const w = wifiOf({ connected: this._connected, st: this._st });
                 this._uplinkNote = null;
@@ -677,6 +689,7 @@ class Store extends OnlineApp {
                 .forEach((c) => this._install(c.id));
             break;
         case 'remove': this._removeId = act.id; this._remove(); break;
+        case 'undo': this._undoId = act.id; this._undo(); break;
         case 'restart': this._restart(); break;
         case 'source-remove': this._sourceId = act.id; this._removeSource(); break;
         case 'account-remove': this._tokenId = act.id; this._removeAccount(); break;
@@ -864,6 +877,16 @@ class Store extends OnlineApp {
         if (row && removable(row, this._st.busy)) {
             logger.info(`uninstall ${row.id}`);
             this._privileged({ op: 'uninstall', id: row.id });
+        }
+    }
+
+    /* Undo update: the component back to its version before (the updater's rollback). */
+    _undo() {
+        this._drawn.closePage(isConfirm('undo'));
+        const row = this._component(this._undoId);
+        if (row && undoable(row, this._st.busy)) {
+            logger.info(`back to ${row.previous}: ${row.id}`);
+            this._privileged({ op: 'rollback', id: row.id });
         }
     }
 

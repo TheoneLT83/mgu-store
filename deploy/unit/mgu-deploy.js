@@ -44,7 +44,7 @@ var cp = require('child_process');
 
 /* deploy/component.json's version; bumped when a file under deploy/unit/
  * changes. */
-var VERSION = '0.6.8';
+var VERSION = '0.6.9';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -90,6 +90,8 @@ var CFG = {
     bounceTimeoutMs: Number(env('MGU_DEPLOY_BOUNCE_TIMEOUT_MS', '30000')),
     healthMs: Number(env('MGU_DEPLOY_HEALTH_MS', '10000')),
     postInstallMs: Number(env('MGU_DEPLOY_POST_INSTALL_MS', '300000')),
+    checkMs: Number(env('MGU_DEPLOY_CHECK_MS', '300000')),
+    verifyAfterS: Number(env('MGU_DEPLOY_VERIFY_AFTER_S', '150')),
     bounceMinUpS: Number(env('MGU_DEPLOY_BOUNCE_MIN_UP_S', '60')),
     lockWaitMs: Number(env('MGU_DEPLOY_LOCK_WAIT_MS', '3600000')),
     migrateSettleMs: Number(env('MGU_DEPLOY_MIGRATE_SETTLE_MS', '45000'))
@@ -118,7 +120,8 @@ var SELF_DESCRIPTION = 'Installs, updates, rolls back and removes our tools and 
     'with a snapshot before every change';
 var SELF_FILES = [{ path: 'mgu-deploy.js', mode: '0644' }, { path: 'mgu-deploy.sh', mode: '0755' },
     { path: 'fallback_build.js', mode: '0644' }, { path: 'mgu-app-fallback.service', mode: '0644' },
-    { path: 'mgu-deploy-apply.service', mode: '0644' }, { path: 'mgu-app-fallback-id8.service', mode: '0644' },
+    { path: 'mgu-deploy-apply.service', mode: '0644' }, { path: 'mgu-deploy-verify.service', mode: '0644' },
+    { path: 'mgu-app-fallback-id8.service', mode: '0644' },
     { path: 'oap_link.js', mode: '0644' }, { path: 'oap_pack.js', mode: '0644' }];
 /* A file of this tool: beside the script, or in the repository's tools/
  * (the linker and packer, when it runs from deploy/unit/). */
@@ -904,12 +907,14 @@ function writeSnapshot(dir, command, paths) {
 }
 /* Every snapshot also records the files any command may leave changed:
  * this tool's state, the fallback's unit, link, copy and app list, the
- * recmgr list, the crash handler's list and the names this tool added to
- * it. The updater owns its sources and credentials. */
+ * check-at-the-next-start unit and link, the recmgr list, the crash
+ * handler's list and the names this tool added to it. The updater owns its
+ * sources and credentials. */
 function alwaysSnapshotted() {
     return [STATE_FILE, CFG.recmgr, CFG.crashList, CRASH_OWNED, customAppsFile(), FALLBACK_COPY,
         path.join(CFG.systemd, FALLBACK_UNIT),
-        path.join(CFG.systemd, 'multi-user.target.wants', FALLBACK_UNIT)];
+        path.join(CFG.systemd, 'multi-user.target.wants', FALLBACK_UNIT),
+        path.join(CFG.systemd, VERIFY_UNIT), path.join(CFG.systemd, APPLY_WANTS, VERIFY_UNIT)];
 }
 /* The deploy tool's own versions/ and current: no snapshot holds them, so a
  * restore never removes the tool that holds the backups. */
@@ -1277,6 +1282,11 @@ function validateTool(file, dir, c) {
         !c.postInstall.every(function (x) { return typeof x === 'string'; }) ||
         !c.files.some(function (f) { return f.path === c.postInstall[0]; }))) {
         throw refuse(file + ': postInstall is a list: one of its files, then its arguments');
+    }
+    if (c.check !== undefined && (!Array.isArray(c.check) || !c.check.length ||
+        !c.check.every(function (x) { return typeof x === 'string'; }) ||
+        !c.files.some(function (f) { return f.path === c.check[0]; }))) {
+        throw refuse(file + ': check is a list: one of its files, then its arguments');
     }
     return { kind: 'tool', file: file, dir: dir, component: c, id: c.id, version: c.version,
         hmi: hmiList(c.mguHmi, file + ' component.json'), hmiFrom: c.mguHmi ? 'declared' : null,
@@ -1957,6 +1967,18 @@ function installTool(a, state, tx) {
         if (!pr.ok) { e = fail('app-privacy ' + c.version + ': ' + pr.why); e.privacy = true; throw e; }
     }
     if (c.postInstall) postInstall(c, root);
+    /* a new version that runs only from the next start is checked then */
+    if (before !== c.version && pendingNow(state, c.id)) {
+        if (verifyWanted(c)) noteVerify(state, c, before);
+    } else if (before !== c.version && c.check) {
+        var why = runCheck(c, root);
+        if (why) {
+            e = fail(c.id + ' ' + c.version + ': ' + why);
+            e.check = true;
+            e.health = runningServices(c);
+            throw e;
+        }
+    }
     fs.readdirSync(versions).forEach(function (v) {
         if (v !== c.version && v !== before) rmrf(path.join(versions, v));
     });
@@ -1977,6 +1999,113 @@ function postInstall(c, root) {
         warn(c.id + ': ' + c.postInstall[0] + (r.error ? ': ' + r.error.message : ' exited ' + (r.status === null ? r.signal : r.status)));
     }
 }
+
+/* ---- a tool's check, and the check at the next start ------------------------- */
+
+/* "check": ["<script>", "<arg>", ...] names one of the tool's files: run
+ * from current/ as root (node for a .js file, else sh) once the new
+ * version runs, for at most checkMs. Exit 0 says it works. Returns null,
+ * or why it does not. */
+function runCheck(c, root) {
+    var cur = path.join(root, 'current'), script = path.join(cur, c.check[0]);
+    say(c.id + ': checking with ' + c.check.join(' '));
+    var r = cp.spawnSync(/\.js$/.test(script) ? CFG.node : CFG.sh, [script].concat(c.check.slice(1)), {
+        cwd: cur, encoding: 'utf8', timeout: CFG.checkMs, killSignal: 'SIGKILL', maxBuffer: 1 << 20
+    });
+    var lines = ((r.stdout || '') + (r.stderr || '')).split('\n').filter(function (l) { return l.trim(); });
+    lines.forEach(function (l) { say('  ' + l); });
+    if (!r.error && r.status === 0) { say(c.id + ' ' + c.version + ' works'); return null; }
+    return 'its check ' + (r.error ? (r.error.code === 'ETIMEDOUT' ? 'gave no answer within ' +
+        Math.round(CFG.checkMs / 1000) + 's' : 'could not run: ' + r.error.message) :
+        'failed' + (lines.length ? ': ' + oneLine(lines[lines.length - 1]) : ' (exit ' + (r.status === null ? r.signal : r.status) + ')'));
+}
+/* The tool's restart[] services that run now: a check that failed ran
+ * against them, so a rollback restarts them on the previous version. */
+function runningServices(c) {
+    return (c.restart || []).filter(function (u) {
+        return !/\.socket$/.test(u) && unitState(u, 'is-active') === 'active';
+    });
+}
+function pendingNow(state, id) {
+    return state.pending_reboot.some(function (p) { return p.id === id; });
+}
+/* Its restart[] services that nothing but systemd starts (socket-activated
+ * ones are left to their socket): they must run at the next start. */
+function bootServices(c) {
+    return (c.restart || []).filter(function (u) {
+        return !/\.socket$/.test(u) && !(c.enable || []).some(function (en) {
+            return /\.socket$/.test(en.unit) && recmgrBase(en.unit) === recmgrBase(u);
+        });
+    });
+}
+function verifyWanted(c) { return !!c.check || bootServices(c).length > 0; }
+/* verify.json: { <id>: { version, previous, boot } }, the tools whose new
+ * version runs from the next start. mgu-deploy-verify.service checks them
+ * at that start and rolls back one that does not work. */
+var VERIFY_FILE = path.join(DEPLOY_DIR, 'verify.json');
+var VERIFY_LAST = path.join(DEPLOY_DIR, 'last-verify.json');
+var VERIFY_UNIT = 'mgu-deploy-verify.service';
+var VERIFY_NAME = 'mgu-deploy-verify';
+function readVerify() {
+    var v = readJsonOrNull(VERIFY_FILE);
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+}
+function writeVerify(v) {
+    if (!Object.keys(v).length) { rmrf(VERIFY_FILE); return; }
+    writeAtomic(VERIFY_FILE, JSON.stringify(v, null, 2) + '\n', 0o600);
+}
+function noteVerify(state, c, before) {
+    var v = readVerify();
+    v[c.id] = { version: c.version, previous: before, boot: bootId() };
+    ensureBootUnit(state, VERIFY_UNIT, VERIFY_NAME);
+    writeVerify(v);
+    say(c.id + ' ' + c.version + ' is checked at the next start' + (before ? ', and ' + before + ' comes back if it does not work' : ''));
+}
+function dropVerify(id) {
+    var v = readVerify();
+    if (v[id]) { delete v[id]; writeVerify(v); }
+}
+function uptimeS() {
+    try { return parseFloat(fs.readFileSync(path.join(CFG.proc, 'uptime'), 'utf8')); } catch (e) { return Infinity; }
+}
+/* verify: at a start after the install, each tool noted in verify.json
+ * whose noted version is current gets its boot services' health check
+ * and its check, once the head unit has been up verifyAfterS. One that
+ * fails goes back to the version before (its running services restarted,
+ * keepRunning or not: they run the version that failed). Every entry
+ * goes before anything runs, so nothing is checked or rolled back twice
+ * and no start repeats it. The results: last-verify.json, status'
+ * last_verify. */
+function cmdVerify() {
+    var v = readVerify(), boot = bootId(), due = Object.keys(v).filter(function (id) { return v[id].boot !== boot; });
+    if (!due.length) { say('nothing to check at this start'); return 0; }
+    var wait = CFG.verifyAfterS - uptimeS();
+    if (wait > 0) { say('checking ' + due.join(', ') + ' once the head unit has been up ' + CFG.verifyAfterS + 's'); sleepMs(wait * 1000); }
+    var left = {};
+    Object.keys(v).forEach(function (id) { if (due.indexOf(id) < 0) left[id] = v[id]; });
+    writeVerify(left);
+    var results = [];
+    due.forEach(function (id) {
+        var e = v[id], t = installedTools().filter(function (x) { return x.id === id; })[0], why;
+        if (!t || t.version !== e.version) {
+            say(id + ' ' + e.version + ': not current any more; not checked');
+            return;
+        }
+        why = healthCheck(bootServices(t.component)) || (t.component.check ? runCheck(t.component, t.root) : null);
+        if (!why) { results.push({ id: id, version: e.version, ok: true }); return; }
+        process.stderr.write(id + ' ' + e.version + ' does not work: ' + why + '\n');
+        var r = { id: id, version: e.version, ok: false, error: why, previous: e.previous || null, rolledBack: false };
+        results.push(r);
+        if (!e.previous) { say(id + ' ' + e.version + ' stays: there is no version before it'); return; }
+        try {
+            cmdRollback({ positional: [id], to: e.previous, restartRunning: true });
+            r.rolledBack = true;
+        } catch (err) { process.stderr.write(id + ': the rollback to ' + e.previous + ' failed: ' + err.message + '\n'); }
+    });
+    writeAtomic(VERIFY_LAST, JSON.stringify({ at: new Date().toISOString(), results: results }, null, 2) + '\n', 0o644);
+    /* exit 0 either way: the boot unit never reads as failed */
+    return 0;
+}
 /* Undoes one failed tool install. With no version and no earlier current
  * folder to return to, a tool that failed its health check or its
  * app-privacy apply stays current, reported as such. Otherwise current
@@ -1987,7 +2116,7 @@ function postInstall(c, root) {
 function rollbackTool(a, tx, backup, e, state) {
     var c = a.component;
     var was = tx.before ? c.id + ' ' + tx.before : tx.legacy ? c.id + '\'s earlier install' : null;
-    if ((e.health || e.privacy) && !was) {
+    if ((e.health || e.privacy || e.check) && !was) {
         say(c.id + ' ' + c.version + ' stays current: there is no previous version to return to');
         if (e.privacy) {
             say('the app-privacy patch is NOT in effect; app installs are refused until ' +
@@ -3001,7 +3130,6 @@ function dasEnableLine(id) {
     return '<' + id + ' enabled="true" allowed="true" appStartType="autostart" userLoginRequired="false"/>';
 }
 function dasFile(d) { return path.join(CFG.prov, d + '.xml'); }
-function applyUnitSource() { return path.join(HERE, APPLY_UNIT); }
 function applyTouched() {
     return [path.join(CFG.systemd, APPLY_UNIT), path.join(CFG.systemd, APPLY_WANTS, APPLY_UNIT), CFG.recmgr];
 }
@@ -3027,25 +3155,30 @@ function dasApps() {
 }
 /* The boot unit that applies the queue: written, enabled and listed in
  * recmgr (where the unit has the list) with the first change queued. */
-function ensureApplyUnit(state) {
-    if (!fs.existsSync(applyUnitSource())) throw refuse(APPLY_UNIT + ' missing beside mgu-deploy.js');
+function ensureApplyUnit(state) { ensureBootUnit(state, APPLY_UNIT, APPLY_NAME); }
+/* One of this tool's boot units (beside mgu-deploy.js), run through the
+ * shim: written, enabled for late.target and listed in recmgr (where the
+ * unit has the list). Each runs only while its condition file exists. */
+function ensureBootUnit(state, unit, name) {
+    var src = path.join(HERE, unit);
+    if (!fs.existsSync(src)) throw refuse(unit + ' missing beside mgu-deploy.js');
     selfInstall(); // the unit runs the installed tool through its shim
-    var unitDest = path.join(CFG.systemd, APPLY_UNIT), link = path.join(CFG.systemd, APPLY_WANTS, APPLY_UNIT), cur = null, ops = [];
-    if (!bytesEqualFile(fs.readFileSync(applyUnitSource()), unitDest)) {
-        ops.push({ type: 'copy', src: applyUnitSource(), path: unitDest, mode: 0o644 });
+    var unitDest = path.join(CFG.systemd, unit), link = path.join(CFG.systemd, APPLY_WANTS, unit), cur = null, ops = [];
+    if (!bytesEqualFile(fs.readFileSync(src), unitDest)) {
+        ops.push({ type: 'copy', src: src, path: unitDest, mode: 0o644 });
     }
     try { cur = fs.readlinkSync(link); } catch (e) { /* not enabled */ }
-    if (cur !== '../' + APPLY_UNIT) {
+    if (cur !== '../' + unit) {
         if (!fs.existsSync(path.dirname(link))) noteCreatedDir(state, path.dirname(link));
         ops.push({ type: 'mkdir', path: path.dirname(link) });
-        ops.push({ type: 'symlink', path: link, target: '../' + APPLY_UNIT });
+        ops.push({ type: 'symlink', path: link, target: '../' + unit });
     }
-    var rec = recmgrOp(recmgrWith(recmgrText(), [APPLY_NAME], []));
+    var rec = recmgrOp(recmgrWith(recmgrText(), [name], []));
     if (rec) ops.push(rec);
     if (ops.length) {
         rootfsWindow(ops);
         runOk(CFG.systemctl, ['daemon-reload']);
-        say(APPLY_UNIT + ' installed: queued app changes apply at the next start');
+        say(unit + ' installed');
     }
 }
 /* MainApp-21 gives an app a tile, and lets it start, only when its
@@ -4299,19 +4432,22 @@ function collectStatus(state) {
             if (recmgrHas(n) && !recmgrLoaded(n)) pend(t.id, PENDING_RECMGR);
             else if (!recmgrHas(n) && (t.component.restart || []).length) pend(t.id, 'recmgr entry missing');
         });
-        components.push({ id: t.id, kind: 'tool', version: t.version, units: units, provides: t.component.mguProvides || null });
+        components.push({ id: t.id, kind: 'tool', version: t.version, units: units, provides: t.component.mguProvides || null,
+            previous: toolPrevious(t) });
     });
     installedApps().forEach(function (app) {
         var tile = tileState(app, fb);
         components.push({ id: app.id, kind: 'app', version: app.version, uid: app.uid,
             installationSource: app.installationSource, running: appRunning(app.uid),
-            tile_provisioned: tile.provisioned, tile_fallback: tile.fallback, tile_visible: tile.visible });
+            tile_provisioned: tile.provisioned, tile_fallback: tile.fallback, tile_visible: tile.visible,
+            previous: isId8() ? null : (keptPrevious(app.id, app.version) || {}).version || null });
     });
     var backupCount = 0;
     if (fs.existsSync(BACKUPS_DIR)) backupCount = fs.readdirSync(BACKUPS_DIR).length;
     var unit = unitInfo();
     return { version: VERSION, unit: { hmi: unit.hmi, firmware: unit.firmware }, components: components, pending_reboot: pending,
         last_apply: readJsonOrNull(ID8_LAST),
+        last_verify: readJsonOrNull(VERIFY_LAST),
         display_bridge_socket: fs.existsSync(CFG.socketPath),
         display_bridge_todo_on_car: bridgeTodoLines(),
         fallback: fb, backups: backupCount,
@@ -4739,7 +4875,11 @@ function cmdInstall(args) {
             try {
                 if (a.kind === 'tool') installTool(a, state, tx);
                 else if (id8) installAppId8(a, state, decisions[a.id], backup);
-                else installApp(a, state, decisions[a.id]);
+                else {
+                    keepInstalledPackage(a.id);
+                    installApp(a, state, decisions[a.id]);
+                    keepPackage(a);
+                }
                 syncDropIns();
                 /* a tool's earlier current folder stays until here, for a rollback */
                 if (tx.legacy) rmrf(tx.legacy);
@@ -4882,7 +5022,8 @@ function cmdUninstall(args) {
     }
     var backup = takeSnapshot('uninstall', touchedForUninstall(id));
     try {
-        if (isTool) uninstallTool(id, state); else uninstallApp(id, state);
+        if (isTool) { uninstallTool(id, state); dropVerify(id); } else uninstallApp(id, state);
+        if (!isTool && !args.keepPackages) rmrf(keptDir(id));
         syncDropIns();
         state.pending_reboot = state.pending_reboot.filter(function (p) { return p.id !== id; });
         saveState(state); selfInstall();
@@ -4895,32 +5036,34 @@ function cmdUninstall(args) {
     }
     return 0;
 }
-/* rollback <id>: a tool's current back to the one other version kept.
- * Its restart[] units follow the install rules and the health check; a
- * failed check returns current and restarts them again. Unit files stay
- * as the newer version installed them (they run from current/). An app
- * has no rollback: the manager refuses a downgrade. */
+/* rollback <id>: a tool's current back to the one other version kept
+ * (args.to: that version only). Its restart[] units follow the install
+ * rules and the health check; a failed check returns current and
+ * restarts them again. Unit files stay as the newer version installed
+ * them (they run from current/). With args.restartRunning (the check at
+ * a start) running ones restart even when keepRunning. An app goes back
+ * to its kept older package (rollbackAppCmd). */
 function cmdRollback(args) {
     var id = args.positional[0];
-    if (!id) throw refuse('rollback needs a tool id');
+    if (!id) throw refuse('rollback needs a tool or app id');
     var tool = installedTools().filter(function (t) { return t.id === id; })[0];
     if (!tool) {
-        if (readJsonOrNull(appEntryFile(id))) {
-            throw refuse(id + ' is an app: rollback applies to tools; uninstall it, then install the older artifact');
-        }
-        throw refuse(id + ': no installed tool with that id');
+        if (readJsonOrNull(appEntryFile(id))) return rollbackAppCmd(id);
+        throw refuse(id + ': no installed tool or app with that id');
     }
     var root = tool.root, cur = currentTarget(root);
     var others = fs.readdirSync(path.join(root, 'versions')).filter(function (v) {
         return v !== cur && semverParts(v);
     }).sort();
     if (!others.length) throw refuse(id + ' ' + cur + ': no other version is kept to roll back to');
-    if (others.length > 1) throw refuse(id + ': several versions are kept (' + others.join(', ') + '); install the one wanted');
-    var target = others[0], tc = readJsonOrNull(path.join(root, 'versions', target, 'component.json'));
+    if (args.to && others.indexOf(args.to) < 0) throw refuse(id + ': ' + args.to + ' is not kept (' + others.join(', ') + ')');
+    if (!args.to && others.length > 1) throw refuse(id + ': several versions are kept (' + others.join(', ') + '); install the one wanted');
+    var target = args.to || others[0], tc = readJsonOrNull(path.join(root, 'versions', target, 'component.json'));
     if (!tc || tc.id !== id) throw refuse(id + ': versions/' + target + ' has no readable component.json');
     var state = loadState();
     takeSnapshot('rollback', toolTouched(tool.component));
     say('rolling back ' + id + ' ' + cur + ' -> ' + target);
+    dropVerify(id);
     switchCurrent(root, target);
     var names = function (c) { return (c.units || []).map(function (u) { return u.name; }).sort().join(', '); };
     if (names(tool.component) !== names(tc)) {
@@ -4935,7 +5078,7 @@ function cmdRollback(args) {
     }
     try {
         /* a running service started by a keepRunning version stays running either way */
-        var keep = Object.assign({}, tc, { keepRunning: tc.keepRunning || tool.component.keepRunning });
+        var keep = Object.assign({}, tc, { keepRunning: !args.restartRunning && (tc.keepRunning || tool.component.keepRunning) });
         var touched = applyRestarts(keep, state, false), bad = healthCheck(touched);
         if (bad) {
             switchCurrent(root, cur);
@@ -4955,6 +5098,116 @@ function cmdRollback(args) {
         }
     } finally { saveState(state); }
     say(id + ' rolled back to ' + target);
+    return 0;
+}
+/* The version Undo update returns a tool to: the one other version kept,
+ * when it is older. */
+function toolPrevious(t) {
+    var cur = currentTarget(t.root), others = [];
+    try {
+        others = fs.readdirSync(path.join(t.root, 'versions')).filter(function (v) { return v !== cur && semverParts(v); });
+    } catch (e) { /* no versions folder */ }
+    return others.length === 1 && semverCmp(others[0], cur) < 0 ? others[0] : null;
+}
+
+/* ---- apps: kept packages and rollback (iDrive 7) ------------------------------- */
+/* The manager takes no older package for an installed app, so an app goes
+ * back by uninstall and install. The packages for that are kept here, the
+ * installed version's and the newest older one: kept/<id>/<id>@<v>.tgz,
+ * root's. */
+var KEPT_DIR = path.join(DEPLOY_DIR, 'kept');
+function keptDir(id) { return path.join(KEPT_DIR, id); }
+function keptFile(id, version) { return path.join(keptDir(id), id + '@' + version + '.tgz'); }
+function keptVersions(id) {
+    var out = [];
+    try {
+        fs.readdirSync(keptDir(id)).forEach(function (n) {
+            var m = /^(.+)@(\d+\.\d+\.\d+)\.tgz$/.exec(n);
+            if (m && m[1] === id) out.push(m[2]);
+        });
+    } catch (e) { /* none kept */ }
+    return out.sort(semverCmp);
+}
+/* The newest kept package older than version, { version, file }, or null. */
+function keptPrevious(id, version) {
+    var older = keptVersions(id).filter(function (v) { return semverCmp(v, version) < 0; });
+    return older.length ? { version: older[older.length - 1], file: keptFile(id, older[older.length - 1]) } : null;
+}
+/* Before an update: the installed version's package in preinstalled_apps,
+ * kept unless it is already. */
+function keepInstalledPackage(id) {
+    var app = installedApp(id);
+    if (!app || fs.existsSync(keptFile(id, app.version))) return;
+    var p = path.join(preinstalledDir(), id + '@' + app.version + '.tgz');
+    if (!fs.existsSync(p)) return;
+    try { mkdirp(keptDir(id), 0o700); copyFileMode(p, keptFile(id, app.version), 0o600); }
+    catch (e) { warn(id + ' ' + app.version + "'s package is not kept: " + e.message); }
+}
+/* After an install: its package kept, with the newest older one; others go. */
+function keepPackage(a) {
+    try {
+        mkdirp(keptDir(a.id), 0o700);
+        copyFileMode(a.file, keptFile(a.id, a.version), 0o600);
+        var prev = keptPrevious(a.id, a.version);
+        keptVersions(a.id).forEach(function (v) {
+            if (v !== a.version && !(prev && v === prev.version)) rmrf(keptFile(a.id, v));
+        });
+    } catch (e) { warn(a.id + ' ' + a.version + "'s package is not kept: " + e.message); }
+}
+/* rollback <app>: uninstall, then install the newest kept older package.
+ * The app's data folder is carried over to the new install's home. When
+ * that install fails, the version that was there is installed again from
+ * its kept package. */
+function rollbackAppCmd(id) {
+    if (isId8()) throw refuse(id + ': apps go back to an earlier version on iDrive 7 only');
+    var app = installedApp(id);
+    if (!app) throw refuse(id + ': not installed');
+    var prev = keptPrevious(id, app.version), cur = keptFile(id, app.version);
+    if (!prev) throw refuse(id + ' ' + app.version + ': no earlier version is kept to roll back to');
+    say('rolling back ' + id + ' ' + app.version + ' -> ' + prev.version);
+    /* beside the homes: the same filesystem as the data folder */
+    var data = path.join(appHome(app.uid), 'data'), stash = path.join(CFG.oap, '.mgu-deploy-data-' + id + '-' + process.pid);
+    var oldGid = (lstatOrNull(data) || {}).gid;
+    if (fs.existsSync(data)) fs.renameSync(data, stash);
+    /* Under another uid, what was the old uid's or the old data folder's
+     * group becomes the new uid's or the new folder's group, while the
+     * folder is still out of the new home where no process of the new uid
+     * reaches it. Links are left alone: chown follows them. */
+    var putBack = function () {
+        var now = installedApp(id);
+        if (!now || !fs.existsSync(stash)) return;
+        var dest = path.join(appHome(now.uid), 'data'), st = lstatOrNull(dest) || lstatOrNull(appHome(now.uid));
+        if (st && now.uid !== app.uid) {
+            walk(stash, '', []).concat([{ path: stash, stat: fs.lstatSync(stash) }]).forEach(function (e) {
+                if (e.stat.isSymbolicLink()) return;
+                var u = e.stat.uid === app.uid ? now.uid : e.stat.uid, g = e.stat.gid === oldGid ? st.gid : e.stat.gid;
+                if (u !== e.stat.uid || g !== e.stat.gid) chownMaybe(e.path, u, g);
+            });
+        }
+        rmrf(dest);
+        fs.renameSync(stash, dest);
+        say(id + "'s data carried over");
+    };
+    try {
+        cmdUninstall({ positional: [id], keepPackages: true });
+    } catch (e) {
+        if (installedApp(id) && fs.existsSync(stash) && !fs.existsSync(data)) fs.renameSync(stash, data);
+        throw e;
+    }
+    try {
+        cmdInstall({ artifacts: [prev.file], positional: [] });
+    } catch (e) {
+        process.stderr.write(id + ' ' + prev.version + ' did not install: ' + e.message + '\n');
+        if (fs.existsSync(cur)) {
+            say('installing ' + id + ' ' + app.version + ' again');
+            try { cmdInstall({ artifacts: [cur], positional: [] }); }
+            catch (e2) { process.stderr.write(id + ' ' + app.version + ' did not install either: ' + e2.message + '\n'); }
+        }
+        putBack();
+        throw fail(id + ': the rollback to ' + prev.version + ' failed: ' + e.message);
+    }
+    putBack();
+    say(id + ' rolled back to ' + prev.version);
     return 0;
 }
 function cmdRestore(args) {
@@ -5119,7 +5372,7 @@ var HELP = [
     '                                    install tools/apps (default: ./artifacts/*.tgz)',
     '  status [--json]                  installed components and pending reboots',
     '  uninstall <id> [--yes]           remove one tool or app',
-    '  rollback <id> [--yes]            a tool back to its other kept version',
+    '  rollback <id> [--yes]            a tool back to its other kept version, an app to its kept older package',
     '  restore [name] [--yes]           restore a backup (default stock); verified',
     '  backups                          list backups (stock marked)',
     '  fallback <on|off|status>         provisioning fallback for our apps',
@@ -5130,6 +5383,7 @@ var HELP = [
     '  updater-sources                  seed the updater\'s sources.json from stdin (kept when present)',
     '  sdk-donor [--json]               a readable copy of the oap-sdk donor bundle, and its oap-sdk module',
     '  apply-pending                    iDrive 8: apply the queued app changes (at boot, before MainApp)',
+    '  verify                           check the tools updated for this start; roll back one that does not work (at boot)',
     '  appmanager [--json]              IterioDev\'s App Manager on this unit: its service and what was adopted',
     '  appmanager adopt [--yes]         take over what it installed; uninstall oap-appmanager removes it',
     '  help                             this text',
@@ -5161,7 +5415,7 @@ function main() {
 function runCommand() {
     var args = parseArgs(process.argv.slice(2)), locked = false;
     var rootOnly = ['install', 'uninstall', 'rollback', 'restore', 'fallback', 'updater-token', 'updater-sources', 'apply-pending',
-        'appmanager']
+        'appmanager', 'verify']
         .indexOf(args.command) >= 0;
     try {
         if (!FAKE && typeof process.getuid === 'function' && process.getuid() !== 0 && rootOnly) {
@@ -5185,6 +5439,7 @@ function runCommand() {
         if (args.command === 'updater-sources') return cmdUpdaterSources();
         if (args.command === 'sdk-donor') return cmdSdkDonor(args);
         if (args.command === 'apply-pending') return cmdApplyPending();
+        if (args.command === 'verify') return cmdVerify();
         if (args.command === 'appmanager') return cmdAppManager(args);
         throw refuse('unknown command ' + args.command + '\n' + HELP);
     } catch (e) {
