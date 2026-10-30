@@ -14,8 +14,9 @@
  *   node release/release.js publish [<id>...] [--dry-run]
  *                                                     upload new versions, then the catalog
  *
- * A component in GATED publishes a new version only with a passing emulator
- * gate record for its exact source, release/gate/<id>.json (tools/emu-gate).
+ * A component in GATED publishes a new version to GitHub only with a passing
+ * emulator gate record for its exact build, release/gate/<id>.json
+ * (tools/emu-gate).
  *
  * Builds run on a clean `git archive HEAD` export, never on the working tree,
  * with SOURCE_DATE_EPOCH set to the last commit that touched what the
@@ -224,16 +225,20 @@ function sourceEpoch(c) {
     return git(['log', '-1', '--format=%ct', 'HEAD', '--'].concat(c.shipped));
 }
 
-/* The last commit that touched what the component ships: its source, as the
- * emulator gate tested it. A merge commit that brings the change in unaltered
- * keeps it (history simplification follows the parent it came from). */
+/* The last commit that touched what the component ships, and for a tool its
+ * packer: its source, as the emulator gate tested it. A merge commit that
+ * brings the change in unaltered keeps it (history simplification follows the
+ * parent it came from). An app's build also copies files in from elsewhere;
+ * its artifact builds to the same bytes everywhere, so its record names those. */
 function sourceCommit(c) {
-    return git(['log', '-1', '--format=%H', 'HEAD', '--'].concat(c.shipped));
+    const packer = c.kind === 'tool' ? ['deploy/hu', 'tools/oap_pack.js'] : [];
+    return git(['log', '-1', '--format=%H', 'HEAD', '--'].concat(c.shipped, packer));
 }
 
 /* Why a gated component's version may not be published: no gate record, or
- * one for another version or source, or one that did not pass. null: it may. */
-function gateProblem(c, record, source) {
+ * one for another version, source or (an app) artifact, or one that did not
+ * pass. null: it may. */
+function gateProblem(c, record, source, sha256) {
     if (!GATED.includes(c.id)) {
         return null;
     }
@@ -241,7 +246,8 @@ function gateProblem(c, record, source) {
     if (!record) {
         return `${c.id}@${c.version} has no emulator gate record: ${run}`;
     }
-    if (record.id !== c.id || record.version !== c.version || record.source !== source) {
+    if (record.id !== c.id || record.version !== c.version || record.source !== source ||
+        (c.kind === 'app' && record.artifactSha256 !== sha256)) {
         return `${c.id}@${c.version}: the gate record is for ${record.id}@${record.version} at ${String(record.source).slice(0, 12)}, ` +
             `not this source (${source.slice(0, 12)}): ${run}`;
     }
@@ -571,7 +577,9 @@ function cmdPublish(ids, dryRun) {
     built.forEach((e) => {
         const p = current.get(e.id);
         const c = all.find((x) => x.id === e.id);
-        const gate = (!p || p.version !== e.version) && gateProblem(c, gateRecord(c.id), sourceCommit(c));
+        // the gate binds what reaches cars; a folder (a test stick) takes any build
+        const gate = publishTarget.describe().startsWith('github:') && (!p || p.version !== e.version) &&
+            gateProblem(c, gateRecord(c.id), sourceCommit(c), e.artifact.sha256);
         if (gate) {
             skipped.push(gate);
         } else if (p && p.version === e.version && p.artifact.sha256 !== e.artifact.sha256) {

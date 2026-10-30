@@ -489,7 +489,7 @@ function testReleaseRequires() {
 /* release.js publish: a gated component needs a passing emulator gate record for its exact source. */
 function testReleaseGate() {
     const { gateProblem } = require(path.join(__dirname, '..', '..', 'release', 'release.js'));
-    const c = { id: 'mgu-render', version: '0.6.8' };
+    const c = { id: 'mgu-render', kind: 'tool', version: '0.6.8' };
     const src = 'a'.repeat(40);
     const record = (o) => Object.assign({ id: 'mgu-render', version: '0.6.8', source: src, result: 'pass' }, o);
     check('release gate: a passing record for this version and source lets it publish', gateProblem(c, record({}), src) === null);
@@ -497,6 +497,11 @@ function testReleaseGate() {
     check('release gate: a record for another source refuses it', /not this source/.test(gateProblem(c, record({}), 'b'.repeat(40))));
     check('release gate: a record for another version refuses it', /not this source/.test(gateProblem(c, record({ version: '0.6.7' }), src)));
     check('release gate: a record that did not pass refuses it', /did not pass/.test(gateProblem(c, record({ result: 'fail' }), src)));
+    const app = { id: 'robertn_store', kind: 'app', version: '0.9.14' };
+    const appRecord = (o) => Object.assign({ id: 'robertn_store', version: '0.9.14', source: src, result: 'pass', artifactSha256: 'f'.repeat(64) }, o);
+    check('release gate: an app with the tested artifact publishes', gateProblem(app, appRecord({}), src, 'f'.repeat(64)) === null);
+    check('release gate: an app whose artifact differs from the tested one is refused',
+        /not this source/.test(gateProblem(app, appRecord({}), src, 'e'.repeat(64))));
     check('release gate: a component outside the gate needs no record',
         gateProblem({ id: 'mgu-updater', version: '0.8.7' }, null, src) === null);
 }

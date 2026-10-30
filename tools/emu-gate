@@ -16,8 +16,8 @@
  *
  * MGU_EMULATOR: the mgu-emulator checkout (default
  * ~/workspaces/personal/mgu-emulator); a worktree of its origin/main and a VM
- * of its own (mgu-emu-gate) are made for the run and removed after it
- * (EMU_GATE_KEEP=1 keeps them).
+ * of its own (mgu-emu-gate-<pid>) are made for the run and removed after it
+ * (EMU_GATE_KEEP=1 keeps them; one component then).
  */
 const fs = require('fs');
 const os = require('os');
@@ -28,7 +28,7 @@ const { components, sourceCommit, GATED } = require('../release/release.js');
 
 const REPO = path.resolve(__dirname, '..');
 const EMULATOR = process.env.MGU_EMULATOR || path.join(os.homedir(), 'workspaces/personal/mgu-emulator');
-const VM = 'mgu-emu-gate';
+const VM = `mgu-emu-gate-${process.pid}`;
 const OURS = [0x4d520000, 0x4d5200ff];   // mgu-render's layer ids
 const FOREIGN = 0x4d47fff0;              // the stand-in for another renderer's layer
 const STORE_TILE = [384, 190];           // the Store, the first tile in the published release's APPS menu
@@ -36,7 +36,7 @@ const PICTURE_COLOURS = 150;             // sampled: the Store's page 290-690 co
 
 const sleep = (s) => cp.spawnSync('sleep', [String(s)]);
 function run(cmd, args, opts = {}) {
-    const r = cp.spawnSync(cmd, args, Object.assign({ encoding: 'utf8', maxBuffer: 64 << 20 }, opts));
+    const r = cp.spawnSync(cmd, args, Object.assign({ encoding: 'utf8', maxBuffer: 64 << 20, timeout: 30 * 60000 }, opts));
     if (r.status !== 0 && !opts.allowFail) {
         throw new Error(`${cmd} ${args.join(' ')}: ${(r.stderr || r.stdout || '').trim().split('\n').slice(-3).join(' | ')}`);
     }
@@ -97,7 +97,7 @@ function emulator(dir) {
             if (!m) throw new Error('emulator: no SSH port in the output of up');
             port = Number(m[1]);
         },
-        sh(cmd, allowFail) { return run('ssh', sshArgs().concat(['root@127.0.0.1', cmd]), { allowFail }); },
+        sh(cmd, allowFail) { return run('ssh', sshArgs().concat(['root@127.0.0.1', cmd]), { allowFail, timeout: 10 * 60000 }); },
         put(file, to) { run('scp', ['-q', '-P', String(port)].concat(sshArgs().slice(2), [file, `root@127.0.0.1:${to}`])); },
         restart() {
             emu('restart');
@@ -236,32 +236,37 @@ function gate(id, version, artifact, client, emuDir) {
 }
 
 function main(ids) {
-    if (!ids.length || ids.some((id) => !GATED.includes(id))) {
-        console.error(`usage: tools/emu-gate <id>...  (gated: ${GATED.join(', ')})`);
+    if (!ids.length || ids.some((id) => !GATED.includes(id)) || (process.env.EMU_GATE_KEEP && ids.length > 1)) {
+        console.error(`usage: tools/emu-gate <id>...  (gated: ${GATED.join(', ')}; with EMU_GATE_KEEP one)`);
         return 2;
     }
     if (run('git', ['status', '--porcelain', '--untracked-files=no'], { cwd: REPO }).trim()) {
         console.error('emu-gate: commit first: the gate tests the build of HEAD');
         return 1;
     }
+    const head = run('git', ['rev-parse', 'HEAD'], { cwd: REPO }).trim();
     const all = components();
     const started = Date.now();
-    // the stale-copy client: mgu-render's test client, built for the head unit
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'emu-gate-'));
-    const mr = path.join(REPO, 'native/mgu-render');
-    console.log('building the test client for the head unit');
-    run('docker', ['build', '-q', '--platform', 'linux/amd64', '-t', 'mgu-render-target', 'docker/target'], { cwd: mr });
-    run('docker', ['run', '--rm', '--platform', 'linux/amd64', '-v', `${mr}:/w:ro`, '-v', `${tmp}:/o`, '-w', '/w', 'mgu-render-target', 'sh', '-c',
-        'for x in ivi-controller; do wayland-scanner client-header protocol/$x.xml /o/$x-client-protocol.h; ' +
-        'wayland-scanner private-code protocol/$x.xml /o/$x-protocol.c; done && ' +
-        'gcc -O2 -std=gnu11 -Isrc -I/o -Wl,--dynamic-linker=/lib/ld-linux-x86-64.so.2 -o /o/ivi_client test/ivi_client.c src/relist.c src/log.c /o/ivi-controller-protocol.c -lwayland-client']);
     const emuDir = path.join(tmp, 'emu');
-    run('git', ['-C', EMULATOR, 'worktree', 'add', '--detach', emuDir, 'origin/main']);
-    const emuCommit = run('git', ['-C', emuDir, 'rev-parse', 'HEAD']).trim();
+    // Ctrl-C reaches the running child too; its failure then ends the run through the cleanup below
+    process.on('SIGINT', () => {});
     let failed = 0;
     try {
+        // the stale-copy client: mgu-render's test client, built for the head unit
+        const mr = path.join(REPO, 'native/mgu-render');
+        console.log('building the test client for the head unit');
+        run('docker', ['build', '-q', '--platform', 'linux/amd64', '-t', 'mgu-render-target', 'docker/target'], { cwd: mr });
+        run('docker', ['run', '--rm', '--platform', 'linux/amd64', '-v', `${mr}:/w:ro`, '-v', `${tmp}:/o`, '-w', '/w', 'mgu-render-target', 'sh', '-c',
+            'for x in ivi-controller; do wayland-scanner client-header protocol/$x.xml /o/$x-client-protocol.h; ' +
+            'wayland-scanner private-code protocol/$x.xml /o/$x-protocol.c; done && ' +
+            'gcc -O2 -std=gnu11 -Isrc -I/o -Wl,--dynamic-linker=/lib/ld-linux-x86-64.so.2 -o /o/ivi_client test/ivi_client.c src/relist.c src/log.c /o/ivi-controller-protocol.c -lwayland-client']);
+        run('git', ['-C', EMULATOR, 'fetch', '-q', 'origin']);
+        run('git', ['-C', EMULATOR, 'worktree', 'add', '--detach', emuDir, 'origin/main']);
+        const emuCommit = run('git', ['-C', emuDir, 'rev-parse', 'HEAD']).trim();
         for (const id of ids) {
             const c = all.find((x) => x.id === id);
+            const source = sourceCommit(c);
             console.log(`\n== ${id}@${c.version}`);
             run('node', ['release/release.js', 'build', id], { cwd: REPO, stdio: ['ignore', 'inherit', 'inherit'] });
             const entry = readCatalog().find((e) => e.id === id);
@@ -277,10 +282,14 @@ function main(ids) {
             } finally {
                 if (!process.env.EMU_GATE_KEEP) emulator(emuDir).down();
             }
-            const pass = out.results.every((r) => r.ok);
-            if (!pass) { failed++; continue; }
+            if (!out.results.every((r) => r.ok)) { failed++; continue; }
+            if (run('git', ['rev-parse', 'HEAD'], { cwd: REPO }).trim() !== head) {
+                console.log(`FAIL ${id}: HEAD moved during the run; run the gate again`);
+                failed++;
+                continue;
+            }
             const record = {
-                id, version: c.version, source: sourceCommit(c), result: 'pass',
+                id, version: c.version, source, result: 'pass',
                 unit: 'id7', emulator: emuCommit, artifactSha256: entry.artifact.sha256,
                 minutes: Math.round((Date.now() - t0) / 6000) / 10, cases: out.results
             };
@@ -312,4 +321,3 @@ if (require.main === module) {
     }
 }
 
-module.exports = { pictureColours };

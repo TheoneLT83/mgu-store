@@ -57,34 +57,22 @@ catalog fields `requires`, `optional`, `uninstallable`, `mguHmi`, `mguProvides`.
 
 ## The emulator gate
 
-A new version of what draws an app's picture, `mgu-render` or
-`robertn_store`, is published only after it passed in the head-unit
-emulator, which runs on the owner's Mac (the firmware stays there):
+A new version of `mgu-render` or `robertn_store` is published to GitHub only
+after it passed in the head-unit emulator, which runs on the owner's Mac:
 
 ```sh
-tools/emu-gate mgu-render          # about 4 min; both: tools/emu-gate mgu-render robertn_store
+tools/emu-gate mgu-render          # about 4 min a component
 git add release/gate/mgu-render.json && git commit -m "mgu-render x.y.z: emulator gate"
 ```
 
-For each component it starts a fresh iDrive 7 emulator from the published
-release, installs this commit's build of that component on its own, restarts
-the head unit and opens the Store:
-
-- in its HMI page, then on mgu-render's own layer (as on iDrive 8 and for
-  every community app);
-- after another program sets the screen's layers without ours;
-- after a client connected earlier adds its layer (its copy of the list
-  drops ours), whose layer must stay too;
-- after a renderer restart.
-
-Each time the Store's picture must be on the screen (its layer listed and
-visible, and the page drawn). All passing, it writes
-`release/gate/<id>.json`: the version and `source`, the last commit that
-touched what the component ships. `release.js publish` refuses a new version
-of either component without a passing record for that version and source,
-so any later change to what it ships needs the gate again. It needs Docker,
-the mgu-emulator checkout (`MGU_EMULATOR`, default
-`~/workspaces/personal/mgu-emulator`) and `gh` signed in.
+It installs this commit's build on its own over the published release and
+checks that the Store's picture stays on the screen when other programs
+change the screen's layers and when the renderer and head unit restart
+(the cases: `tools/emu-gate`). Passing, it writes `release/gate/<id>.json`
+for that version and build; `release.js publish` refuses a new version
+without one, so any later change to what the component ships needs the gate
+again. It needs Docker, `gh` signed in and the mgu-emulator checkout
+(`MGU_EMULATOR`, default `~/workspaces/personal/mgu-emulator`).
 
 ## Versions
 
