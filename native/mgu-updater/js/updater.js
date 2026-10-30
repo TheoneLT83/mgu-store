@@ -997,6 +997,12 @@ class Updater {
         });
     }
 
+    /* The ids the updater never removes: itself, the deploy tool, the Store
+     * and what the updater requires. */
+    kept() {
+        return [SELF, this.conf.deploy_tool, this.conf.store_app].concat(Object.keys(selfComponent().requires || {}));
+    }
+
     /* The row of an installed component no listing stands for: its id
      * belongs to no origin that lists it (source: its origin, imported, or
      * null). It is shown, and can be removed (what the updater never removes
@@ -1008,7 +1014,7 @@ class Updater {
         try {
             c = i.kind === 'tool' ? readJson(path.join(this.conf.tool_root, id, 'current', 'component.json')) : {};
         } catch (e) { /* none */ }
-        const kept = [SELF, this.conf.deploy_tool, this.conf.store_app].concat(Object.keys(selfComponent().requires || {}));
+        const kept = this.kept();
         const requires = c.requires && typeof c.requires === 'object' && !Array.isArray(c.requires) ?
             Object.keys(c.requires).filter((k) => ID.test(k) && k !== id && catalogLib.SEMVER.test(c.requires[k]))
                 .reduce((o, k) => Object.assign(o, { [k]: c.requires[k] }), {}) : {};
@@ -1097,11 +1103,14 @@ class Updater {
                 map.set(id, this.originless(id, this.origins[id] ? this.origins[id].source : null));
             }
         });
-        // what the Store and mgu-uplink replace is never installed, from whichever source
+        // what the Store and mgu-uplink replace is never installed, from whichever source; an app can
+        // be removed whatever its source says, and what the updater never removes cannot
+        const kept = this.kept();
         map.forEach((r, key) => {
             const why = REPLACED[r.entry.installAs || r.entry.listedId || r.entry.id];
-            if (why) {
-                map.set(key, { entry: Object.assign({}, r.entry, { blocked: why }), source: r.source });
+            const uninstallable = kept.indexOf(r.entry.installAs || r.entry.id) < 0 && (r.entry.kind === 'app' || r.entry.uninstallable === true);
+            if (why || uninstallable !== r.entry.uninstallable) {
+                map.set(key, { entry: Object.assign({}, r.entry, why ? { blocked: why } : {}, { uninstallable }), source: r.source });
             }
         });
         return map;

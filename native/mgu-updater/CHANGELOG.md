@@ -1,5 +1,9 @@
 # Updater changelog
 
+## 0.8.6
+
+- Every installed app can be removed, whatever its source's listing says (`uninstallable`): an app a repository or catalog lists without it (the idrive7-apps apps) shows Remove in the Store as an imported one does. The Store, the updater, the deploy tool and what the updater requires are never removable, whichever source lists them; a tool still needs `uninstallable: true`.
+
 ## 0.8.2
 
 - A component's `pendingReboot` is true whenever the deploy tool reports its id pending, also before it is installed: an iDrive 8 app install the deploy tool queued for the next start (`installs at the next start`), which the car's app list does not have until then, and an app this start put in place (`last_apply`) that MainApp does not list yet, for 5 minutes; after that it shows as a failed install (`put in place at the last start but not registered`), and the state goes out again when MainApp lists it. An id that is not installed is pending only on the row of the origin that queued it. Before, the row of a first install showed `available` with no pending restart, and the Store offered Install again.
