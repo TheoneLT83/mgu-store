@@ -74,8 +74,8 @@
 #define GRAB_US 1500000ull           /* a GRAB holds this long unless repeated */
 #define GATE_TOUCH_US 200000ull      /* the controller gate's file is refreshed this often while held */
 #define SHARE_US 2000000ull          /* the community socket's rule is applied this often */
-#define PUT_WINDOW_US 10000000ull    /* a layer taken off the screen goes back at once at most PUT_MAX times in this */
-#define PUT_MAX 10
+#define DROP_WINDOW_US 10000000ull   /* a layer taken off while shown goes back at once at most DROP_MAX times in this */
+#define DROP_MAX 10
 #ifndef GL_BGRA_EXT
 #define GL_BGRA_EXT 0x80E1
 #endif
@@ -123,7 +123,7 @@ typedef struct client {
     struct ivi_controller_layer *cl;
     int listed;             /* the layer is on the centre screen's list, as the compositor last said */
     int shown_on;           /* shown at the last apply_visibility */
-    uint64_t put_t; int puts;   /* the layer put on the screen: when the current run of puts began, how many */
+    uint64_t drop_t; int drops; /* the layer taken off while shown: when the current 10 s began, how often since */
     struct wl_callback *frame_cb;
     /* frames */
     uint32_t *frame; size_t frame_words, frame_cap;
@@ -333,9 +333,11 @@ static void layer_put(client *c);
 static void apply_visibility(client *c) {
     if (!c->cl) return;
     int on = shown(c);                                     /* never show an empty or dead surface */
-    if (on && !c->shown_on) c->puts = 0;                   /* shown again: a layer taken off goes back */
+    if (on && !c->shown_on) {                              /* shown: a layer taken off meanwhile goes back */
+        c->drops = 0;
+        if (!c->listed) layer_put(c);
+    }
     c->shown_on = on;
-    if (on && !c->listed) layer_put(c);
     ivi_controller_layer_set_visibility(c->cl, on);
     ivi_controller_surface_set_visibility(c->cs, on);
     ivi_controller_commit_changes(ictl);
@@ -433,11 +435,6 @@ static void surface_destroy(client *c) {
  * this connection last saw or set it, so it would drop the layers other programs (the HMI, another renderer) put on
  * the screen since. A connection made for it sees the list as it is (relist.h). */
 static void layer_put(client *c) {
-    uint64_t t = now_us();
-    if (t - c->put_t > PUT_WINDOW_US) { c->put_t = t; c->puts = 0; }
-    if (c->puts == PUT_MAX) log_warn("%s: layer taken off the screen %d times in %llu s; back at its next show", c->app, PUT_MAX,
-                                     (unsigned long long)(PUT_WINDOW_US / 1000000));
-    if (c->puts++ >= PUT_MAX) return;
     if (relist_put(cfg.wayland_display, cfg.screen_id, LAYER_BASE + c->slot, screen_w, screen_h) == 0) c->listed = 1;
 }
 
@@ -450,8 +447,17 @@ static void l_screen(void *d, struct ivi_controller_layer *l, struct wl_output *
     if (o) { c->listed = 1; return; }
     if (!c->listed) return;
     c->listed = 0;
-    log_info("%s: layer taken off the screen%s", c->app, c->shown_on ? ", put back" : "");
-    if (c->shown_on) layer_put(c);
+    if (!c->shown_on) { log_info("%s: layer taken off the screen", c->app); return; }
+    uint64_t t = now_us();
+    if (t - c->drop_t > DROP_WINDOW_US) { c->drop_t = t; c->drops = 0; }
+    if (++c->drops > DROP_MAX) {
+        if (c->drops == DROP_MAX + 1)
+            log_warn("%s: layer taken off the screen %d times in %llu s; back at its next show", c->app, DROP_MAX,
+                     (unsigned long long)(DROP_WINDOW_US / 1000000));
+        return;
+    }
+    log_info("%s: layer taken off the screen, put back", c->app);
+    layer_put(c);
 }
 static void l_int(void *d, struct ivi_controller_layer *l, int32_t v) { (void)d, (void)l, (void)v; }
 static void l_opacity(void *d, struct ivi_controller_layer *l, wl_fixed_t v) { (void)d, (void)l, (void)v; }
@@ -495,7 +501,7 @@ static int surface_create(client *c) {
     ivi_controller_layer_add_listener(c->cl, &layer_listener, c);
     ivi_controller_commit_changes(ictl);
     wl_display_roundtrip(dpy);                            /* the layer exists for the connection that puts it on */
-    c->listed = 0; c->shown_on = 0; c->puts = 0;
+    c->listed = 0; c->shown_on = 0; c->drops = 0;
     layer_put(c);                                         /* on top of the screen's layers */
     wl_display_roundtrip(dpy);
     log_info("%s: surface 0x%x on layer 0x%x at %d,%d %dx%d (scale %.3f)", c->app, sid, lid, c->x, c->y, c->w, c->h, c->xf.s);

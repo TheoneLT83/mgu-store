@@ -64,6 +64,7 @@ int main(void) {
     wl_display_roundtrip(dpy);
     wl_display_roundtrip(dpy);
     if (!ctl || !scr) { fprintf(stderr, "no ivi controller or screen\n"); return 1; }
+    printf("ready\n");
     char line[256];
     struct pollfd p[2] = { { 0, POLLIN, 0 }, { wl_display_get_fd(dpy), POLLIN, 0 } };
     for (;;) {

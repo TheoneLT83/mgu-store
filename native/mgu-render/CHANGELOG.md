@@ -3,7 +3,7 @@
 ## 0.6.7
 
 - A layer app's layer goes onto the centre screen through a connection made for it and closed again (`src/relist.c`), never through the renderer's own long-lived one. Winston applies a screen's `add_layer` to the layer list as the calling connection last saw or set it, so a connection open a while dropped every layer other programs (the HMI, another renderer) put on the screen since. The new connection sees the list as it is: our layer goes on top and every other layer stays.
-- When another program sets the screen's layers without ours, Winston says so (the layer's `screen` event) and the layer goes back on top: at once while the app is shown, at its next show otherwise. At most 10 times in 10 s while shown; after that, at the next show (journal: `layer taken off the screen`).
+- When another program sets the screen's layers without ours, Winston says so (the layer's `screen` event) and the layer goes back on top: at once while the app is shown, at its next show otherwise. Taken off more than 10 times in 10 s while shown, it goes back at its next show (journal: `layer taken off the screen`).
 
 ## 0.6.2
 

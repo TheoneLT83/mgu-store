@@ -25,7 +25,7 @@ say() {
 	n=$1; shift
 	for c in "$@"; do echo "$c"; done >> "$T/$n.q"
 	echo sync >> "$T/$n.q"
-	k=$(grep -c synced "$T/$n.out" 2>/dev/null || true)
+	k=$(grep -c synced "$T/$n.out" 2>/dev/null) || k=0
 	cat "$T/$n.q" > "$T/$n.pipe"; : > "$T/$n.q"
 	i=0; while [ "$(grep -c synced "$T/$n.out" 2>/dev/null || true)" -le "$k" ]; do
 		i=$((i + 1)); [ $i -lt 100 ] || { echo "FAIL: $n did not answer"; cat "$T/$n.out"; exit 1; }; sleep 0.05
@@ -37,6 +37,9 @@ client() {
 	# a reader that outlives each writer: the fifo is reopened for every batch of commands
 	( while :; do cat "$T/$1.pipe"; done ) | "$B/ivi_client" > "$T/$1.out" 2>&1 &
 	pids="$pids $!"
+	i=0; while ! grep -q ready "$T/$1.out" 2>/dev/null; do   # its copy of the list is taken by now
+		i=$((i + 1)); [ $i -lt 100 ] || { echo "FAIL: $1 did not connect"; cat "$T/$1.out"; exit 1; }; sleep 0.05
+	done
 }
 
 # a renderer that connects before the HMI has its layer (as one started with the compositor, at boot)

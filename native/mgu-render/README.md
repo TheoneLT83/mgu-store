@@ -224,7 +224,8 @@ which neither community renderer connects to.
 each `add_layer` from the calling connection's own copy (taken when it
 connected, changed only by its own requests), so a long-open connection drops
 the layers others added since. Our layer goes on through a connection made
-for that moment (`src/relist.c`) and never drops another program's layer. A
+for that moment (`src/relist.c`), whose copy is the list as it is, so other
+programs' layers stay. A
 layer another program drops is put back on top, at once while its app is
 shown, otherwise at its next show; with no layer of ours dropping theirs, a
 renderer that puts its own layer back in turn finds nothing to answer.
