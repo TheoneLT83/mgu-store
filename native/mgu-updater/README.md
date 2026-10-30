@@ -303,9 +303,11 @@ still queued then is installed by the new version once it is kept; a requirement
 provides a capability another installed tool provides counts as met, so a
 component requiring the renderer installs beside another renderer);
 `optional` components are listed but never counted as updates unless
-installed; `uninstallable` ones can be removed (Store, phone page), through
+installed; apps, whatever their source's `uninstallable` says, and
+`uninstallable` tools can be removed (Store, phone page), through
 `mgu-deploy.sh uninstall <id> --yes`, unless something installed requires
-them. The updater and the deploy tool are never removed. An install asked
+them. The updater, the deploy tool, the Store and what the updater
+requires are never removed (their `uninstallable` is false). An install asked
 for while a removal of the same component waits or runs (or the other way
 round) is refused.
 
@@ -802,7 +804,7 @@ Requests: `{"op":"status"}`, `{"op":"check"}`, `{"op":"install","id"}`
 
 | Request | Does |
 |---|---|
-| `{"op":"uninstall","id"}` | removes an `uninstallable` component |
+| `{"op":"uninstall","id"}` | removes an `uninstallable` component (every app but the Store) |
 | `{"op":"source-add","type":"github","repo":"o/r","channel"?}`, `{"op":"source-add","type":"https","url"}` | adds a source (id: the repo's name, else `s-<hex>`) and reads it |
 | `{"op":"source-probe","repo":"o/r"}` | `{"type":"probe","repo",status}`: what a GitHub repo can be added on, read with each token in turn, then without one. `ok` with `name` (the repo as GitHub spells it), `releases` (it has a release), `tags` (an x.y.z tag), `defaultBranch` (null when no channel takes its name), `branches` (100 a page, at most 300, in the order offered: main, master, the default branch, the rest; names no channel takes left out) and `more` (there are more); `auth-needed` (no token reaches it, or it is not there; a 403 that is no rate limit counts as no reach), `offline`, `rate-limited` (a 429, or a 403 with `x-ratelimit-remaining: 0` or `retry-after`), `error` with `error`. A repo that is already a source is refused |
 | `{"op":"source-remove","id"}` | removes a source (not the built-in one); what it installed keeps it as its origin in `origins.json`, and the ids `aliases.json` keeps for it stay |
