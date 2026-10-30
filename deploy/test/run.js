@@ -720,7 +720,7 @@ function testNoManagerInstall() {
     write(root.p('proc/uptime'), '1234.56 100.00\n');
     // a process of MainApp's uid that ps does not show as the manager
     write(root.p('proc/555/status'), `Name:\tnode\nUid:\t${MGR}\t${MGR}\t${MGR}\t${MGR}\n`);
-    write(root.p('proc/555/cmdline'), '/opt/node10/bin/node\0--max-old-space-size\0512\0/usr/lib/oap-mainapp/src/main.js\0');
+    write(root.p('proc/555/cmdline'), ['/opt/node10/bin/node', '--max-old-space-size', '512', '/usr/lib/oap-mainapp/src/main.js', ''].join('\0'));
     const app = appArtifact('fixture_app', '1.0.0', true);
     const t0 = Date.now();
     const r = root.run(['install', '--artifact', app, '--yes'],
