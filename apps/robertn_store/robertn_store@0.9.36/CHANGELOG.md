@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.36
+
+iDrive 7: a changelog's installed version is at the title row's right end (it was drawn over the title).
+
 ## 0.9.35
 
 - Settings > Internet: Wi-Fi first, with its steps (the phone's hotspot on, Scan on the Wi-Fi page, the phone's

@@ -201,8 +201,9 @@ function compact(W, H0, look, opts) {
     ]);
     const changelog = screen('changelog', 3, [
         back(),
-        text('title', titleX, M + 2, CW - 84, 60, 'Changelog', 50, 'bold'),
-        status('status', titleX, CW - 84),
+        // the version installed at the title row's right end, where the title leaves room
+        text('title', titleX, M + 2, CW - 84 - 440, 60, 'Changelog', 50, 'bold'),
+        status('status', R - 420, 420),
         list('list', X, HEAD + 14, CW, B - HEAD - 14, { empty: '', rowH: 52, titleSize: 26, subSize: 24 })
     ]);
     const pick = screen('pick', 3, [
