@@ -16,8 +16,9 @@
  *
  * MGU_EMULATOR: the mgu-emulator checkout (default
  * ~/workspaces/personal/mgu-emulator); a worktree of its origin/main and a VM
- * of its own (mgu-emu-gate-<pid>) are made for the run and removed after it
- * (EMU_GATE_KEEP=1 keeps them; one component then).
+ * of its own (mgu-emu-gate) are made for the run and removed after it
+ * (EMU_GATE_KEEP=1 keeps them; one component then). One run at a time: a run
+ * removes what an interrupted one left.
  */
 const fs = require('fs');
 const os = require('os');
@@ -28,7 +29,7 @@ const { components, sourceCommit, GATED } = require('../release/release.js');
 
 const REPO = path.resolve(__dirname, '..');
 const EMULATOR = process.env.MGU_EMULATOR || path.join(os.homedir(), 'workspaces/personal/mgu-emulator');
-const VM = `mgu-emu-gate-${process.pid}`;
+const VM = 'mgu-emu-gate';
 const OURS = [0x4d520000, 0x4d5200ff];   // mgu-render's layer ids
 const FOREIGN = 0x4d47fff0;              // the stand-in for another renderer's layer
 const STORE_TILE = [384, 190];           // the Store, the first tile in the published release's APPS menu
@@ -247,11 +248,15 @@ function main(ids) {
     const head = run('git', ['rev-parse', 'HEAD'], { cwd: REPO }).trim();
     const all = components();
     const started = Date.now();
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'emu-gate-'));
+    const tmp = path.join(os.tmpdir(), 'emu-gate');
     const emuDir = path.join(tmp, 'emu');
-    // a signal ends the run through the cleanup below (Ctrl-C reaches the running child too)
-    let stopped = null;
-    ['SIGINT', 'SIGTERM', 'SIGHUP'].forEach((sig) => process.on(sig, () => { stopped = sig; }));
+    const clean = () => {
+        run('limactl', ['delete', '-f', VM], { allowFail: true });
+        run('git', ['-C', EMULATOR, 'worktree', 'remove', '--force', emuDir], { allowFail: true });
+        fs.rmSync(tmp, { recursive: true, force: true });
+    };
+    clean();
+    fs.mkdirSync(tmp);
     if (process.env.EMU_GATE_KEEP) console.log(`kept after the run: VM ${VM}, emulator worktree ${emuDir}`);
     let failed = 0;
     try {
@@ -267,7 +272,6 @@ function main(ids) {
         run('git', ['-C', EMULATOR, 'worktree', 'add', '--detach', emuDir, 'origin/main']);
         const emuCommit = run('git', ['-C', emuDir, 'rev-parse', 'HEAD']).trim();
         for (const id of ids) {
-            if (stopped) { console.log(`stopped (${stopped})`); failed++; break; }
             const c = all.find((x) => x.id === id);
             const source = sourceCommit(c);
             console.log(`\n== ${id}@${c.version}`);
@@ -285,7 +289,7 @@ function main(ids) {
             } finally {
                 if (!process.env.EMU_GATE_KEEP) emulator(emuDir).down();
             }
-            if (stopped || !out.results.every((r) => r.ok)) { failed++; continue; }
+            if (!out.results.every((r) => r.ok)) { failed++; continue; }
             if (run('git', ['rev-parse', 'HEAD'], { cwd: REPO }).trim() !== head) {
                 console.log(`FAIL ${id}: HEAD moved during the run; run the gate again`);
                 failed++;
@@ -301,11 +305,7 @@ function main(ids) {
             console.log(`pass: release/gate/${id}.json written (commit it)`);
         }
     } finally {
-        if (!process.env.EMU_GATE_KEEP) {
-            run('limactl', ['delete', '-f', VM], { allowFail: true });
-            run('git', ['-C', EMULATOR, 'worktree', 'remove', '--force', emuDir], { allowFail: true });
-            fs.rmSync(tmp, { recursive: true, force: true });
-        }
+        if (!process.env.EMU_GATE_KEEP) clean();
     }
     console.log(`\nemu-gate: ${failed ? `${failed} failed` : 'all passed'} in ${Math.round((Date.now() - started) / 60000)} min`);
     return failed ? 1 : 0;
