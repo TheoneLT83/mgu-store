@@ -43,7 +43,8 @@
  * its time in ms and the app homes present at that moment.
  *
  * install(id), update(id) and uninstall(id) are the manager's install,
- * update and uninstall of one app, for fake_inplace.js.
+ * update and uninstall of one app, and rejectedUpdate(id) what its
+ * rejected update leaves, for fake_inplace.js.
  */
 const fs = require('fs');
 const path = require('path');
@@ -131,6 +132,20 @@ function update(id, how) {
     if (!env.FAKE_MGR_NO_SOURCE) fs.writeFileSync(e.file, JSON.stringify(Object.assign(e.entry, { installationSource: 'PREINSTALLED' })));
     log(`update ${id} ${pkg.version} uid ${e.entry.userId}${how || ''}`);
     return true;
+}
+
+/* What MainApp's update leaves when its installer rejects the new version
+ * at generateSomeipInterfaces: the app unregistered and its entry
+ * deleted, its source/, rhmiData/ and rhmiDataStartWidget/ removed and
+ * someipInterfaces/ made again, empty; its data, keychain and uid stay. */
+function rejectedUpdate(id) {
+    const e = entries().find((x) => x.id === id);
+    if (!e || !e.entry || !e.entry.userId) return;
+    const h = home(e.entry.userId);
+    fs.unlinkSync(e.file);
+    ['source', 'rhmiData', 'rhmiDataStartWidget', 'someipInterfaces'].forEach((n) => fs.rmSync(path.join(h, n), { recursive: true, force: true }));
+    fs.mkdirSync(path.join(h, 'someipInterfaces'));
+    log(`rejected update ${id} uid ${e.entry.userId}`);
 }
 
 /* The uninstall of a registered app: its entry, its home and its
@@ -240,5 +255,5 @@ function bounce() {
     }
 }
 
-module.exports = { install, update, uninstall, startupPass, log };
+module.exports = { install, update, uninstall, rejectedUpdate, startupPass, log };
 if (require.main === module) bounce();

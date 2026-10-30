@@ -457,7 +457,9 @@ or app-privacy changes (`id8-live.json`). From the next start on, changes
 are live; until then they are queued. A
 change the running MainApp-21 does not take (no hook, the request not
 taken or refused, MainApp-21 restarted) is queued instead, with what was
-placed for it put back; one its installer failed fails, rolled back. On a
+placed for it put back; one its installer failed fails, rolled back, an
+update with the app's folders as on iDrive 7 (below): MainApp-21 loads the
+previous version from them at its next start. On a
 MainApp-21 the copy does not fit, every change is queued. An app
 uninstalled live goes on app-privacy's override list
 (`local-only-apps.json`): provisioning lists it until the next start, and
@@ -915,11 +917,17 @@ the other apps and their tiles keep running; there is no bounce.
   the app manager done after 21s: installing since +16s, ended +21s; update other_app ran until +16s; AppManagement child started +0s to +3s
   ```
 - When the manager's own install or update rejected the app in its
-  installer (not its AppManagement child or channel failing), leaving the
-  app as it was, the install fails at once
-  (exit 1, rolled back) with the manager's reason in one line, and no
-  bounce: a restarted manager runs the same install, and the bounce stops
-  every app.
+  installer (not its AppManagement child or channel failing), the install
+  fails at once (exit 1, rolled back) with the manager's reason in one
+  line, and no bounce to install it: a restarted manager runs the same
+  install, and the bounce stops every app. An update the manager rejects
+  (a manifest naming an interface the head unit does not have, say:
+  `UPDATE_FAILED`) has already unregistered the app, taking its tile, and
+  removed its `source/`, `someipInterfaces/`, `rhmiData/` and
+  `rhmiDataStartWidget/`. Before every update the installer copies those
+  folders aside with their owners, modes and ACLs; the rollback puts back
+  the ones that changed and restarts the manager once, which loads the
+  previous version with its uid, data and tile.
 - When the manager never had the install in hand (no hook, the request not
   taken, refused or failed, or the manager restarted meanwhile) the
   installer says why and installs through the bounce above, under the same
