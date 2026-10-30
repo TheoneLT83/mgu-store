@@ -489,19 +489,17 @@ function bounceManager() {
     throw fail('app manager node child did not respawn; check oapcontroller');
 }
 /* The manager's node child, waited for up to bounceTimeoutMs: oapcontroller
- * respawns a dead one within seconds. Its pid, or null. */
+ * respawns a dead one within seconds. */
 function managerSoon() {
     var waited = 0, pid;
     while (!(pid = managerPid()) && waited < CFG.bounceTimeoutMs) { sleepMs(1000); waited += 1000; }
     return pid;
 }
-/* What tells why no app manager runs, a screen at most: MainApp's folder
- * and version, oapcontroller's state and drop-ins, the head unit's uptime,
- * the mounts over main.js, the processes of MainApp's uid (from /proc,
- * whatever ps shows), those ps shows as node, MainApp or oapcontroller,
- * and oapcontroller's last lines about MainApp. */
+/* What tells why no app manager runs, a screen at most. MainApp's uid's
+ * processes come from /proc, whatever ps shows; a long line keeps its
+ * start and its end, where the script is. */
 function managerReport() {
-    var out = [], cut = function (l) { l = l.trim(); return l.length > 160 ? l.slice(0, 157) + '...' : l; };
+    var out = [], cut = function (l) { l = l.trim(); return l.length > 160 ? l.slice(0, 70) + '...' + l.slice(-87) : l; };
     var pkg = readJsonOrNull(path.join(mainappRoot(), 'package.json')), up = null, dropins = [], mounts = 0;
     out.push('MainApp: ' + mainappRoot() + ' ' + (pkg && pkg.version ? pkg.version : '(no version)') +
         (fs.existsSync(mainJs()) ? '' : ', no src/main.js'));
@@ -2780,12 +2778,12 @@ function installApp(a, state, decision) {
     if (!uid && existing && r.state === 'failed' && r.error === 'APP_ALREADY_UPDATED') {
         uid = installedAlready(a, r.why);
     }
-    /* Without a manager nothing installs the app: no bounce, no wait */
+    /* Without a manager nothing installs the app: no bounce, no 600 s watch */
     if (!uid && !managerSoon()) {
         say('no app manager is running on this head unit:');
         managerReport().forEach(function (l) { say('  ' + l); });
         throw fail('the app manager is not running, so ' + a.id + ' ' + a.version + ' cannot be installed now: ' +
-            'restart the head unit (a normal ignition cycle does it), wait for the home screen, then run the installer again');
+            'restart the head unit (a normal ignition cycle does it), wait for the home screen, then run the install again');
     }
     if (!uid) {
         say('installing ' + a.id + ' through a bounce: ' + r.why);

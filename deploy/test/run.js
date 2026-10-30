@@ -730,7 +730,7 @@ function testNoManagerInstall() {
         !r.out.includes('nothing to bounce') && !r.out.includes('through a bounce') && root.kills().length === 0, r.out);
     check('no manager: says so and what to do', r.out.includes('no app manager is running on this head unit') &&
         r.out.includes('the app manager is not running, so fixture_app 1.0.0 cannot be installed now') &&
-        r.out.includes('run the installer again'), r.out);
+        r.out.includes('then run the install again'), r.out);
     check('no manager: shows MainApp, oapcontroller, uptime, mounts and processes',
         r.out.includes(`MainApp: ${root.p('usr/lib/oap-mainapp')}`) && r.out.includes('oapcontroller: ActiveState=inactive') &&
         r.out.includes('oapcontroller drop-ins: 50-other.conf') && r.out.includes('head unit up 1234 s, mounts over main.js:') &&
