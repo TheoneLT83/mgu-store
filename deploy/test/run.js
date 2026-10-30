@@ -3532,8 +3532,9 @@ function testMguInstall() {
             reqs[0].path === `/repos/${STORE_REPO}` && reqs[0].auth === null && reqs[1].auth === `Bearer ${TOKEN}` &&
             reqs.filter((x) => x.path.startsWith('/blob/')).length === 5 && reqs.filter((x) => x.path.startsWith('/blob/')).every((x) => x.auth === null),
             JSON.stringify(reqs));
-        check('mgu-install first-install: ssh to the given host as root on port 22, with ssh-rsa allowed for the unit\'s sshd',
-            r.calls.every((a) => a.includes('root@10.0.0.9') && a[0] === '-p' && a[1] === '22' && a.includes('HostKeyAlgorithms=+ssh-rsa')),
+        check('mgu-install first-install: ssh to the given host as root on port 22, with ssh-rsa allowed for the unit\'s sshd and its host key neither asked about nor kept',
+            r.calls.every((a) => a.includes('root@10.0.0.9') && a[0] === '-p' && a[1] === '22' && a.includes('HostKeyAlgorithms=+ssh-rsa') &&
+                a.includes('StrictHostKeyChecking=no') && a.includes('UserKnownHostsFile=/dev/null')),
             JSON.stringify(r.calls[0]));
         check('mgu-install first-install: no remote command carries a double quote or a backslash (Windows passes them through its own quoting)',
             r.calls.every((a) => !/["\\]/.test(a[a.length - 1])), r.calls.map((a) => a[a.length - 1]).join('\n'));
@@ -3591,6 +3592,10 @@ function testMguInstall() {
         r = mguInstall(['token', '--host', '10.0.0.9', '--list'], opts);
         check('mgu-install token --list: updater-token --list on the unit', r.calls.length === 1 &&
             r.calls[0][r.calls[0].length - 1].endsWith('sh /var/opt/mgu-deploy/mgu-deploy.sh updater-token --list'), JSON.stringify(r.calls));
+        r = mguInstall(['token', '--host', '10.0.0.9', '--list', '--ssh-opt', 'StrictHostKeyChecking=yes'], opts);
+        check('mgu-install: an owner\'s StrictHostKeyChecking comes before the tool\'s, so ssh takes the owner\'s',
+            r.calls.length === 1 && r.calls[0].indexOf('StrictHostKeyChecking=yes') >= 0 &&
+            r.calls[0].indexOf('StrictHostKeyChecking=yes') < r.calls[0].indexOf('StrictHostKeyChecking=no'), JSON.stringify(r.calls));
         r = mguInstall(['token', '--host', '10.0.0.9', '--list', '--json'], opts);
         const listed = JSON.parse(r.stdout);
         const otherId = Object.keys(tokenTexts(root)).find((id) => tokenTexts(root)[id] === other);

@@ -74,7 +74,7 @@ comes through the Store.
 | `--identity <file>` | root's private SSH key |
 | `--host <address>`, `--port <n>` | reach the head unit at this SSH address instead (port 22 unless given); for an SSH config alias, give its port with `--port` |
 | `--user <name>` | SSH user (default `root`) |
-| `--ssh-opt <option>` | an extra `ssh -o` option, e.g. `StrictHostKeyChecking=accept-new`; repeatable. Through a jump host, give `--host` too: `--host <head unit> --ssh-opt ProxyJump=<jump host>` |
+| `--ssh-opt <option>` | an extra `ssh -o` option, e.g. `ConnectTimeout=30`; repeatable. Through a jump host, give `--host` too: `--host <head unit> --ssh-opt ProxyJump=<jump host>` |
 | `--token` | asks for a GitHub token, for private repositories |
 | `--no-uplink` | leaves out the internet uplink |
 | `--no-renderer` | leaves out the renderer |
