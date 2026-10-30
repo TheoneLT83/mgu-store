@@ -57,6 +57,8 @@ const HTTPS_PORT = 8443;
 const DNS_PORT = 5300;
 // a restart the unit has not carried out by then is reported as failed
 process.env.MGU_UPDATER_REBOOT_WAIT_MS = '3000';
+// a started Store that does not say hello by then has its update undone
+process.env.MGU_UPDATER_STORE_HELLO_MS = '1500';
 let failures = 0;
 let passes = 0;
 
@@ -3362,6 +3364,169 @@ function testAppRemove() {
         });
 }
 
+/* Undo update: what offers it (the deploy tool keeps the version before,
+ * nothing strands), the rollback op, the last start's failed check, and
+ * the Store's update undone when the new Store starts but never says hello. */
+function testUndo() {
+    const { Updater } = require('../js/updater');
+    const M = path.join(T, 'undo');
+    const opt = path.join(M, 'opt');
+    const oap = path.join(M, 'oap');
+    const state = path.join(M, 'state');
+    const cat = path.join(M, 'cat');
+    const proc = path.join(M, 'proc');
+    [M, opt, oap, state, cat, proc, path.join(M, 'shm'), path.join(M, 'media')].forEach(mkdirp);
+    const deployLog = path.join(M, 'deploy.log');
+    fs.writeFileSync(deployLog, '');
+    fs.writeFileSync(`${deployLog}.previous`, JSON.stringify({ robertn_store: '0.9.13', cat_app: '1.0.0' }));
+    Object.assign(process.env, { TOOL_ROOT: opt, OAP_ROOT: oap, FAKE_DEPLOY_LOG: deployLog,
+        FAKE_LAST_VERIFY: JSON.stringify({ at: '2026-10-30T10:00:00Z', results: [{ id: 'mgu-uplink', version: '0.7.4', ok: false,
+            error: 'mgu-uplink.service is not healthy', previous: '0.7.3', rolledBack: true }] }) });
+    delete process.env.FAKE_LEASE;
+    const deploySh = path.join(M, 'mgu-deploy.sh');
+    fs.writeFileSync(deploySh, DEPLOY_SH, { mode: 0o755 });
+    const tool = (id, version, kept) => {
+        [version].concat(kept || []).forEach((v) => {
+            mkdirp(path.join(opt, id, 'versions', v));
+            fs.writeFileSync(path.join(opt, id, 'versions', v, 'component.json'), JSON.stringify({ id, kind: 'tool', version: v }));
+        });
+        fs.symlinkSync(`versions/${version}`, path.join(opt, id, 'current'));
+    };
+    tool('mgu-deploy', '0.6.8', ['0.6.7']);
+    tool('mgu-updater', '0.8.7', ['0.8.6']);
+    tool('mgu-render', '0.6.8', ['0.6.2']);
+    tool('fx-tool', '2.0.0', ['1.0.0']);
+    tool('mgu-uplink', '0.7.3');
+    const installed = (id, version, uid) => {
+        mkdirp(path.join(oap, 'oap_12201', 'data', 'apps'));
+        mkdirp(path.join(oap, `oap_${uid}`, 'source'));
+        fs.writeFileSync(path.join(oap, 'oap_12201', 'data', 'apps', `${id}.json`), JSON.stringify({ userId: uid }));
+        fs.writeFileSync(path.join(oap, `oap_${uid}`, 'source', 'package.json'), JSON.stringify({ name: id, version, mguLocalOnly: true }));
+    };
+    installed('robertn_store', '0.9.14', 12470);
+    installed('cat_app', '1.1.0', 12471);
+    installed('needy_app', '1.0.0', 12472);
+    publish(cat, [entry(appTgz(cat, 'robertn_store', '0.9.14'), 'app', 'Store'), entry(appTgz(cat, 'cat_app', '1.1.0'), 'app', 'Cat'),
+        Object.assign(entry(appTgz(cat, 'needy_app', '1.0.0'), 'app', 'Needy'), { requires: { 'fx-tool': '2.0.0' } }),
+        entry(toolKit(cat, 'mgu-deploy', '0.6.8', {}), 'tool', 'Deploy tool'), entry(toolKit(cat, 'mgu-updater', '0.8.7', {}), 'tool', 'Updater'),
+        entry(toolKit(cat, 'mgu-render', '0.6.8', {}), 'tool', 'Renderer'), entry(toolKit(cat, 'fx-tool', '2.0.0', {}), 'tool', 'Fx'),
+        entry(toolKit(cat, 'mgu-uplink', '0.7.4', {}), 'tool', 'Uplink')], { schema: 2 });
+    const sources = path.join(M, 'sources.json');
+    fs.writeFileSync(sources, JSON.stringify({ schema: 1, sources: [{ id: 'mgu-store', type: 'file', path: cat, builtin: true }] }));
+    const conf = {
+        sources, credentials_dir: path.join(M, 'cred'), state_dir: state, tool_root: opt, oap_root: oap, mainapp_uid: '12201',
+        store_app: 'robertn_store', deploy: deploySh, lease: path.join(M, 'lease.json'), ca_file: '',
+        github_api: API, github_web: GH_WEB, github_client_id: '', builtin_repo: 'robertnisipeanu/mgu-store',
+        fetch_uid: String(FETCH_UID), fetch_gid: String(FETCH_UID), build_uid: '12995', build_gid: '12995',
+        build_timeout_s: '3', build_max_bytes: String(8 << 20), repo_max_bytes: String(8 << 20),
+        mounts: path.join(M, 'mounts'), usb_roots: path.join(M, 'media'), web_secret: path.join(M, 'web-secret'), web_uid: '12996', web_gid: '12202',
+        socket: path.join(M, 'shm', 'updater.sock'), socket_group: 'staff', deploy_tool: 'mgu-deploy', uplink_tool: 'mgu-uplink',
+        bootstrap_check_s: '6', privacy_tool: '', reboot: '', proc
+    };
+    fs.writeFileSync(conf.mounts, 'proc /proc proc rw 0 0\n');
+    const u = new Updater(conf);
+    const comp = (id) => u.state().components.find((c) => c.id === id) || {};
+    const undo = (id, secret) => ask(conf.socket, { op: 'rollback', id, secret });
+    const idle = (what) => until(() => u, (x) => !x.busy && !x.queue.length, 30000, what);
+    const trialFile = path.join(state, 'store-trial.json');
+    const done = () => {
+        delete process.env.FAKE_LAST_VERIFY;
+        u.server.close();
+    };
+    return u.serve()
+        .then(() => u.refresh())
+        .then(() => u.check())
+        .then(() => {
+            ok('undo: offered for an app and a tool whose version before is kept', comp('cat_app').previous === '1.0.0' &&
+                comp('mgu-render').previous === '0.6.2', JSON.stringify([comp('cat_app'), comp('mgu-render')]));
+            ok('undo: never for the Store, the updater or the deploy tool, though kept',
+                ['robertn_store', 'mgu-updater', 'mgu-deploy'].every((id) => comp(id).installed && comp(id).previous === null),
+                JSON.stringify(['robertn_store', 'mgu-updater', 'mgu-deploy'].map(comp)));
+            ok('undo: not below what an installed component requires', comp('fx-tool').installed === '2.0.0' && comp('fx-tool').previous === null,
+                JSON.stringify(comp('fx-tool')));
+            ok('undo: not with nothing kept', comp('mgu-uplink').installed === '0.7.3' && comp('mgu-uplink').previous === null);
+            ok('the last start\'s failed check shows while the version before runs',
+                comp('mgu-uplink').error === '0.7.4 did not work after the restart (mgu-uplink.service is not healthy); 0.7.3 is back',
+                JSON.stringify(comp('mgu-uplink')));
+            return Promise.all([undo('robertn_store', u.secret), undo('mgu-updater', u.secret), undo('fx-tool', u.secret), undo('cat_app', 'wrong')]);
+        })
+        .then((errs) => {
+            ok('undo: refused where it is not offered, and without the secret',
+                errs.slice(0, 3).every((e) => /cannot go back to an earlier version/.test(e || '')) && errs[3] === 'forbidden' &&
+                !/^rollback/m.test(fs.readFileSync(deployLog, 'utf8')), JSON.stringify(errs));
+            return undo('cat_app', u.secret).then((e) => idle('cat_app back').then(() => e));
+        })
+        .then((err) => {
+            ok('undo: an app goes back through the deploy tool\'s rollback', err === null &&
+                /^rollback cat_app --yes$/m.test(fs.readFileSync(deployLog, 'utf8')) && comp('cat_app').installed === '1.0.0' &&
+                comp('cat_app').previous === null && !comp('cat_app').error, `${err} ${JSON.stringify(comp('cat_app'))}`);
+            return undo('mgu-render', u.secret).then((e) => idle('mgu-render back').then(() => e));
+        })
+        .then((err) => {
+            ok('undo: a tool goes back too, and then offers no undo to the newer version it keeps',
+                err === null && comp('mgu-render').installed === '0.6.2' && comp('mgu-render').previous === null, `${err} ${JSON.stringify(comp('mgu-render'))}`);
+            // the Store's update on trial: not started yet, nothing happens
+            u.startStoreTrial('0.9.14');
+            u.watchStoreTrial();
+            ok('Store trial: written, and waiting while no Store process runs', fs.existsSync(trialFile) && u.storeTrial.seenAt === 0);
+            u.storeHello({ op: 'hello', id: 'robertn_store', version: '0.9.13' });
+            ok('Store trial: another version\'s hello does not end it', fs.existsSync(trialFile));
+            u.storeHello({ op: 'hello', id: 'robertn_store', version: '0.9.14' });
+            ok('Store trial: the new Store\'s hello ends it', !fs.existsSync(trialFile) && u.storeTrial === null);
+            return ask(conf.socket, { op: 'install', id: 'robertn_store' }).then(() => idle('the same Store again'));
+        })
+        .then(() => {
+            ok('Store trial: an install of the version installed starts none', !fs.existsSync(trialFile) && u.storeTrial === null &&
+                /^install --artifact .*robertn_store@0\.9\.14\.tgz/m.test(fs.readFileSync(deployLog, 'utf8')));
+            // started, silent: undone
+            u.startStoreTrial('0.9.14');
+            mkdirp(path.join(proc, '4242'));
+            fs.writeFileSync(path.join(proc, '4242', 'cmdline'), `node\0${oap}/oap_12470/source/javascript/app.js\0`);
+            u.watchStoreTrial();
+            ok('Store trial: a Store process is seen', u.storeTrial && u.storeTrial.seenAt > 0);
+            return sleep(1700);
+        })
+        .then(() => {
+            u.watchStoreTrial();
+            return idle('the Store back');
+        })
+        .then(() => {
+            const s = comp('robertn_store');
+            ok('Store trial: a Store that started and never said hello goes back to the version before, and says why',
+                /^rollback robertn_store --yes$/m.test(fs.readFileSync(deployLog, 'utf8')) && s.installed === '0.9.13' &&
+                s.error === '0.9.14 did not start; 0.9.13 is back' && !fs.existsSync(trialFile), JSON.stringify(s));
+            // a tile that showed and does not show after the update: undone too
+            fs.unlinkSync(path.join(proc, '4242', 'cmdline'));
+            fs.writeFileSync(`${deployLog}.previous`, JSON.stringify({ robertn_store: '0.9.12' }));
+            return u.refresh();
+        })
+        .then(() => {
+            const reg = path.join(oap, 'oap_12201', 'data', 'apps', 'robertn_store.json');
+            const flags = (on) => fs.writeFileSync(reg, JSON.stringify(Object.assign(JSON.parse(fs.readFileSync(reg, 'utf8')),
+                { provisioningCache: { '-enabled': on ? 'true' : 'false', '-allowed': 'true' } })));
+            flags(true);
+            u.startStoreTrial('0.9.13');
+            u.watchStoreTrial();
+            flags(false);
+            u.watchStoreTrial();
+            ok('Store trial: a hidden tile is given its time', !!u.storeTrial && !u.queue.length);
+            return sleep(1700);
+        })
+        .then(() => {
+            u.watchStoreTrial();
+            return idle('the Store back again');
+        })
+        .then(() => {
+            const s = comp('robertn_store');
+            ok('Store trial: a Store whose tile showed and does not show after its update goes back',
+                s.installed === '0.9.12' && s.error === '0.9.13\'s tile does not show; 0.9.12 is back', JSON.stringify(s));
+            done();
+        }, (e) => {
+            done();
+            throw e;
+        });
+}
+
 /* A repo whose apps build with Python, listed by a pattern (mgu-repo.json
  * "apps"), with a service tool and a preload tool: requirements, the oap-sdk
  * module, the declared output, the build proxy, the service tool's kit, and
@@ -4479,6 +4644,7 @@ function main() {
             .then(() => testIdrive7(certs).catch((e) => ok('idrive7-apps installer scenario', false, e.stack)))
             .then(() => testIcons().catch((e) => ok('icons scenario', false, e.stack)))
             .then(() => testAppRemove().catch((e) => ok('app remove scenario', false, e.stack)))
+            .then(() => testUndo().catch((e) => ok('undo scenario', false, e.stack)))
             .then(() => testPythonRepo().catch((e) => ok('python repo scenario', false, e.stack)))
             .then(() => testIdClash().catch((e) => ok('id clash scenario', false, e.stack)))
             .then(() => testDaemon(certs, pubDir))

@@ -46,6 +46,10 @@ const TRIAL_WAIT_MS = Number(process.env.MGU_UPDATER_TRIAL_WAIT_MS || 120000);
 const REBOOT_WAIT_MS = Number(process.env.MGU_UPDATER_REBOOT_WAIT_MS || 180000);
 // how long after the start that put an app in place (iDrive 8) MainApp may take to list it
 const PLACED_GRACE_MS = 5 * 60 * 1000;
+// A Store this new or newer says hello when it connects; its update stands once it has (storeTrial).
+const STORE_HELLO_SINCE = '0.9.14';
+// How long a started Store has to say hello before its update counts as failed.
+const STORE_HELLO_MS = Number(process.env.MGU_UPDATER_STORE_HELLO_MS || 120000);
 // The uplink takes up a new fetch uid within its 5 s rescan of uids.d.
 const UPLINK_RESCAN_MS = Number(process.env.MGU_UPDATER_UPLINK_RESCAN_MS || 6000);
 
@@ -393,6 +397,32 @@ function lastApplyOf(st) {
     return { at: (la && la.at) || null, failed, installed };
 }
 
+/* The version each installed component would go back to (the deploy
+ * tool's rollback), by id. */
+function previousOf(st) {
+    const out = {};
+    ((st && st.components) || []).forEach((c) => {
+        if (c && typeof c.id === 'string' && typeof c.previous === 'string' && catalogLib.SEMVER.test(c.previous)) {
+            out[c.id] = c.previous;
+        }
+    });
+    return out;
+}
+
+/* The tools the last start's check found not working (the deploy tool's
+ * last_verify), by id: { version, previous, rolledBack, why }. */
+function lastVerifyOf(st) {
+    const lv = st && st.last_verify;
+    const out = {};
+    ((lv && Array.isArray(lv.results)) ? lv.results : []).forEach((r) => {
+        if (r && typeof r.id === 'string' && r.ok === false && typeof r.version === 'string') {
+            out[r.id] = { version: r.version, previous: typeof r.previous === 'string' ? r.previous : null,
+                rolledBack: r.rolledBack === true, why: String(r.error || 'its check failed') };
+        }
+    });
+    return out;
+}
+
 /* The head unit (deploy tool's status: { hmi: "ID7"|"ID8"|null, firmware }),
  * null when the deploy tool does not say. */
 function unitOf(st) {
@@ -662,7 +692,7 @@ function under(entry, id) {
     return Object.assign({}, entry, { id, listedId: entry.id, artifact: Object.assign({}, entry.artifact, { name: `${id}@${entry.version}.tgz` }) });
 }
 // Requests only the Store and the phone page may make (they hold the secret).
-const PRIVILEGED = ['uninstall', 'source-add', 'source-probe', 'source-remove', 'login-start', 'login-cancel', 'token-add', 'token-remove', 'web', 'logs',
+const PRIVILEGED = ['uninstall', 'rollback', 'source-add', 'source-probe', 'source-remove', 'login-start', 'login-cancel', 'token-add', 'token-remove', 'web', 'logs',
     'uplink-prefer', 'wifi-enable', 'wifi-scan', 'wifi-connect', 'wifi-forget'];
 
 /* The uplink's requests (native/mgu-uplink ctl.sock) the Store makes through
@@ -694,6 +724,40 @@ function storeUid(conf) {
     } catch (e) {
         return null;
     }
+}
+
+/* The Store's tile shows: its registry entry's provisioning flags enable
+ * and allow it (as the deploy tool reads them). */
+function storeTileShows(conf) {
+    try {
+        const cache = readJson(path.join(conf.oap_root, `oap_${conf.mainapp_uid}`, 'data', 'apps', `${conf.store_app}.json`)).provisioningCache || {};
+        return cache['-enabled'] === 'true' && cache['-allowed'] === 'true';
+    } catch (e) {
+        return false;
+    }
+}
+
+/* A process of the Store runs: one whose command line names its home's source. */
+function storeRunning(conf) {
+    const uid = storeUid(conf);
+    const proc = conf.proc || '/proc';
+    if (!uid) {
+        return false;
+    }
+    const mark = `/oap_${uid}/source`;
+    let pids = [];
+    try {
+        pids = fs.readdirSync(proc).filter((n) => /^\d+$/.test(n));
+    } catch (e) {
+        return false;
+    }
+    return pids.some((pid) => {
+        try {
+            return fs.readFileSync(path.join(proc, pid, 'cmdline'), 'utf8').indexOf(mark) >= 0;
+        } catch (e) {
+            return false;
+        }
+    });
 }
 
 /* Writes text to file as uid:gid with groups as its only other groups, 0400,
@@ -761,6 +825,12 @@ class Updater {
         // failure an install or removal asked for since put aside (apply-seen.json)
         this.lastApply = { at: null, failed: {}, installed: [] };
         this.applySeen = {};
+        // by id: the version the deploy tool's rollback returns to (status --json previous)
+        this.previous = {};
+        // by id: what the last start's check found not working (last_verify)
+        this.lastVerify = {};
+        // the Store update waiting for the new Store to say hello: { version, tileBefore, seenAt, since } (store-trial.json)
+        this.storeTrial = null;
         this.unit = null;
         this.providers = {};
         // the deploy tool's word on IterioDev's App Manager (status --json appmanager)
@@ -794,6 +864,11 @@ class Updater {
         try {
             this.origins = readJson(path.join(conf.state_dir, 'origins.json'));
         } catch (e) { /* none yet */ }
+        try {
+            const trial = readJson(path.join(conf.state_dir, 'store-trial.json'));
+            this.storeTrial = catalogLib.SEMVER.test(trial.version) ? { version: trial.version, tileBefore: trial.tileBefore === true,
+                seenAt: 0, since: 0 } : null;
+        } catch (e) { /* no Store update on trial */ }
         // { "<origin>:<id its source lists>": "<id it is installed under>" } (README.md, "Ids")
         this.aliases = {};
         try {
@@ -1259,7 +1334,9 @@ class Updater {
                 problem: row.installed && entry.kind === 'tool' ? toolProblem(this.conf, unit) : null,
                 nextStart: (ours && this.nextStart[unit]) || (placed ? 'install' : null),
                 queued: this.queue.some((q) => q.id === row.id),
-                error: this.errors[row.id] || (failed && failed.why) || null,
+                // the version Undo update returns to, only where it is offered
+                previous: row.installed && ours ? this.undoTo(unit) : null,
+                error: this.errors[row.id] || (failed && failed.why) || this.verifyError(unit) || null,
                 // what the last start failed to apply, while its error shows
                 applyFailed: !this.errors[row.id] && failed ? failed.op : null
             });
@@ -1724,7 +1801,8 @@ class Updater {
      * or running), or null. */
     conflict(item) {
         const same = this.queue.find((q) => q.id === item.id) || (this.busy && this.busy.id === item.id ? { op: this.busy.op || 'install' } : null);
-        return same && same.op !== item.op ? `${item.id}: ${same.op === 'uninstall' ? 'a removal' : 'an install'} is queued or running` : null;
+        const what = { uninstall: 'a removal', rollback: 'a return to the version before' };
+        return same && same.op !== item.op ? `${item.id}: ${what[same.op] || 'an install'} is queued or running` : null;
     }
 
     /* Queues item unless the same is queued or running; returns why it
@@ -1809,6 +1887,162 @@ class Updater {
     /* The ids of the installed tools providing cap. */
     providerIds(cap) {
         return (this.providers[cap] || []).map((x) => x.id);
+    }
+
+    /* The version id goes back to with Undo update, or null where it is not
+     * offered: the deploy tool keeps one, and going back strands nothing.
+     * The updater, the deploy tool and the Store never go back this way
+     * (the Store goes back by itself when its update does not start), nor
+     * a version below what an installed component or the updater requires. */
+    undoTo(id) {
+        const prev = this.previous[id];
+        if (!prev || this.kept().indexOf(id) >= 0) {
+            return null;
+        }
+        const needed = Array.from(this.resolved().values()).some((o) => {
+            const min = (o.entry.requires || {})[id];
+            return min && o.entry.id !== id && this.installedVersion(o.entry.installAs || o.entry.id, o.entry.kind) &&
+                catalogLib.compareVersions(prev, min) < 0;
+        });
+        return needed ? null : prev;
+    }
+
+    /* Queues id's return to its version before (undoTo). */
+    requestRollback(id) {
+        if (this.rebooting) {
+            return 'the head unit is restarting';
+        }
+        const r = this.resolved().get(id);
+        if (!r) {
+            return `${id} is not in any source`;
+        }
+        const unit = r.entry.installAs || id;
+        if (!this.installedVersion(unit, r.entry.kind) || !this.undoTo(unit)) {
+            return `${id} cannot go back to an earlier version`;
+        }
+        const refused = this.enqueue(Object.assign({ op: 'rollback', id }, unit !== id ? { unit } : {}));
+        if (refused) {
+            return refused;
+        }
+        this.changed();
+        if (!this.busy) {
+            this.next();
+        }
+        return null;
+    }
+
+    /* The deploy tool's rollback of a component to its version before. why:
+     * the reason it goes back (the Store's update that did not start), kept
+     * as its error with the outcome. */
+    rollback(item) {
+        const key = item.id;
+        const id = item.unit || item.id;
+        const from = this.installedVersion(id);
+        this.busy = { id: key, op: 'rollback', phase: 'install' };
+        this.changed();
+        console.log(`${id}: back to ${this.previous[id] || 'its version before'}`);
+        return this.deployTool(['rollback', id, '--yes'])
+            .then((code) => {
+                if (code !== 0) {
+                    const why = this.deployError;
+                    throw new Error(code === 2 ? `${why || 'refused by the deploy tool'}; nothing changed` :
+                        `going back failed${why ? ': ' + why : ''}`);
+                }
+                const now = this.installedVersion(id);
+                console.log(`${id}: ${from} -> ${now}`);
+                if (item.why) {
+                    this.errors[key] = `${item.why}; ${now} is back`;
+                }
+            })
+            .catch((err) => {
+                console.log(`${id}: ${err.message}`);
+                this.errors[key] = item.why ? `${item.why}; ${err.message}` : err.message;
+            })
+            .then(() => this.refresh())
+            .then(() => {
+                this.writeSecrets();
+                this.busy = null;
+                this.changed();
+                return false;
+            });
+    }
+
+    /* What the last start's check found wrong with id, while that is still
+     * so: the version rolled back to, or the one that failed, installed. */
+    verifyError(id) {
+        const v = this.lastVerify[id];
+        const have = v && this.installedVersion(id);
+        if (!have) {
+            return null;
+        }
+        if (v.rolledBack && have === v.previous) {
+            return `${v.version} did not work after the restart (${v.why}); ${v.previous} is back`;
+        }
+        return !v.rolledBack && have === v.version ? `${v.version} did not work after the restart: ${v.why}` : null;
+    }
+
+    /* ---- the Store's update stands once the new Store starts ---- */
+
+    /* A new Store version installs: once it is installed, its tile must
+     * show if it did before, and the Store must say hello once it runs. */
+    startStoreTrial(version) {
+        this.storeTrial = { version, tileBefore: storeTileShows(this.conf), seenAt: 0, since: 0 };
+        mkdirp(this.conf.state_dir, 0o755);
+        writeAtomic(path.join(this.conf.state_dir, 'store-trial.json'), JSON.stringify({ version, tileBefore: this.storeTrial.tileBefore }));
+    }
+
+    endStoreTrial() {
+        this.storeTrial = null;
+        rmIfThere(path.join(this.conf.state_dir, 'store-trial.json'));
+    }
+
+    /* {op: "hello", id, version}: a client says what it is. The Store on
+     * trial saying it ends the trial. Nothing is answered. */
+    storeHello(req) {
+        const t = this.storeTrial;
+        if (t && req.id === this.conf.store_app && req.version === t.version) {
+            console.log(`${req.id}@${t.version}: started and connected`);
+            this.endStoreTrial();
+        }
+    }
+
+    /* While the Store's update is on trial and that version is installed:
+     * a tile that showed before must show again within STORE_HELLO_MS, and
+     * once a process of the Store runs, it has STORE_HELLO_MS to say hello;
+     * else it goes back to its version before (or, with none kept, says why). */
+    watchStoreTrial() {
+        const t = this.storeTrial;
+        const id = this.conf.store_app;
+        if (!t || this.busy || this.queue.length || this.installedVersion(id, 'app') !== t.version) {
+            return;
+        }
+        t.since = t.since || Date.now();
+        let why = null;
+        if (t.tileBefore && !storeTileShows(this.conf) && Date.now() - t.since >= STORE_HELLO_MS) {
+            why = `${t.version}'s tile does not show`;
+        } else if (!t.seenAt) {
+            if (storeRunning(this.conf)) {
+                t.seenAt = Date.now();
+                console.log(`${id}@${t.version}: started; waiting for it to connect`);
+            }
+            return;
+        } else if (Date.now() - t.seenAt >= STORE_HELLO_MS) {
+            why = `${t.version} did not start`;
+        }
+        if (!why) {
+            return;
+        }
+        console.log(`${id}@${t.version}: ${why}`);
+        this.endStoreTrial();
+        if (!this.previous[id]) {
+            this.errors[id] = why;
+            this.changed();
+            return;
+        }
+        this.enqueue({ op: 'rollback', id, why });
+        this.errors[id] = why;
+        this.changed();
+        this.next();
     }
 
     /* Queues a removal of id: one its row marks uninstallable, installed
@@ -1931,7 +2165,8 @@ class Updater {
             this.changed();
             return;
         }
-        (item.op === 'uninstall' ? this.uninstall(item) : item.op === 'adopt' ? this.adopt() : this.install(item)).then((handover) => {
+        (item.op === 'uninstall' ? this.uninstall(item) : item.op === 'rollback' ? this.rollback(item) :
+            item.op === 'adopt' ? this.adopt() : this.install(item)).then((handover) => {
             if (handover) {
                 this.handover();
                 return;
@@ -2099,6 +2334,11 @@ class Updater {
                     }
                     writeAtomic(trial, fs.readlinkSync(path.join(this.conf.tool_root, SELF, 'current')) + '\n');
                 }
+                // a new Store version: on trial from before the install, so a hello as soon as it runs counts
+                if (id === this.conf.store_app && entry.kind === 'app' && catalogLib.compareVersions(entry.version, STORE_HELLO_SINCE) >= 0 &&
+                    this.installedVersion(id, 'app') !== entry.version) {
+                    this.startStoreTrial(entry.version);
+                }
                 return this.deploy(verified);
             })
             .then((code) => {
@@ -2121,6 +2361,9 @@ class Updater {
             .catch((err) => {
                 console.log(`${id}@${entry.version}: ${err.message}`);
                 this.errors[key] = err.message;
+                if (this.storeTrial && id === this.conf.store_app && this.storeTrial.version === entry.version) {
+                    this.endStoreTrial();
+                }
                 if (self && fs.existsSync(trial)) {
                     fs.unlinkSync(trial);
                 }
@@ -2264,6 +2507,8 @@ class Updater {
             this.nextStart = nextStartOf(st);
             if (st) {
                 this.lastApply = lastApplyOf(st);
+                this.previous = previousOf(st);
+                this.lastVerify = lastVerifyOf(st);
                 this.unit = unitOf(st);
                 this.providers = providersOf(st);
                 this.appmanager = st.appmanager && typeof st.appmanager === 'object' ? st.appmanager : null;
@@ -2931,6 +3176,8 @@ class Updater {
         case 'install': return typeof req.id === 'string' ? this.request(req.id) : 'install needs an id';
         case 'reboot': return this.reboot();
         case 'uninstall': return typeof req.id === 'string' ? this.requestUninstall(req.id) : 'uninstall needs an id';
+        case 'rollback': return typeof req.id === 'string' ? this.requestRollback(req.id) : 'rollback needs an id';
+        case 'hello': this.storeHello(req); return undefined;
         case 'source-add': return this.sourceAdd(req);
         case 'source-probe': return this.sourceProbe(req, reply);
         case 'source-remove': return this.sourceRemove(req.id);
@@ -2957,7 +3204,7 @@ class Updater {
             items = readJson(file);
         } catch (e) { /* none */ }
         rmIfThere(file);
-        (Array.isArray(items) ? items : []).filter((q) => q && ID.test(String(q.id)) && ['install', 'uninstall', 'adopt'].indexOf(q.op) >= 0)
+        (Array.isArray(items) ? items : []).filter((q) => q && ID.test(String(q.id)) && ['install', 'uninstall', 'rollback', 'adopt'].indexOf(q.op) >= 0)
             .forEach((q) => this.enqueue(q));
     }
 
@@ -3155,6 +3402,8 @@ class Updater {
             let wasOnline = readLease(this.conf).online;
             setTimeout(() => this.check(), Number(this.conf.first_check_s) * 1000);
             setInterval(() => this.check(), Number(this.conf.check_interval_s) * 1000);
+            // a Store update on trial: its process looked for each second
+            setInterval(() => this.watchStoreTrial(), 1000);
             // USB media: nothing announces a stick, so the mounts are looked
             // at; the token files too (the deploy tool changes them)
             setInterval(() => {

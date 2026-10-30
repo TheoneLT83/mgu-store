@@ -104,6 +104,8 @@ module.exports = [
    "Remove account?": "移除此账户？",
    "Remove source?": "移除此来源？",
    "Remove {0} {1}?": "移除 {0} {1}？",
+   "Undo update": "撤销更新",
+   "Back to {0} {1}?": "恢复到 {0} {1}？",
    "Remove?": "移除？",
    "Removing": "移除中",
    "Renderer {0}": "渲染器 {0}",

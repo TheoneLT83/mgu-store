@@ -1,5 +1,9 @@
 # mgu-render changelog
 
+## 0.6.8
+
+- `render_check.js`, the deploy tool's check after an update (`check` in `component.json`; needs mgu-deploy 0.6.9): a client connects to the renderer's socket and must get its native answer (X_READY, then READY with a screen size); 20 s later the service must still run with no restart, and a second connection must get READY again. It draws nothing. A renderer that fails it goes back to the version before, at the install or at the next start of the head unit.
+
 ## 0.6.7
 
 - A layer app's layer goes onto the centre screen through a connection made for it and closed again (`src/relist.c`), never through the renderer's own long-lived one. Winston applies a screen's `add_layer` to the layer list as the calling connection last saw or set it, so a connection open a while dropped every layer other programs (the HMI, another renderer) put on the screen since. The new connection sees the list as it is: our layer goes on top and every other layer stays.

@@ -27,6 +27,10 @@
  * more, comma-separated, each `id` or `id=reason`; $FAKE_LAST_APPLY is
  * the JSON status --json gives as last_apply;
  * while $FAKE_DEPLOY_LOG.rollbackfail exists, rollback exits 1.
+ * $FAKE_DEPLOY_LOG.previous holds { <app id>: <version> }: the app's kept
+ * older package, status --json's previous, which its rollback installs (a
+ * tool's previous is its other version kept); $FAKE_LAST_VERIFY is the
+ * JSON status --json gives as last_verify.
  * status --json says the head unit is $FAKE_UNIT_HMI (ID7 without it) and
  * lists every installed tool with what it provides (component.json
  * mguProvides) and every app MainApp's registry names. A root-service package (package.json with mguService) is
@@ -81,9 +85,30 @@ function switchTo(root, version) {
     fs.renameSync(path.join(root, 'current.new'), path.join(root, 'current'));
 }
 
+function readPrevious() {
+    try {
+        return JSON.parse(fs.readFileSync(`${process.env.FAKE_DEPLOY_LOG}.previous`, 'utf8'));
+    } catch (e) {
+        return {};
+    }
+}
+
 if (cmd === 'rollback') {
     if (fs.existsSync(`${process.env.FAKE_DEPLOY_LOG}.rollbackfail`)) {
         process.exit(1);
+    }
+    const prev = readPrevious();
+    const reg = path.join(process.env.OAP_ROOT, 'oap_12201', 'data', 'apps', `${process.argv[3]}.json`);
+    if (fs.existsSync(reg)) {
+        if (!prev[process.argv[3]]) {
+            process.stderr.write('mgu-deploy: no earlier version is kept to roll back to\n');
+            process.exit(2);
+        }
+        const pkg = path.join(process.env.OAP_ROOT, `oap_${JSON.parse(fs.readFileSync(reg, 'utf8')).userId}`, 'source', 'package.json');
+        fs.writeFileSync(pkg, JSON.stringify(Object.assign(JSON.parse(fs.readFileSync(pkg, 'utf8')), { version: prev[process.argv[3]] })));
+        delete prev[process.argv[3]];
+        fs.writeFileSync(`${process.env.FAKE_DEPLOY_LOG}.previous`, JSON.stringify(prev));
+        process.exit(0);
     }
     const root = path.join(process.env.TOOL_ROOT, process.argv[3]);
     const now = path.basename(fs.readlinkSync(path.join(root, 'current')));
@@ -147,7 +172,7 @@ function apps() {
         try {
             const uid = JSON.parse(fs.readFileSync(path.join(dir, n), 'utf8')).userId;
             const p = JSON.parse(fs.readFileSync(path.join(process.env.OAP_ROOT, `oap_${uid}`, 'source', 'package.json'), 'utf8'));
-            return { id: p.name, kind: 'app', version: p.version, uid };
+            return { id: p.name, kind: 'app', version: p.version, uid, previous: readPrevious()[p.name] || null };
         } catch (e) {
             return null;
         }
@@ -166,9 +191,12 @@ function tools() {
 if (cmd === 'status') {
     const pending = (process.env.FAKE_PENDING || '').split(',').filter(Boolean).concat(pendingIds());
     console.log(JSON.stringify({ unit: { hmi: process.env.FAKE_UNIT_HMI || 'ID7', firmware: 'test firmware' },
-        components: tools().map((c) => ({ id: c.id, kind: 'tool', version: c.version, provides: c.mguProvides || null })).concat(apps()),
+        components: tools().map((c) => ({ id: c.id, kind: 'tool', version: c.version, provides: c.mguProvides || null,
+            previous: fs.readdirSync(path.join(process.env.TOOL_ROOT, c.id, 'versions')).filter((v) => v !== c.version &&
+                v.split('.').map(Number).reduce((d, n, i) => d || n - Number(c.version.split('.')[i]), 0) < 0)[0] || null })).concat(apps()),
         pending_reboot: pending.map((p) => ({ id: p.split('=')[0], reason: p.split('=')[1] || 'test' })), appmanager: readAm(),
         last_apply: process.env.FAKE_LAST_APPLY ? JSON.parse(process.env.FAKE_LAST_APPLY) : null,
+        last_verify: process.env.FAKE_LAST_VERIFY ? JSON.parse(process.env.FAKE_LAST_VERIFY) : null,
         idrive7: { apps: fs.existsSync(`${process.env.FAKE_DEPLOY_LOG}.idrive7`) ? JSON.parse(fs.readFileSync(`${process.env.FAKE_DEPLOY_LOG}.idrive7`, 'utf8')) : [] } }));
     process.exit(0);
 }

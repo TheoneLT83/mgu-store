@@ -1,0 +1,12 @@
+[Unit]
+Description=mgu-deploy: check the tools updated for this start, and roll back one that does not work
+RequiresMountsFor=/var/opt
+After=multi-user.target
+ConditionPathExists=/var/opt/mgu-deploy/verify.json
+
+[Service]
+Type=simple
+ExecStart=/bin/sh /var/opt/mgu-deploy/mgu-deploy.sh verify
+
+[Install]
+WantedBy=late.target

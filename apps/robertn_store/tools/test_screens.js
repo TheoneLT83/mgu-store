@@ -106,6 +106,13 @@ eq(text(f, 'author'), 'by robertn · from cauliflower/idrive7-apps');
 eq(f.items[1].act, { do: 'open', page: { name: 'confirm', kind: 'remove', id: 'gauges' } });
 ok(/^Speed, revs/.test(text(f, 'desc')), 'the description');
 eq(f.values.facts.items.map((c) => c.text), ['Version 1.2.0', 'Commit a1b2c3d', 'App', 'iDrive 7 and iDrive 8']);
+// Undo update: on the page of a component the updater offers it for, then its confirm step
+f = screen('tool-undo');
+eq(own(f), ['Undo update', 'Remove', 'Back'], 'Undo update beside Remove');
+eq(f.items[0].act, { do: 'open', page: { name: 'confirm', kind: 'undo', id: 'mgu-uplink' } });
+f = screen('confirm-undo');
+eq([text(f, 'title'), f.labels], ['Back to Network driver 0.3.2?', ['Cancel', 'Undo update']], 'its dialog');
+eq(f.items[1].act, { do: 'undo', id: 'mgu-uplink' });
 f = screen('app-incompatible');
 eq(own(f), ['Back'], 'not for this unit: nothing to press');
 eq([text(f, 'note1'), text(f, 'note2')], ['Not for this head unit', 'For iDrive 8']);
