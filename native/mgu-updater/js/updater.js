@@ -1811,7 +1811,7 @@ class Updater {
         return (this.providers[cap] || []).map((x) => x.id);
     }
 
-    /* Queues a removal of id: one its source marks uninstallable, installed
+    /* Queues a removal of id: one its row marks uninstallable, installed
      * (or its install queued for the next start), that nothing installed,
      * nor the updater itself, requires. Of one not installed whose change
      * the last start failed to apply, it puts the failure aside. */
