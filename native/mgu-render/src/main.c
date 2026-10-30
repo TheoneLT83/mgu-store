@@ -452,7 +452,7 @@ static void l_screen(void *d, struct ivi_controller_layer *l, struct wl_output *
     if (t - c->drop_t > DROP_WINDOW_US) { c->drop_t = t; c->drops = 0; }
     if (++c->drops > DROP_MAX) {
         if (c->drops == DROP_MAX + 1)
-            log_warn("%s: layer taken off the screen %d times in %llu s; back at its next show", c->app, DROP_MAX,
+            log_warn("%s: layer taken off the screen more than %d times in %llu s; back at its next show", c->app, DROP_MAX,
                      (unsigned long long)(DROP_WINDOW_US / 1000000));
         return;
     }
