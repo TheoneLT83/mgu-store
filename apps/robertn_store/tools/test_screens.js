@@ -242,7 +242,29 @@ eq(f.labels[4], 'Update all (1)', 'DOOM downloads and Extended dashboard waits: 
 eq(f.items.find((i) => i.label === 'Update').act, { do: 'install', id: 'gauges' });
 ok(f.labels.indexOf('Display bridge') >= 0 && f.labels.indexOf('M Vitals') < 0, 'installed ones only');
 eq(f.values.apps.items.filter((i) => i.id === 'gauges' || i.id === 'robertn_store').map((i) => i.sub),
-    ['0.7.0 · mgu-store', '1.2.0 → a1b2c3d · idrive7-apps'], 'a row names its source');
+    ['1.2.0 → a1b2c3d · idrive7-apps', '0.7.0 · mgu-store'], 'a row names its source');
+// Installed: what runs or waits first (downloading, an update, queued, failed, restart pending), each part in the catalog's order
+const ids = (g) => [g.values.apps.items.map((i) => i.id), g.values.services.items.map((i) => i.id)];
+eq(ids(f), [['doom', 'gauges', 'extended_dashboard', 'vehicle_control', 'robertn_store'],
+    ['display-bridge', 'mgu-updater', 'mgu-uplink', 'mgu-renderd']], 'what runs or waits first');
+const sorted = (fn, busy) => {
+    const s = fixture.state();
+    s.busy = busy === undefined ? s.busy : busy;
+    s.components = s.components.map((c) => Object.assign({}, c, fn(c) || {}));
+    return ids(frame(fixture.model({ tab: 'installed' }, s), { textScale: 1, focus: -1, scroll: {} }));
+};
+eq(sorted((c) => (c.id === 'doom' ? { status: 'installed', installed: '1.0.1' } : c.id === 'display-bridge' ? { pendingReboot: false } : null), null),
+    [['gauges', 'extended_dashboard', 'vehicle_control', 'robertn_store', 'doom'], ['mgu-updater', 'mgu-uplink', 'mgu-renderd', 'display-bridge']],
+    'a finished update and a restart done: back in the catalog\'s order');
+eq(sorted((c) => (c.id === 'mgu-renderd' ? { status: 'update', version: '1.2.0' } : c.id === 'mgu-uplink' ? { queued: true } : null)),
+    [['doom', 'gauges', 'extended_dashboard', 'vehicle_control', 'robertn_store'], ['mgu-uplink', 'mgu-renderd', 'display-bridge', 'mgu-updater']],
+    'tools: queued, an update and a restart pending first, in the catalog\'s order');
+eq(sorted((c) => (c.id === 'mgu-updater' ? { nextStart: 'remove', pendingReboot: true } : c.id === 'mgu-renderd' ? { applyFailed: 'remove', error: 'x' }
+    : null), { id: 'mgu-uplink', op: 'uninstall', phase: 'uninstall' })[1],
+    ['mgu-updater', 'mgu-uplink', 'mgu-renderd', 'display-bridge'], 'a removal queued, running or failed first');
+eq(sorted((c) => (c.id === 'mgu-renderd' ? { status: 'update', compat: 'no', pendingReboot: true } : c.id === 'mgu-uplink' ? { blocked: 'x', error: 'y' }
+    : c.id === 'display-bridge' ? { pendingReboot: false } : null))[1],
+    ['mgu-updater', 'mgu-uplink', 'mgu-renderd', 'display-bridge'], 'one shown as not for this unit or blocked: nothing to wait on');
 
 // a tile's three lines (title, source, state) stay inside it, in either unit's box
 const { DRAW } = require(path.join(__dirname, '..', 'src', 'am_store_widgets.js'));

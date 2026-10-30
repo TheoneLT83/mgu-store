@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.12
+
+Installed lists the apps and the tools that something runs or waits on
+first: an install, update or removal running or queued, an update, a
+failure, a restart pending. The rest follow, each part in the catalog's
+order, and a row moves as its state changes, except while the focus is on
+one of the lists' rows, which then stay where they are.
+
 ## 0.9.11
 
 Dragging a list or grid moves its rows without building the page again:

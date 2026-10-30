@@ -15,7 +15,8 @@
  * status line), pick (the GitHub repo being added: { repo, probe (the
  * updater's answer, null while it looks), tokenNote (Add token's status
  * belongs on its page) }, or null), uplinkNote (the uplink's refusal of the
- * last Wi-Fi or preferred-connection request) }.
+ * last Wi-Fi or preferred-connection request), held (the Installed lists'
+ * rows to keep in this order: { apps, services } ids, or null) }.
  *
  * What a press does rides on the values as `act`: on a button's opts, on
  * each nav, grid and list item, on each filter cell (acts). The acts:
@@ -149,6 +150,16 @@ function tileState(c, busy) {
     return { sub: 'Installed', subColor: GREEN, badge: 'installed', progress: -1 };
 }
 
+/* Whether something runs or waits on the component, as tileState tells it:
+ * its install or removal, a queued one, a failure, a restart pending or an
+ * update. */
+function pending(c, busy) {
+    if ((busy && busy.id === c.id) || c.queued) {
+        return true;
+    }
+    return !notForUnit(c) && !c.blocked && !!(c.error || startPending(c) || c.status === 'update' || c.pendingReboot);
+}
+
 function tile(m, c, busy) {
     return Object.assign(iconOf(c), { id: c.id, title: c.title, src: srcName(m, c), act: { do: 'open', page: pageOf(c) } }, tileState(c, busy));
 }
@@ -188,9 +199,13 @@ function storeView(m) {
 
 function installedView(m) {
     const busy = busyOf(m);
-    const all = comps(m).filter((c) => c.installed);
-    const apps = all.filter((c) => !isTool(c));
-    const tools = all.filter(isTool);
+    // the ones something runs or waits on first, each part in the catalog's order; the rows held (m.held) where they were drawn
+    const installed = comps(m).filter((c) => c.installed);
+    const all = installed.filter((c) => pending(c, busy)).concat(installed.filter((c) => !pending(c, busy)));
+    const keep = (list, ids) => (!ids ? list : list.filter((c) => ids.indexOf(c.id) >= 0).sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id))
+        .concat(list.filter((c) => ids.indexOf(c.id) < 0)));
+    const apps = keep(all.filter((c) => !isTool(c)), m.held && m.held.apps);
+    const tools = keep(all.filter(isTool), m.held && m.held.services);
     const updates = all.filter((c) => c.status === 'update' && rowAction(c, busy) === 'install');
     const item = (c) => {
         const s = tileState(c, busy);
