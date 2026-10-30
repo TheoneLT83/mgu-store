@@ -248,12 +248,15 @@ names and to unplug the others or give `--host`. `--host <address>` and
 `--port <n>` (22) name the target themselves and skip the search
 (`--host` defaults to the hotspot's address). `--ssh-opt <option>`
 (repeatable, `ssh -o`, before the tool's own; e.g.
-`StrictHostKeyChecking=accept-new`) applies to whichever target is used;
+`ConnectTimeout=30`) applies to whichever target is used;
 through a jump host give `--host` as well (`--ssh-opt ProxyJump=<host>`),
 as the search runs from this computer. `--user <name>`
-(root) and `--identity <key file>` apply to either. With OpenSSH 8.8 or
-newer it adds `HostKeyAlgorithms=+ssh-rsa` and
-`PubkeyAcceptedAlgorithms=+ssh-rsa`, which the unit's sshd needs.
+(root) and `--identity <key file>` apply to either. The unit's host key
+is neither asked about nor kept (`StrictHostKeyChecking=no`,
+`UserKnownHostsFile=/dev/null`): every car's hotspot has the same address,
+and a unit's key can change. With OpenSSH 8.8 or newer it adds
+`HostKeyAlgorithms=+ssh-rsa` and `PubkeyAcceptedAlgorithms=+ssh-rsa`,
+which the unit's sshd needs.
 `--arm-debug` stays with `deploy/hu`.
 
 ```sh
