@@ -641,7 +641,7 @@ class Store extends OnlineApp {
             version: this._version(), note: this._sourcesNote, login: this._login,
             webText: web && web.enabled ? readFile(WEB_URL_FILE) : '', accountsNote: this._accountsNote,
             pick: this._pick && { repo: this._pick.repo, probe: this._pick.probe, tokenNote: !!this._pick.tokenNote },
-            uplinkNote: this._uplinkNote };
+            uplinkNote: this._uplinkNote, language: i18n.language() };
     }
 
     /* A press on the drawn screens (src/store_ui.js acts). */

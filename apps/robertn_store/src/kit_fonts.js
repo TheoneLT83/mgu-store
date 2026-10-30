@@ -85,8 +85,7 @@ function get(name, size, text) {
     const sizes = ownSizes(s !== '' && !has(fam[0], s));
     if (sizes) {
         const whole = sizes.filter((f) => has(f, s));
-        const most = sizes.reduce((a, b) => (Object.keys(b.glyphs).length > Object.keys(a.glyphs).length ? b : a));
-        return pick(whole.length ? whole : [most], size);
+        return pick(whole.length ? whole : [sizes.reduce((a, b) => (Object.keys(b.glyphs).length > Object.keys(a.glyphs).length ? b : a))], size);
     }
     return pick(fam, size);
 }

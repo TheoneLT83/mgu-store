@@ -121,9 +121,12 @@ by the English (`{0}`, `{1}` stand for the values):
 `tools/gen_locales.js`) and, by `tools/gen_rhmi.js`, the RHMI text file of
 each language (`rhmiData/variantGroups/Common/texts`): the widget screens'
 own words are string ids, which the HMI shows in its language, the Store's
-tile name too. `tools/test_i18n.js` checks that every word the Store shows
-has a translation in every language, with the same `{n}`, and that no
-translation is left over.
+tile name too. `tools/test_i18n.js` checks that every word the Store
+translates (its `tr()` words, the layouts' own words, the widget screens'
+string ids) has a translation in every language, with the same `{n}`, that
+no translation is left over, and that each language's characters can be
+drawn: Inter has ASCII and `·…→–—°×` (`tools/bake_fonts.py`), so a language
+with other characters needs them baked, or a font of its own (`"font"`).
 
 Chinese is drawn with Noto Sans SC (SIL OFL, `src/LICENSE-NotoSansSC.txt`),
 baked by `tools/bake_chinese.py` into `src/font_chinese.js`, used for text

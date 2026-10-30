@@ -36,10 +36,11 @@ function compact(W, H) {
     const nav = (sel) => el('nav', 'sideNav', M, M, RAIL, H - 2 * M, { items: NAV_ITEMS, sel, labelSize: 24 });
     const screen = (name, sel, components) => ({ kind: 'gpu', name, theme: 'm_tricolour', bg: 'theme',
         components: [nav(sel)].concat(components) });
-    // the header row: the title, then the status on its baseline (moved right of a longer title)
+    // the header row: the title, then the status on its baseline (one right after the title moved right of a longer title)
     const HEAD = M + 64;
     const title = (t, x) => text('title', x === undefined ? X : x, M + 2, 640, 60, t, 50, 'bold');
-    const status = (name, x, w, color) => text(name, x, M + 24, w, 30, '', 23, 'label', color || DIM, { after: 'title' });
+    const status = (name, x, w, color) => text(name, x, M + 24, w, 30, '', 23, 'label', color || DIM);
+    const after = (name, x, w, color) => text(name, x, M + 24, w, 30, '', 23, 'label', color || DIM, { after: 'title' });
     const back = () => el('back', 'vbutton', X, M, 64, 64, { text: '', vicon: 'back', style: 'round', color: '#f4f7fb' }, 'event:back');
     const BTN_H = 76;
     const GRID_Y = HEAD + 10;
@@ -54,18 +55,18 @@ function compact(W, H) {
     const filterX = R - ONLINE_W - 20 - FILTER_W;
     const store = screen('store', 0, [
         title('Store'),
-        status('subtitle', X + 160, filterX - X - 180),
+        after('subtitle', X + 160, filterX - X - 180),
         el('filter', 'tabs', filterX, M + 2, FILTER_W, 60, { items: 'All,Apps,Tools', sel: 0, style: 'joined', size: 24 }),
         el('online', 'chips', R - ONLINE_W, M + 8, ONLINE_W, 48, { items: '', align: 'right' }),
         grid()
     ]);
-    const usb = screen('usb', 2, [title('USB'), status('subtitle', X + 130, CW - 130), grid()]);
+    const usb = screen('usb', 2, [title('USB'), after('subtitle', X + 130, CW - 130), grid()]);
 
     const colW = (CW - 24) / 2;
     const LIST_Y = HEAD + 38;
     const installed = screen('installed', 1, [
         title('Installed'),
-        status('subtitle', X + 240, CW - 240 - 380),
+        after('subtitle', X + 240, CW - 240 - 380),
         button('updateAll', R - 360, M, 360, 66, '', 'primary', 25, { vicon: 'arrowDown', color: BLUE }),
         label('appsLabel', X, HEAD + 8, 'APPS'),
         list('apps', X, LIST_Y, colW, B - LIST_Y, { empty: 'No apps installed' }),
@@ -79,7 +80,7 @@ function compact(W, H) {
     const SET_H = 72;
     const settings = screen('settings', 3, [
         title('Settings'),
-        status('note', X + 230, CW - 230, AMBER),
+        after('note', X + 230, CW - 230, AMBER),
         label('reposLabel', X, HEAD + 8, 'SOURCES'),
         list('repos', X, LIST_Y, leftW, B - SET_H - 12 - LIST_Y),
         button('addRepo', X, B - SET_H, leftW, SET_H, 'Add source', 'tinted', 25, { vicon: 'plus', color: BLUE }),
@@ -159,7 +160,7 @@ function compact(W, H) {
     const accounts = screen('accounts', 3, [
         back(),
         title('Accounts', titleX),
-        status('status', titleX + 260, CW - 360),
+        after('status', titleX + 260, CW - 360),
         list('list', X, HEAD + 14, Math.min(1100, CW), B - BTN_H - 16 - HEAD - 14, { empty: 'None' }),
         button('signIn', X, B - BTN_H, 520, BTN_H, 'Sign in with GitHub', 'primary', 29, { vicon: 'plus', color: BLUE }),
         button('addToken', X + 544, B - BTN_H, 360, BTN_H, 'Add token', 'outline', 29, { vicon: 'plus' })
@@ -208,7 +209,7 @@ function compact(W, H) {
     const wifi = screen('wifi', 3, [
         back(),
         title('Wi-Fi', titleX),
-        status('subtitle', titleX + 170, px - titleX - 194),
+        after('subtitle', titleX + 170, px - titleX - 194),
         list('networks', X, HEAD + 14, px - X - 24, B - HEAD - 14, { empty: '' }),
         el('panel', 'rect', px, M, PW, H - 2 * M, { color: 'panelTop', radius: 20 }),
         el('icon', 'appIcon', px + 20, M + 20, 96, 96, { vicon: 'wifi', kind: 'service', colors: '#7a808a,#3a3f47' }),

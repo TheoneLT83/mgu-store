@@ -4,7 +4,8 @@
  *
  *   node tools/build.js [--sdk <donor .tgz|.js>]      (or MGU_SDK_DONOR)
  *
- *  1. Writes the RHMI files from tools/gen_rhmi.js.
+ *  1. Writes src/locales.js (tools/gen_locales.js) and the RHMI files
+ *     (tools/gen_rhmi.js).
  *  2. Copies mgu-updater's socket client (native/mgu-updater/js/client.js)
  *     to lib/client.js and mgu-render's (native/mgu-render/js/
  *     mgu_render_client.js) to lib/mgu_render_client.js, modules of the app

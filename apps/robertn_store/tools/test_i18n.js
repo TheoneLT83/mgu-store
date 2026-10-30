@@ -8,7 +8,7 @@
  * a translation, and every translation is one of them; src/locales.js and
  * the RHMI text files are as the tools write them; the HMI's display
  * language picks the locale,
- * English for any other; a locale's font draws all of its characters; the
+ * English for any other; each language's characters can be drawn; the
  * language follows a change. Node 8+.
  *
  *   node tools/test_i18n.js
@@ -87,7 +87,7 @@ all.forEach((l) => {
     Object.keys(l.words).forEach((k) => {
         ok(typeof l.words[k] === 'string' && l.words[k].trim() !== '', `${n}: "${k}" is translated`);
         eq(placeholders(l.words[k]), placeholders(k), `${n}: "${k}" has the placeholders of its English`);
-        ok(!/[​-‏‪-‮⁠-⁤⁦-⁩﻿]/.test(l.words[k]), `${n}: "${k}" has no hidden characters`);
+        ok(!/[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/.test(l.words[k]), `${n}: "${k}" has no hidden characters`);
     });
     const orphans = Object.keys(l.words).filter((k) => !used.has(k));
     eq(orphans, [], `${n}: translations of words the Store does not show`);
@@ -125,9 +125,6 @@ const { atlasId } = require(path.join(SRC, 'kit_record.js'));
 const inter = fonts.get('label', 28, 'Store');
 all.forEach((l) => {
     const n = `${l.code}.json`;
-    if (!l.font) {
-        return;
-    }
     i18n.setHmiLanguage(l.hmiLanguages[0]);
     Object.keys(l.words).forEach((k) => ['label', 'bold'].forEach((fam) => [20, 28, 50, 72].forEach((size) => {
         const f = fonts.get(fam, size, l.words[k]);
@@ -139,8 +136,14 @@ const ui48 = fonts.get('bold', 50, '应用商店');
 const common = fonts.get('label', 22, '这是一个应用的说明');
 ok(ui48 !== common && ui48.size > common.size, 'the Store\'s words sharp, other text from the common set');
 ok(ui48.atlasW <= 1024 && common.atlasW <= 1024 && ui48.atlasH <= 4096 && common.atlasH <= 4096, 'atlases within mgu-render\'s limits');
-const ids = [inter, ui48, common].map((f) => atlasId(f, 'label'));
-eq(new Set(ids.concat([atlasId(ui48, 'bold')])).size, 3, 'each atlas its own id, whatever the family');
+// the renderer shares atlases between apps by id: a key of its own, not family and size
+const keyless = (f) => Object.assign({}, f, { key: undefined });
+[ui48, common].forEach((f) => {
+    ok(atlasId(Object.assign({}, f), 'bold') === atlasId(f, 'label'), `${f.key}: the same id whatever the family`);
+    ok(atlasId(f, 'label') !== atlasId(keyless(f), 'label'), `${f.key}: not the id of label@${f.size}`);
+});
+eq(atlasId(Object.assign({}, inter), 'label'), atlasId(inter, 'label'), 'Inter: its id of family and size');
+ok(atlasId(ui48, 'label') !== atlasId(common, 'label'), 'the two Chinese atlases apart');
 eq(fonts.get('label', 28, 'Store'), inter, 'Latin text: Inter');
 ok(ui48.alpha.length === ui48.atlasW * ui48.atlasH, 'pixels while Chinese is in use');
 i18n.setHmiLanguage('ENGLISCH__UK');
