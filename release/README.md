@@ -14,6 +14,7 @@ node release/release.js build [<id>...]         # reproducible build of HEAD int
 node release/release.js check [<id>...]         # build twice, compare the artifacts byte for byte
 node release/release.js bump <id> <x.y.z>       # set a component's version
 node release/release.js publish [--dry-run]     # (GitHub Actions) upload the new versions, then the catalog
+tools/emu-gate <id>...                          # (this Mac) the emulator gate for mgu-render / robertn_store
 ```
 
 ## Components
@@ -53,6 +54,37 @@ The store shows the app under the en_GB text of its first entry point.
 `native/mgu-updater/component.json`), and optionally `internet` with
 `uids` (deploy/README.md, "Internet for selected components") and the
 catalog fields `requires`, `optional`, `uninstallable`, `mguHmi`, `mguProvides`.
+
+## The emulator gate
+
+A new version of what draws an app's picture, `mgu-render` or
+`robertn_store`, is published only after it passed in the head-unit
+emulator, which runs on the owner's Mac (the firmware stays there):
+
+```sh
+tools/emu-gate mgu-render          # about 4 min; both: tools/emu-gate mgu-render robertn_store
+git add release/gate/mgu-render.json && git commit -m "mgu-render x.y.z: emulator gate"
+```
+
+For each component it starts a fresh iDrive 7 emulator from the published
+release, installs this commit's build of that component on its own, restarts
+the head unit and opens the Store:
+
+- in its HMI page, then on mgu-render's own layer (as on iDrive 8 and for
+  every community app);
+- after another program sets the screen's layers without ours;
+- after a client connected earlier adds its layer (its copy of the list
+  drops ours), whose layer must stay too;
+- after a renderer restart.
+
+Each time the Store's picture must be on the screen (its layer listed and
+visible, and the page drawn). All passing, it writes
+`release/gate/<id>.json`: the version and `source`, the last commit that
+touched what the component ships. `release.js publish` refuses a new version
+of either component without a passing record for that version and source,
+so any later change to what it ships needs the gate again. It needs Docker,
+the mgu-emulator checkout (`MGU_EMULATOR`, default
+`~/workspaces/personal/mgu-emulator`) and `gh` signed in.
 
 ## Versions
 

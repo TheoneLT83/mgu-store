@@ -486,8 +486,24 @@ function testReleaseRequires() {
         /requires itself/.test(unmetRequires([{ id: 'a', version: '1.0.0', requires: { a: '1.0.0' } }], published).join()));
 }
 
+/* release.js publish: a gated component needs a passing emulator gate record for its exact source. */
+function testReleaseGate() {
+    const { gateProblem } = require(path.join(__dirname, '..', '..', 'release', 'release.js'));
+    const c = { id: 'mgu-render', version: '0.6.8' };
+    const src = 'a'.repeat(40);
+    const record = (o) => Object.assign({ id: 'mgu-render', version: '0.6.8', source: src, result: 'pass' }, o);
+    check('release gate: a passing record for this version and source lets it publish', gateProblem(c, record({}), src) === null);
+    check('release gate: no record refuses it', /no emulator gate record/.test(gateProblem(c, null, src)));
+    check('release gate: a record for another source refuses it', /not this source/.test(gateProblem(c, record({}), 'b'.repeat(40))));
+    check('release gate: a record for another version refuses it', /not this source/.test(gateProblem(c, record({ version: '0.6.7' }), src)));
+    check('release gate: a record that did not pass refuses it', /did not pass/.test(gateProblem(c, record({ result: 'fail' }), src)));
+    check('release gate: a component outside the gate needs no record',
+        gateProblem({ id: 'mgu-updater', version: '0.8.7' }, null, src) === null);
+}
+
 try {
     testReleaseRequires();
+    testReleaseGate();
     testUntar();
     testUnitDonors();
     testHostileDonor();
