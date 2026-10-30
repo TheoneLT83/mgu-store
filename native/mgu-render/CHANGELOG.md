@@ -1,5 +1,9 @@
 # mgu-render changelog
 
+## 0.6.6
+
+- An app's layer that something else takes off the centre screen while the app shows (the HMI or another renderer setting the screen's layers, as an app install's restart of the app manager can) goes back on, on top, and the journal says so (`layer taken off the screen while shown - put back`). The app went on drawing and reported on screen while the HMI's page showed under it: the Store's empty list during an app install.
+
 ## 0.6.5
 
 - `fps` and `fps.<app>` (0): the frames a second an app that asks for a rate (FPS) gets, in place of the rate it asks; for every such app, or for one (`fps.robertn_store = 30`). Display-bridge apps ask for none and are not paced by it.

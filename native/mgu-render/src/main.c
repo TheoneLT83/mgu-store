@@ -130,6 +130,7 @@ typedef struct client {
     /* watchdog: an app on screen that stops talking (hung) is hidden until it talks again */
     uint64_t last_msg; int stale;
     int layer_on;                /* the layer was last made visible (apply_visibility) */
+    int layer_lost;              /* times the layer was taken off the screen while it showed (logged the first few) */
     /* touch claims, logical px (CLAIM) */
     int nclaim; float claim[16][4];
     /* frame cap (MI_FPS): at least min_us between two frames drawn; 0 = none */
@@ -345,6 +346,29 @@ static void apply_visibility(client *c) {
     ivi_controller_commit_changes(ictl);
 }
 
+/* The layer's screen: NULL when something else took it off the screen while it showed (the HMI or another
+ * renderer setting the screen's layers, as an app install's restart of the app manager can): it goes back on, on
+ * top. Without this the app went on drawing, reported on screen, and the HMI's page showed under it. */
+static void l_screen(void *data, struct ivi_controller_layer *l, struct wl_output *o) {
+    client *c = data;
+    (void)l;
+    if (o || !c->cl || !c->layer_on) return;
+    if (c->layer_lost++ < 5) log_warn("%s: layer taken off the screen while shown - put back", c->app);
+    c->layer_on = 0;
+    apply_visibility(c);
+}
+static void l_visibility(void *d, struct ivi_controller_layer *l, int32_t v) { (void)d; (void)l; (void)v; }
+static void l_opacity(void *d, struct ivi_controller_layer *l, wl_fixed_t v) { (void)d; (void)l; (void)v; }
+static void l_rect(void *d, struct ivi_controller_layer *l, int32_t x, int32_t y, int32_t w, int32_t h) {
+    (void)d; (void)l; (void)x; (void)y; (void)w; (void)h;
+}
+static void l_config(void *d, struct ivi_controller_layer *l, int32_t w, int32_t h) { (void)d; (void)l; (void)w; (void)h; }
+static void l_orientation(void *d, struct ivi_controller_layer *l, int32_t v) { (void)d; (void)l; (void)v; }
+static void l_destroyed(void *d, struct ivi_controller_layer *l) { (void)d; (void)l; }
+static const struct ivi_controller_layer_listener layer_listener = {
+    l_visibility, l_opacity, l_rect, l_rect, l_config, l_orientation, l_screen, l_destroyed
+};
+
 static void send_state(client *c) {
     if (c->dialect != DIALECT_NATIVE) return;
     int on = shown(c), front = in_front(c);
@@ -465,6 +489,7 @@ static int surface_create(client *c) {
     ivi_controller_surface_set_destination_rectangle(c->cs, 0, 0, c->w, c->h);
     ivi_controller_surface_set_visibility(c->cs, 0);
     c->cl = ivi_controller_layer_create(ictl, lid, screen_w, screen_h);
+    ivi_controller_layer_add_listener(c->cl, &layer_listener, c);
     ivi_controller_layer_set_source_rectangle(c->cl, 0, 0, c->w, c->h);
     ivi_controller_layer_set_destination_rectangle(c->cl, c->x, c->y, c->w, c->h);
     ivi_controller_layer_set_opacity(c->cl, wl_fixed_from_int(1));
