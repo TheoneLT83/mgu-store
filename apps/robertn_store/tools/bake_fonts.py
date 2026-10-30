@@ -35,7 +35,7 @@ UBUNTU = {'regular': (85, 400), 'semibold': (85, 700)}
 PAD = 1
 
 
-def bake(path, size, axes=None):
+def bake(path, size, axes=None, width=None):
     f = ImageFont.truetype(path, size)
     if axes:
         f.set_variation_by_axes(list(axes))
@@ -44,7 +44,7 @@ def bake(path, size, axes=None):
     for ch in TEXT:
         l, t, r, b = f.getbbox(ch, anchor='ls')
         boxes.append((ch, l, t, max(0, r - l), max(0, b - t), f.getlength(ch)))
-    width = 512 if size <= 24 else 1024
+    width = width or (512 if size <= 24 else 1024)
     x = y = PAD
     row = 0
     placed = []

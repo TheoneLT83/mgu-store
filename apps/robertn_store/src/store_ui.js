@@ -1,4 +1,5 @@
 'use strict';
+const { t: tr } = require('./i18n.js');
 /**
  * What the renderer screens (src/am_screens.js) show, from mgu-updater's
  * state: view(model) -> { screen, values: { element: opts } } for the page on
@@ -15,7 +16,8 @@
  * status line), pick (the GitHub repo being added: { repo, probe (the
  * updater's answer, null while it looks), tokenNote (Add token's status
  * belongs on its page) }, or null), uplinkNote (the uplink's refusal of the
- * last Wi-Fi or preferred-connection request) }.
+ * last Wi-Fi or preferred-connection request), held (the Installed lists'
+ * rows to keep in this order: { apps, services } ids, or null) }.
  *
  * What a press does rides on the values as `act`: on a button's opts, on
  * each nav, grid and list item, on each filter cell (acts). The acts:
@@ -62,7 +64,7 @@ function colors(id) {           // a steady colour per component for its letter 
     }
     return PALETTE[h % PALETTE.length].join(',');
 }
-const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const plural = (n, word) => tr(`{0} ${word}${n === 1 ? '' : 's'}`, n);
 const isTool = (c) => c.kind !== 'app';
 /* The version a row would install: a branch's new commit, else its version. */
 const target = (c) => c.version;
@@ -122,35 +124,45 @@ function iconOf(c) {
 function tileState(c, busy) {
     if (busy && busy.id === c.id) {
         const p = busy.phase === 'download' ? percent(busy) : -1;
-        return { sub: p >= 0 ? `Downloading ${p} %` : PHASE[busy.phase] || 'Installing', subColor: BLUE, badge: '',
+        return { sub: p >= 0 ? tr("Downloading {0} %", p) : tr(PHASE[busy.phase] || 'Installing'), subColor: BLUE, badge: '',
             progress: p >= 0 ? p / 100 : 1 };
     }
     if (c.queued) {
-        return { sub: 'Waiting', subColor: AMBER, badge: 'queued', progress: -1 };
+        return { sub: tr("Waiting"), subColor: AMBER, badge: 'queued', progress: -1 };
     }
     if (notForUnit(c)) {
-        return { sub: 'Not for this head unit', subColor: AMBER, badge: c.installed ? 'installed' : '', progress: -1 };
+        return { sub: tr("Not for this head unit"), subColor: AMBER, badge: c.installed ? 'installed' : '', progress: -1 };
     }
     if (c.blocked) {
-        return c.installed ? { sub: 'Installed', subColor: GREEN, badge: 'installed', progress: -1 }
-            : { sub: 'Not installable', subColor: AMBER, badge: '', progress: -1 };
+        return c.installed ? { sub: tr("Installed"), subColor: GREEN, badge: 'installed', progress: -1 }
+            : { sub: tr("Not installable"), subColor: AMBER, badge: '', progress: -1 };
     }
     if (c.error) {
-        return { sub: 'Failed', subColor: RED, badge: '', progress: -1 };
+        return { sub: tr("Failed"), subColor: RED, badge: '', progress: -1 };
     }
     if (startPending(c)) {
-        return { sub: 'Restart pending', subColor: AMBER, badge: c.installed ? 'installed' : '', progress: -1 };
+        return { sub: tr("Restart pending"), subColor: AMBER, badge: c.installed ? 'installed' : '', progress: -1 };
     }
     if (c.status === 'update') {
-        return { sub: `Update ${target(c)}`, subColor: BLUE, badge: 'update', progress: -1 };
+        return { sub: tr("Update {0}", target(c)), subColor: BLUE, badge: 'update', progress: -1 };
     }
     if (c.status === 'available') {
         return { sub: [c.version, size(c.size)].filter(Boolean).join(' · '), subColor: DIM, badge: '', progress: -1 };
     }
     if (c.pendingReboot) {
-        return { sub: 'Restart pending', subColor: AMBER, badge: 'installed', progress: -1 };
+        return { sub: tr("Restart pending"), subColor: AMBER, badge: 'installed', progress: -1 };
     }
-    return { sub: 'Installed', subColor: GREEN, badge: 'installed', progress: -1 };
+    return { sub: tr("Installed"), subColor: GREEN, badge: 'installed', progress: -1 };
+}
+
+/* Whether something runs or waits on the component, as tileState tells it:
+ * its install or removal, a queued one, a failure, a restart pending or an
+ * update. */
+function pending(c, busy) {
+    if ((busy && busy.id === c.id) || c.queued) {
+        return true;
+    }
+    return !notForUnit(c) && !c.blocked && !!(c.error || startPending(c) || c.status === 'update' || c.pendingReboot);
 }
 
 function tile(m, c, busy) {
@@ -162,7 +174,7 @@ function nav(m, sel) {
     const usbIds = (sources(m) || []).filter((s) => s.usb).map((s) => s.id);
     const usbNew = comps(m).filter((c) => usbIds.indexOf(c.source) >= 0 && (c.status === 'available' || c.status === 'update') &&
         !notForUnit(c) && !c.blocked && !startPending(c)).length;
-    return { sel, items: [['Store', 'grid', ''], ['Installed', 'check', updates || ''], ['USB', 'usb', usbNew || ''], ['Settings', 'gear', '']]
+    return { sel, items: [[tr("Store"), 'grid', ''], [tr("Installed"), 'check', updates || ''], ['USB', 'usb', usbNew || ''], [tr("Settings"), 'gear', '']]
         .map(([label, vicon, badge], i) => ({ id: TABS[i], label, vicon, badge: String(badge), act: { do: 'tab', tab: TABS[i] } })) };
 }
 
@@ -182,45 +194,47 @@ function storeView(m) {
     const checking = !!(m.connected && m.st && m.st.catalog && m.st.catalog.checking);
     const online = m.connected && m.st && m.st.online;
     return {
-        title: { text: 'Store' },
-        subtitle: busyRow ? { text: `${busy.phase === 'download' ? `Downloading ${percent(busy)} %` : PHASE[busy.phase] || 'Installing'} · ${named(m, busyRow)}`, color: BLUE }
-            : m.connected && !checking && !online ? { text: 'No internet: Settings > Internet shows how to connect the car', color: AMBER }
+        title: { text: tr("Store") },
+        subtitle: busyRow ? { text: `${busy.phase === 'download' ? tr("Downloading {0} %", percent(busy)) : tr(PHASE[busy.phase] || 'Installing')} · ${named(m, busyRow)}`, color: BLUE }
+            : m.connected && !checking && !online ? { text: tr("No internet: Settings > Internet shows how to connect the car"), color: AMBER }
                 : { text: m.connected ? statusLine(st, true) : statusLine(null, false, m.secret), color: DIM },
         filter: { sel: Math.max(0, FILTERS.indexOf(m.filter)), acts: FILTERS.map((f) => ({ do: 'filter', filter: f })) },
-        online: { items: !m.connected ? [] : checking ? [{ text: 'Checking', color: BLUE, dot: true }]
-            : online ? [{ text: 'Online', color: GREEN, dot: true }] : [{ text: 'Offline', color: AMBER, dot: true }] },
-        grid: { items: list.map((c) => tile(m, c, busy)), empty: m.connected ? 'Nothing here' : '' }
+        online: { items: !m.connected ? [] : checking ? [{ text: tr("Checking"), color: BLUE, dot: true }]
+            : online ? [{ text: tr("Online"), color: GREEN, dot: true }] : [{ text: tr("Offline"), color: AMBER, dot: true }] },
+        grid: { items: list.map((c) => tile(m, c, busy)), empty: m.connected ? tr("Nothing here") : '' }
     };
 }
 
 function installedView(m) {
     const busy = busyOf(m);
-    // those with an update first, each group in its usual order
-    const firstUpdates = (list) => list.filter((c) => c.status === 'update').concat(list.filter((c) => c.status !== 'update'));
-    const all = comps(m).filter((c) => c.installed);
-    const apps = firstUpdates(all.filter((c) => !isTool(c)));
-    const tools = firstUpdates(all.filter(isTool));
+    // the ones something runs or waits on first, each part in the catalog's order; the rows held (m.held) where they were drawn
+    const installed = comps(m).filter((c) => c.installed);
+    const all = installed.filter((c) => pending(c, busy)).concat(installed.filter((c) => !pending(c, busy)));
+    const keep = (list, ids) => (!ids ? list : list.filter((c) => ids.indexOf(c.id) >= 0).sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id))
+        .concat(list.filter((c) => ids.indexOf(c.id) < 0)));
+    const apps = keep(all.filter((c) => !isTool(c)), m.held && m.held.apps);
+    const tools = keep(all.filter(isTool), m.held && m.held.services);
     const updates = all.filter((c) => c.status === 'update' && rowAction(c, busy) === 'install');
     const item = (c) => {
         const s = tileState(c, busy);
         const up = c.status === 'update' && s.badge === 'update';
         const open = { do: 'open', page: pageOf(c) };
         return Object.assign(iconOf(c), { id: c.id, title: c.title, act: open,
-            sub: [up ? (c.installed === c.version ? `${c.installed} · new build` : `${c.installed} > ${target(c)}`) : `${c.installed}${isTool(c) ? ' · tool' : ''}`, srcName(m, c)].filter(Boolean).join(' · '), subColor: up ? BLUE : DIM,
+            sub: [up ? (c.installed === c.version ? `${c.installed} · ${tr('new build')}` : `${c.installed} → ${target(c)}`) : `${c.installed}${isTool(c) ? tr(' · tool') : ''}`, srcName(m, c)].filter(Boolean).join(' · '), subColor: up ? BLUE : DIM,
             // the Update chip only says so: the row opens the page, whose button updates (Update all for all)
-            right: up ? 'chip:Update' : s.sub !== 'Installed' ? `chip:${s.sub}` : 'chevron', chipColor: up ? BLUE : s.subColor,
+            right: up ? 'chip:' + tr('Update') : s.sub !== tr("Installed") ? `chip:${s.sub}` : 'chevron', chipColor: up ? BLUE : s.subColor,
             chipAct: null });
     };
     return {
-        title: { text: 'Installed' },
+        title: { text: tr("Installed") },
         subtitle: { text: `${plural(apps.length, 'app')} · ${plural(tools.length, 'tool')}` },
         // updates: install them all; none: look for new ones (the updater's check, as Settings' Check now)
-        updateAll: updates.length ? button(`Install all updates (${updates.length})`, { do: 'update-all' }, { vicon: 'arrowDown', style: 'primary', color: BLUE })
-            : m.connected && m.st ? button(m.noNet ? 'No internet' : m.st.catalog && m.st.catalog.checking ? 'Checking' : 'Check for updates', { do: 'check' },
+        updateAll: updates.length ? button(tr("Install all updates ({0})", updates.length), { do: 'update-all' }, { vicon: 'arrowDown', style: 'primary', color: BLUE })
+            : m.connected && m.st ? button(m.noNet ? tr("No internet") : m.st.catalog && m.st.catalog.checking ? tr("Checking") : tr("Check for updates"), { do: 'check' },
                 { vicon: m.noNet ? 'warning' : 'refresh', style: 'outline', color: m.noNet ? AMBER : undefined })
                 : hidden,
-        apps: { items: apps.map(item), empty: 'None' },
-        services: { items: tools.map(item), empty: 'None', rowH: 120 }
+        apps: { items: apps.map(item), empty: tr("None") },
+        services: { items: tools.map(item), empty: tr("None"), rowH: 120 }
     };
 }
 
@@ -232,17 +246,17 @@ function usbView(m) {
     return {
         title: { text: 'USB' },
         subtitle: { text: usb.length ? `${usb.map(sourceLabel).join(', ')} · ${plural(list.length, 'package')}` : '' },
-        grid: { items: list.map((c) => tile(m, c, busy)), empty: usb.length ? 'Nothing here' : 'USB not connected' }
+        grid: { items: list.map((c) => tile(m, c, busy)), empty: usb.length ? tr("Nothing here") : tr("USB not connected") }
     };
 }
 
 function sourceRow(s) {
     const status = sourceState(s);
-    const bad = ['Sign in', 'Error', 'Offline'].indexOf(status) >= 0;
+    const bad = [tr("Sign in"), tr("Error"), tr("Offline")].indexOf(status) >= 0;
     const line = [sourceChannel(s), sourceAccount(s), typeof s.components === 'number' ? plural(s.components, 'component') : '']
         .filter(Boolean).join(' · ');
-    return { id: s.id, title: sourceLabel(s), sub: bad || status === 'Checking' ? status : line || status,
-        subColor: bad ? AMBER : status === 'Checking' ? BLUE : DIM, plain: true,
+    return { id: s.id, title: sourceLabel(s), sub: bad || status === tr("Checking") ? status : line || status,
+        subColor: bad ? AMBER : status === tr("Checking") ? BLUE : DIM, plain: true,
         vicon: bad ? 'warning' : s.usb ? 'usb' : s.auth ? 'lock' : 'unlock', iconColor: bad ? AMBER : GREEN,
         right: 'chevron', act: { do: 'open', page: { name: 'source', id: s.id } } };
 }
@@ -264,11 +278,11 @@ function settingsView(m) {
             plain: true, vicon: 'tether', iconColor: 'text', right: 'chevron', act: { do: 'open', page: { name: 'internet' } } });
     }
     if (toks) {
-        access.push({ id: 'accounts', title: 'Accounts', sub: accountsState(toks), plain: true, vicon: 'lock', iconColor: 'text',
+        access.push({ id: 'accounts', title: tr("Accounts"), sub: accountsState(toks), plain: true, vicon: 'lock', iconColor: 'text',
             right: 'chevron', act: { do: 'open', page: { name: 'accounts' } } });
     }
     if (web) {
-        access.push({ id: 'phone', title: 'Phone access', sub: phoneState(web), plain: true, vicon: 'phone', iconColor: 'text',
+        access.push({ id: 'phone', title: tr("Phone access"), sub: phoneState(web), plain: true, vicon: 'phone', iconColor: 'text',
             right: 'chevron', act: { do: 'open', page: { name: 'phone' } } });
     }
     const unit = st && st.unit;
@@ -277,13 +291,13 @@ function settingsView(m) {
     return {
         note: { text: m.note || '' },
         look: { sel: LOOKS.indexOf(lookOf(m)), acts: LOOKS.map((l) => ({ do: 'look', look: l })) },
-        repos: srcs ? { items: srcs.map(sourceRow), empty: 'None' } : { items: [], empty: '' },
-        addRepo: srcs ? button('Add source', { do: 'add-source' }, { vicon: 'plus', style: 'tinted', color: BLUE }) : hidden,
+        repos: srcs ? { items: srcs.map(sourceRow), empty: tr("None") } : { items: [], empty: '' },
+        addRepo: srcs ? button(tr("Add source"), { do: 'add-source' }, { vicon: 'plus', style: 'tinted', color: BLUE }) : hidden,
         access: { items: access },
-        connLabel: { text: 'ACCESS' },
-        checkNow: m.connected ? button(st.catalog && st.catalog.checking ? 'Checking' : 'Check now', { do: 'check' },
+        connLabel: { text: tr("ACCESS") },
+        checkNow: m.connected ? button(st.catalog && st.catalog.checking ? tr("Checking") : tr("Check now"), { do: 'check' },
             { vicon: 'refresh', style: 'outline', size: 26 }) : hidden,
-        restart: canRestart(m) ? button('Restart head unit', { do: 'open', page: { name: 'confirm', kind: 'restart' } },
+        restart: canRestart(m) ? button(tr("Restart head unit"), { do: 'open', page: { name: 'confirm', kind: 'restart' } },
             { vicon: 'refresh', style: 'outline', size: 26 }) : hidden
     };
 }
@@ -341,7 +355,7 @@ function changelogView(m, page) {
 function appView(m, page) {
     const c = rowOf(m, page);
     if (!c) {
-        return { name: { text: 'Not listed' }, author: { text: '' }, facts: { items: [] }, desc: { text: '' }, icon: { letter: '?' },
+        return { name: { text: tr("Not listed") }, author: { text: '' }, facts: { items: [] }, desc: { text: '' }, icon: { letter: '?' },
             instValue: { text: '' }, availLabel: { text: '' }, availValue: { text: '' }, problem: { text: '' }, note1: { text: '' }, note2: { text: '' },
             note3: { text: '' }, progress: hidden, primary: hidden, secondary: hidden, history: { items: [], empty: '' } };
     }
@@ -353,60 +367,60 @@ function appView(m, page) {
     const v = {
         icon: Object.assign(iconOf(c), { badge: mine ? '' : s.badge, progress: s.progress }),
         name: { text: c.title },
-        author: { text: [c.author && `by ${c.author}`, c.source && `from ${src ? sourceLabel(src) : c.source}`].filter(Boolean).join(' · ') },
+        author: { text: [c.author && tr("by {0}", c.author), c.source && tr("from {0}", src ? sourceLabel(src) : c.source)].filter(Boolean).join(' · ') },
         // the version opens the changelog (every entry of the update history, in full)
-        facts: { items: [{ text: `Version ${c.version}`, act: { do: 'open', page: { name: 'changelog', id: c.id } } }, c.size && { text: size(c.size) },
+        facts: { items: [{ text: tr("Version {0}", c.version), act: { do: 'open', page: { name: 'changelog', id: c.id } } }, c.size && { text: size(c.size) },
             // installed under another id than its source's
             c.listedId && !c.blocked && (c.installAs || c.id) !== c.listedId && { text: `Id ${c.installAs || c.id}` },
-            { text: isTool(c) ? 'Tool' : 'App', color: isTool(c) ? TEAL : BLUE }, c.mguHmi && c.mguHmi.length && { text: hmiNames(c.mguHmi) },
+            { text: isTool(c) ? tr("Tool") : tr("App"), color: isTool(c) ? TEAL : BLUE }, c.mguHmi && c.mguHmi.length && { text: hmiNames(c.mguHmi) },
             c.provides && { text: c.provides }].filter(Boolean) },
         desc: { text: c.description || '' },
         history: historyView(m, c),
         // what an installed tool says is wrong (the updater's problem: mgu-render's page template)
         problem: { text: c.problem || '' },
-        instLabel: { text: 'Installed' },
+        instLabel: { text: tr("Installed") },
         instValue: { text: c.installed || '–' },
-        availLabel: { text: avail ? 'Available' : '' },
+        availLabel: { text: avail ? tr("Available") : '' },
         availValue: { text: avail ? target(c) : '', color: notForUnit(c) ? AMBER : c.status === 'update' ? BLUE : 'text' }
     };
     const notes = [];
     if (notForUnit(c)) {
-        notes.push(['Not for this head unit', AMBER]);
+        notes.push([tr("Not for this head unit"), AMBER]);
         if (c.mguHmi && c.mguHmi.length) {
-            notes.push([`For ${hmiNames(c.mguHmi)}`, AMBER]);
+            notes.push([tr("For {0}", hmiNames(c.mguHmi)), AMBER]);
         }
     }
     if (c.blocked) {
         notes.push([c.blocked, AMBER]);
     }
     if (c.error && !mine) {
-        notes.push([`Failed: ${c.error}`, RED]);
+        notes.push([tr("Failed: {0}", c.error), RED]);
     }
     if (c.pendingReboot) {
-        notes.push(['Restart pending', AMBER]);
+        notes.push([tr("Restart pending"), AMBER]);
     }
     ['note1', 'note2', 'note3'].forEach((k, i) => {
         v[k] = notes[i] ? { text: String(notes[i][0]).slice(0, 80), color: notes[i][1] } : { text: '' };
     });
-    v.progress = mine ? { hidden: false, label: PHASE[busy.phase] || 'Installing', value: busy.phase === 'download' ? percent(busy) : 100,
+    v.progress = mine ? { hidden: false, label: tr(PHASE[busy.phase] || 'Installing'), value: busy.phase === 'download' ? percent(busy) : 100,
         right: busy.phase === 'download' ? `${percent(busy)} %` : '',
-        sub: busy.phase === 'download' && busy.total ? `${size(busy.progress)} of ${size(busy.total)}` : '' }
-        : c.queued ? { hidden: false, label: 'Waiting', value: 0, right: '', sub: '' } : hidden;
+        sub: busy.phase === 'download' && busy.total ? tr("{0} of {1}", size(busy.progress), size(busy.total)) : '' }
+        : c.queued ? { hidden: false, label: tr("Waiting"), value: 0, right: '', sub: '' } : hidden;
     const action = rowAction(c, busy);
     const retryRemove = action === 'remove' && !!c.error;
     if (retryRemove) {
-        v.primary = button('Try again', { do: 'open', page: { name: 'confirm', kind: 'remove', id: c.id } },
+        v.primary = button(tr("Try again"), { do: 'open', page: { name: 'confirm', kind: 'remove', id: c.id } },
             { vicon: 'refresh', style: 'primary', color: BLUE });
     } else if (action === 'install') {
-        v.primary = button(c.error ? 'Try again' : c.status === 'update' ? `Update to ${target(c)}` : 'Install', { do: 'install', id: c.id },
+        v.primary = button(c.error ? tr("Try again") : c.status === 'update' ? tr("Update to {0}", target(c)) : tr("Install"), { do: 'install', id: c.id },
             { vicon: c.error ? 'refresh' : 'arrowDown', style: 'primary', color: BLUE });
     } else if (c.pendingReboot && canRestart(m)) {
-        v.primary = button('Restart head unit', { do: 'open', page: { name: 'confirm', kind: 'restart' } },
+        v.primary = button(tr("Restart head unit"), { do: 'open', page: { name: 'confirm', kind: 'restart' } },
             { vicon: 'refresh', style: 'primary', color: BLUE });
     } else {
         v.primary = hidden;
     }
-    v.secondary = removable(c, busy) && !retryRemove ? button('Remove', { do: 'open', page: { name: 'confirm', kind: 'remove', id: c.id } },
+    v.secondary = removable(c, busy) && !retryRemove ? button(tr("Remove"), { do: 'open', page: { name: 'confirm', kind: 'remove', id: c.id } },
         { vicon: 'trash', style: 'outline' }) : hidden;
     return v;
 }
@@ -420,34 +434,34 @@ function confirmView(m, page) {
     let line = '';
     let now = null;
     if (page.kind === 'remove') {
-        title = c ? `Remove ${named(m, c)} ${c.installed || ''}?`.replace(' ?', '?') : 'Remove?';
-        now = button('Remove', { do: 'remove', id: page.id }, { vicon: 'trash', style: 'primary', color: RED });
+        title = c ? tr("Remove {0} {1}?", named(m, c), c.installed || '').replace(' ?', '?') : tr("Remove?");
+        now = button(tr("Remove"), { do: 'remove', id: page.id }, { vicon: 'trash', style: 'primary', color: RED });
     } else if (page.kind === 'restart') {
-        title = 'Restart head unit?';
-        now = button('Restart', { do: 'restart' }, { vicon: 'refresh', style: 'primary', color: BLUE });
+        title = tr("Restart head unit?");
+        now = button(tr("Restart"), { do: 'restart' }, { vicon: 'refresh', style: 'primary', color: BLUE });
     } else if (page.kind === 'source-remove') {
         const s = find(sources(m), page.id);
-        title = 'Remove source?';
+        title = tr("Remove source?");
         line = s ? sourceLabel(s) : page.id;
-        now = button('Remove', { do: 'source-remove', id: page.id }, { vicon: 'trash', style: 'primary', color: RED });
+        now = button(tr("Remove"), { do: 'source-remove', id: page.id }, { vicon: 'trash', style: 'primary', color: RED });
     } else if (page.kind === 'account-remove') {
         const t = find(tokens(m), page.id);
-        title = 'Remove account?';
+        title = tr("Remove account?");
         line = t ? [tokenLabel(t), tokenSources(t, sources(m))].filter(Boolean).join(' · ') : page.id;
-        now = button('Remove', { do: 'account-remove', id: page.id }, { vicon: 'trash', style: 'primary', color: RED });
+        now = button(tr("Remove"), { do: 'account-remove', id: page.id }, { vicon: 'trash', style: 'primary', color: RED });
     } else if (page.kind === 'wifi-forget') {
-        title = 'Forget network?';
+        title = tr("Forget network?");
         line = page.ssid;
-        now = button('Forget', { do: 'wifi-forget', ssid: page.ssid }, { vicon: 'trash', style: 'primary', color: RED });
+        now = button(tr("Forget"), { do: 'wifi-forget', ssid: page.ssid }, { vicon: 'trash', style: 'primary', color: RED });
     }
-    return { icon, title: { text: title }, text: { text: line }, now, later: button('Cancel', { do: 'back' }, { vicon: 'back', style: 'outline' }),
+    return { icon, title: { text: title }, text: { text: line }, now, later: button(tr("Cancel"), { do: 'back' }, { vicon: 'back', style: 'outline' }),
         note: { text: '' } };
 }
 
 function sourceView(m, id) {
     const s = find(sources(m), id);
     if (!s) {
-        return { name: { text: 'Not listed' }, state: { text: '' }, facts: { items: [] }, desc: { text: '' }, appLabel: { text: '' },
+        return { name: { text: tr("Not listed") }, state: { text: '' }, facts: { items: [] }, desc: { text: '' }, appLabel: { text: '' },
             appQr: { text: '' }, appUrl: { text: '' }, remove: hidden };
     }
     const r = sourceRow(s);
@@ -462,10 +476,10 @@ function sourceView(m, id) {
             typeof s.components === 'number' && { text: plural(s.components, 'component') }].filter(Boolean) },
         desc: { text: s.error ? String(s.error) : '' },
         panel: { hidden: !installUrl },
-        appLabel: { text: installUrl ? 'Install on GitHub' : '' },
+        appLabel: { text: installUrl ? tr("Install on GitHub") : '' },
         appQr: { text: installUrl },
         appUrl: { text: installUrl },
-        remove: sourceActions(s).remove ? button('Remove', { do: 'open', page: { name: 'confirm', kind: 'source-remove', id: s.id } },
+        remove: sourceActions(s).remove ? button(tr("Remove"), { do: 'open', page: { name: 'confirm', kind: 'source-remove', id: s.id } },
             { vicon: 'trash', style: 'outline' }) : hidden
     };
 }
@@ -477,10 +491,10 @@ function accountsView(m) {
         status: { text: note.text, color: note.error ? AMBER : DIM },
         list: { items: toks.map((t) => ({ id: t.id, title: tokenLabel(t), sub: tokenState(t), subColor: t.rejected ? RED : DIM,
             letter: tokenLabel(t)[0], colors: colors(t.id), kind: 'service', right: 'chevron',
-            act: { do: 'open', page: { name: 'confirm', kind: 'account-remove', id: t.id } } })), empty: 'None' },
+            act: { do: 'open', page: { name: 'confirm', kind: 'account-remove', id: t.id } } })), empty: tr("None") },
         // Sign in with GitHub only with the updater's GitHub App (state.signin)
-        signIn: m.st && m.st.signin === true ? button('Sign in with GitHub', { do: 'sign-in' }, { vicon: 'plus', style: 'primary', color: BLUE }) : hidden,
-        addToken: m.connected && m.st ? button('Add token', { do: 'add-token' }, { vicon: 'plus', style: 'outline' }) : hidden
+        signIn: m.st && m.st.signin === true ? button(tr("Sign in with GitHub"), { do: 'sign-in' }, { vicon: 'plus', style: 'primary', color: BLUE }) : hidden,
+        addToken: m.connected && m.st ? button(tr("Add token"), { do: 'add-token' }, { vicon: 'plus', style: 'outline' }) : hidden
     };
 }
 
@@ -499,9 +513,9 @@ function pickView(m) {
         list: { items: pickOptions(probe).map((o) => ({ id: o.channel, title: o.label, sub: o.sub, plain: true,
             vicon: o.channel === 'releases' ? 'arrowDown' : o.channel === 'tags' ? 'clock' : 'route', iconColor: 'text',
             right: 'chevron', act: { do: 'pick', channel: o.channel } })), empty: '' },
-        signIn: auth && m.st && m.st.signin === true ? button('Sign in with GitHub', { do: 'sign-in' }, { vicon: 'plus', style: 'primary', color: BLUE }) : hidden,
-        addToken: auth && m.connected ? button('Add token', { do: 'pick-add-token' }, { vicon: 'plus', style: 'outline' }) : hidden,
-        retry: failed ? button('Try again', { do: 'pick-retry' }, { vicon: 'refresh', style: 'outline' }) : hidden
+        signIn: auth && m.st && m.st.signin === true ? button(tr("Sign in with GitHub"), { do: 'sign-in' }, { vicon: 'plus', style: 'primary', color: BLUE }) : hidden,
+        addToken: auth && m.connected ? button(tr("Add token"), { do: 'pick-add-token' }, { vicon: 'plus', style: 'outline' }) : hidden,
+        retry: failed ? button(tr("Try again"), { do: 'pick-retry' }, { vicon: 'refresh', style: 'outline' }) : hidden
     };
 }
 
@@ -514,8 +528,8 @@ function loginView(m) {
         qr: { text: code ? login.url : '' },
         code: { text: code },
         url: { text: code ? login.url : '' },
-        status: { text: status, color: /failed|expired/i.test(status) ? AMBER : DIM },
-        cancel: button('Cancel', { do: 'sign-in-cancel' }, { style: 'outline' })
+        status: { text: status, color: (m.login && m.login.refusal) || (login && login.status !== 'pending' && login.status !== 'done') ? AMBER : DIM },
+        cancel: button(tr("Cancel"), { do: 'sign-in-cancel' }, { style: 'outline' })
     };
 }
 
@@ -524,7 +538,7 @@ const masked = (t, kind) => (kind === 'password' ? '·'.repeat(Math.min(24, t.le
 
 function typeView(m, page) {
     const text = page.text || '';
-    const short = page.min && text.length < page.min ? ` · at least ${page.min} characters` : '';
+    const short = page.min && text.length < page.min ? tr(" · at least {0} characters", page.min) : '';
     return {
         title: { text: page.title || '' },
         field: { text: page.secret ? masked(text, page.secret) : text, label: page.label ? page.label + short : '' },
@@ -558,7 +572,7 @@ function phoneView(m) {
     const web = m.connected && m.st && m.st.web && typeof m.st.web === 'object' ? m.st.web : null;
     const address = web ? phoneAddress(web, m.webText) : { qr: '', text: '' };
     return {
-        toggleRow: { items: web ? [{ id: 'phone', title: 'Phone access', sub: phoneState(web), plain: true, vicon: 'phone', iconColor: 'text',
+        toggleRow: { items: web ? [{ id: 'phone', title: tr("Phone access"), sub: phoneState(web), plain: true, vicon: 'phone', iconColor: 'text',
             right: `toggle:${web.enabled ? 'on' : 'off'}`, act: { do: 'phone' } }] : [] },
         url: { text: address.text },
         error: { text: web && web.error ? String(web.error) : '' },
@@ -625,18 +639,18 @@ function wifiOf(m) {
 function wifiState(w) {
     const at = w.ssid ? ` · ${w.ssid}` : '';
     if (w.link === 'unavailable') {
-        return ['Unavailable', DIM];
+        return [tr("Unavailable"), DIM];
     }
     if (w.link === 'failed') {
-        return ['Failed', AMBER];
+        return [tr("Failed"), AMBER];
     }
     if (w.error && ['online', 'connected', 'connecting'].indexOf(w.link) < 0) {
-        return ['Error', AMBER];
+        return [tr("Error"), AMBER];
     }
-    return { online: [`Online${at}`, GREEN], connected: [`Connected${at}`, BLUE], connecting: [`Connecting${at}`, BLUE],
-        off: ['Not used', DIM] }[w.link] || ['Not connected', DIM];
+    return { online: [tr("Online{0}", at), GREEN], connected: [tr("Connected{0}", at), BLUE], connecting: [tr("Connecting{0}", at), BLUE],
+        off: [tr("Not used"), DIM] }[w.link] || [tr("Not connected"), DIM];
 }
-const strength = (dbm) => (typeof dbm !== 'number' ? null : dbm >= -60 ? ['Strong', GREEN] : dbm >= -72 ? ['Good', BLUE] : ['Weak', AMBER]);
+const strength = (dbm) => (typeof dbm !== 'number' ? null : dbm >= -60 ? [tr("Strong"), GREEN] : dbm >= -72 ? [tr("Good"), BLUE] : [tr("Weak"), AMBER]);
 const scanningOf = (w) => !!(w.scanning || w.link === 'scanning');
 
 /* The networks while Wi-Fi is on: the one joined first, then the latest
@@ -655,18 +669,18 @@ function wifiNets(w) {
 function netRow(w, n) {
     const q = strength(n.signal);
     const joined = n.current && (w.link === 'connected' || w.link === 'online');
-    const status = n.away ? 'Saved · not in range' : n.current ? { online: 'Online', connected: 'Connected', connecting: 'Connecting' }[w.link] || 'Saved'
-        : n.saved ? 'Saved' : n.secure ? 'Secured' : 'Open';
+    const status = n.away ? tr("Saved · not in range") : n.current ? { online: tr("Online"), connected: tr("Connected"), connecting: tr("Connecting") }[w.link] || tr("Saved")
+        : n.saved ? tr("Saved") : n.secure ? tr("Secured") : tr("Open");
     const act = n.away || joined ? null : n.saved || !n.secure ? { do: 'wifi-join', ssid: n.ssid } : { do: 'wifi-password', ssid: n.ssid };
     return { id: n.ssid, title: n.ssid, sub: [status, q && q[0]].filter(Boolean).join(' · '), subColor: n.current ? GREEN : DIM, plain: true,
         vicon: n.secure && !n.saved ? 'lock' : 'wifi', iconColor: q ? q[1] : DIM, act,
-        right: n.saved ? 'chip:Forget' : act ? 'chevron' : '', chipColor: DIM,
+        right: n.saved ? 'chip:' + tr('Forget') : act ? 'chevron' : '', chipColor: DIM,
         chipAct: n.saved ? { do: 'open', page: { name: 'confirm', kind: 'wifi-forget', ssid: n.ssid } } : null };
 }
 
 /* The preferred connection's choices (mgu-uplink's groups, in its order) and the device kinds each covers. */
 const GROUPS = [['', 'Automatic', []], ['wifi', 'Wi-Fi', ['wifi']], ['usb', 'USB', ['usb', 'usbecm']], ['phone', 'Phone', ['rndis', 'ncm', 'iphone']]];
-const groupLabel = (g) => (GROUPS.find((x) => x[0] === g) || [g, g])[1];
+const groupLabel = (g) => tr((GROUPS.find((x) => x[0] === g) || [g, g])[1]);
 const groupOf = (kind) => (GROUPS.find((x) => x[2].indexOf(kind) >= 0) || [kind])[0];
 // the Wi-Fi page's picture in its state's colour, grey otherwise
 const LIT = { [GREEN]: '#5be38e,#1f9a52', [BLUE]: '#5fb4ff,#1f5fd0', [AMBER]: '#ffc04d,#c98a12' };
@@ -675,24 +689,24 @@ function wifiView(m) {
     // without the uplink's state (it restarts) the page waits, its controls off
     const waiting = !wifiOf(m);
     const w = wifiOf(m) || { enabled: false, link: 'off' };
-    const s = waiting ? ['Waiting', DIM] : wifiState(w);
+    const s = waiting ? [tr("Waiting"), DIM] : wifiState(w);
     const nets = wifiNets(w);
     const scanning = scanningOf(w);
     const dbm = typeof w.signal === 'number' ? `${w.signal} dBm` : '';
     const preferred = (m.st && m.st.uplink && m.st.uplink.preferred) || '';
     return {
-        subtitle: { text: !w.enabled || w.link === 'unavailable' || w.link === 'failed' ? '' : scanning ? 'Scanning' : plural(nets.length, 'network') },
+        subtitle: { text: !w.enabled || w.link === 'unavailable' || w.link === 'failed' ? '' : scanning ? tr("Scanning") : plural(nets.length, 'network') },
         networks: { items: nets.map((n) => netRow(w, n)),
-            empty: waiting ? 'Waiting' : !w.enabled ? 'Not used' : w.link === 'unavailable' ? 'Unavailable' : scanning ? 'Scanning' : 'No networks' },
+            empty: waiting ? tr("Waiting") : !w.enabled ? tr("Not used") : w.link === 'unavailable' ? tr("Unavailable") : scanning ? tr("Scanning") : tr("No networks") },
         icon: { vicon: 'wifi', kind: 'service', colors: LIT[s[1]] || '#7a808a,#3a3f47' },
         state: { text: s[0], color: s[1] },
         info: { text: [w.ip && `IP ${w.ip}`, dbm].filter(Boolean).join(' · ') },
         note: { text: String(m.uplinkNote || w.error || '').slice(0, 160) },
-        power: w.enabled ? button("Don't use Wi-Fi", { do: 'wifi-power' }, { vicon: 'wifi', style: 'outline' })
-            : button('Use Wi-Fi', { do: 'wifi-power' }, { vicon: 'wifi', style: 'primary', color: GREEN, disabled: waiting }),
-        scan: button(scanning ? 'Scanning' : 'Scan', { do: 'wifi-scan' }, { vicon: 'refresh', style: 'outline',
+        power: w.enabled ? button(tr("Don't use Wi-Fi"), { do: 'wifi-power' }, { vicon: 'wifi', style: 'outline' })
+            : button(tr("Use Wi-Fi"), { do: 'wifi-power' }, { vicon: 'wifi', style: 'primary', color: GREEN, disabled: waiting }),
+        scan: button(scanning ? tr("Scanning") : tr("Scan"), { do: 'wifi-scan' }, { vicon: 'refresh', style: 'outline',
             disabled: !w.enabled || scanning || w.link === 'unavailable' || w.link === 'failed' }),
-        prefer: button(`Preferred: ${groupLabel(preferred)}`, { do: 'open', page: { name: 'prefer' } }, { vicon: 'route', style: 'outline',
+        prefer: button(tr("Preferred: {0}", groupLabel(preferred)), { do: 'open', page: { name: 'prefer' } }, { vicon: 'route', style: 'outline',
             disabled: waiting })
     };
 }
@@ -703,11 +717,11 @@ function preferView(m) {
     const preferred = u.preferred || '';
     const using = u.device && groupOf(u.device.kind);
     return {
-        status: { text: m.uplinkNote || (using ? `${u.state === 'online' ? 'Online' : 'Connecting'} through ${groupLabel(using)}` : 'Offline'),
+        status: { text: m.uplinkNote || (using ? tr("{0} through {1}", u.state === 'online' ? tr("Online") : tr("Connecting"), groupLabel(using)) : tr("Offline")),
             color: m.uplinkNote ? AMBER : DIM },
-        list: { items: GROUPS.map(([group, label]) => ({ id: group || 'auto', title: label, sub: group && group === using ? 'In use' : '', plain: true,
+        list: { items: GROUPS.map(([group, label]) => ({ id: group || 'auto', title: tr(label), sub: group && group === using ? tr("In use") : '', plain: true,
             vicon: { '': 'route', usb: 'usb', wifi: 'wifi' }[group] || 'phone', iconColor: 'text',
-            right: group === preferred ? 'chip:Preferred' : '', chipColor: GREEN,
+            right: group === preferred ? 'chip:' + tr('Preferred') : '', chipColor: GREEN,
             act: group === preferred ? null : { do: 'uplink-prefer', kind: group } })), empty: '' }
     };
 }

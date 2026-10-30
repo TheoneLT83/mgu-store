@@ -63,12 +63,13 @@ function compact(W, H0, look, opts) {
     const screen = (name, sel, components) => Object.assign({ kind: 'gpu', name, theme: 'm_tricolour', bg: 'theme',
         components: (headTabs ? [appName()] : []).concat([nav(sel)], components) },
     full ? { head: { h: TOP, end: headTabs ? STATUS_X : 0 } } : {});
-    // the header row: the title, then the status on its baseline
+    // the header row: the title, then the status on its baseline (one with opts.after moves right of a longer title)
     const HEAD = M + 64;
     // the iDrive 7 look's titles as the kit's header has the app's name: regular weight
     const title = (t, x) => text('title', x === undefined ? X : x, M + 2, 640, 60, t, low ? 46 : 50, low ? 'label' : 'bold',
         undefined, headTabs && x === undefined ? { hidden: true } : undefined);
     const status = (name, x, w, color) => text(name, x, M + 24, w, 30, '', 23, 'label', color || DIM);
+    const after = (name, x, w, color) => text(name, x, M + 24, w, 30, '', 23, 'label', color || DIM, { after: 'title' });
     const back = () => el('back', 'vbutton', X, M, 64, 64, { text: '', vicon: 'back', style: 'round', color: '#f4f7fb' }, 'event:back');
     const BTN_H = 76;
     const GRID_Y = HEAD + 10;
@@ -92,13 +93,13 @@ function compact(W, H0, look, opts) {
         el('online', 'chips', onlineX, M + 8, ONLINE_W, 48, { items: '', align: low ? 'left' : 'right' }),
         grid()
     ]);
-    const usb = screen('usb', 2, [title('USB'), status('subtitle', X + 130, CW - 130), grid()]);
+    const usb = screen('usb', 2, [title('USB'), after('subtitle', X + 130, CW - 130), grid()]);
 
     const colW = (CW - 24) / 2;
     const LIST_Y = HEAD + 38;
     const installed = screen('installed', 1, [
         title('Installed'),
-        status('subtitle', X + 240, CW - 240 - 380),
+        after('subtitle', X + 240, CW - 240 - 380),
         button('updateAll', R - 360, M, 360, 66, '', 'primary', 25, { vicon: 'arrowDown', color: BLUE }),
         label('appsLabel', X, HEAD + 8, 'APPS'),
         list('apps', X, LIST_Y, colW, B - LIST_Y, { empty: 'No apps installed' }),
@@ -194,7 +195,7 @@ function compact(W, H0, look, opts) {
     const accounts = screen('accounts', 3, [
         back(),
         title('Accounts', titleX),
-        status('status', titleX + 260, CW - 360),
+        after('status', titleX + 260, CW - 360),
         list('list', X, HEAD + 14, Math.min(1100, CW), B - BTN_H - 16 - HEAD - 14, { empty: 'None' }),
         button('signIn', X, B - BTN_H, 520, BTN_H, 'Sign in with GitHub', 'primary', 29, { vicon: 'plus', color: BLUE }),
         button('addToken', X + 544, B - BTN_H, 360, BTN_H, 'Add token', 'outline', 29, { vicon: 'plus' })
@@ -264,7 +265,7 @@ function compact(W, H0, look, opts) {
     const wifi = screen('wifi', 3, [
         back(),
         title('Wi-Fi', titleX),
-        status('subtitle', titleX + 170, px - titleX - 194),
+        after('subtitle', titleX + 170, px - titleX - 194),
         list('networks', X, HEAD + 14, px - X - 24, B - HEAD - 14, { empty: '' }),
         el('panel', 'rect', px, M, PW, B - M, { color: 'panelTop', radius: 20 }),
         el('icon', 'appIcon', px + 20, M + 20, 96, 96, { vicon: 'wifi', kind: 'service', colors: '#7a808a,#3a3f47' }),

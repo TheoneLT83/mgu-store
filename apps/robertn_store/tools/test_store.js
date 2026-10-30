@@ -170,14 +170,20 @@ class RenderClient extends EventEmitter {
     frame(rec) { frames.push(rec); return true; }
     dropLayer(id) { dropped.push(id); }
 }
-// FrontCCU: the sample callback the app subscribes with
+// FrontCCU: the sample callback the app subscribes with; HMIContext: the display language's, and its proxy's instance
 let frontCcu = null;
+let displayLanguage = null;
+const hmiContext = [];
 const someipBuilders = {
     buildTypedProxy: (iface, instance) => Promise.resolve({
         iface, instance,
         init: () => Promise.resolve(),
         waitUntilAvailable: () => Promise.resolve(),
-        statusRotaryEncoderState: { subscribe: (cb) => { frontCcu = cb; return Promise.resolve(); } }
+        statusRotaryEncoderState: { subscribe: (cb) => { frontCcu = cb; return Promise.resolve(); } },
+        currentDisplayLanguage: {
+            subscribe: (cb) => { displayLanguage = cb; hmiContext.push(`${iface} ${instance}`); return Promise.resolve(); },
+            getValue: () => Promise.resolve('ENGLISCH__UK')
+        }
     })
 };
 const stubs = {
@@ -1558,6 +1564,53 @@ function runDrawn() {
             app._states[host(1)].emit('focus', { focus: true });
             eq(bridges, [false], 'the focus back bridges nothing');
         }
+        // Installed puts what runs or waits first; while the focus is on a row the rows stay where they are, so it stays on its row
+        const inst = (doom) => Object.assign({}, st, { components: [
+            comp({ id: 'alpha', title: 'Alpha', version: '1.0.0', installed: '1.0.0', status: 'installed' }),
+            comp({ id: 'beta', title: 'Beta', version: '1.0.0', installed: '1.0.0', status: 'installed' }),
+            comp(Object.assign({ id: 'doom', title: 'DOOM', version: '1.0.1', installed: '1.0.1', status: 'installed', pendingReboot: true }, doom))] });
+        const done = { pendingReboot: false };
+        const rows = () => drawn.items.map((i) => i.label).filter((l) => ['Alpha', 'Beta', 'DOOM'].indexOf(l) >= 0);
+        const focused = () => (drawn.items[drawn.focus] || {}).label;
+        drawn.setTab('installed');
+        drawn.focus = 0;
+        app._client.emit('state', inst({}));
+        eq(rows(), ['DOOM', 'Alpha', 'Beta'], 'a restart pending first');
+        app._client.emit('state', inst(done));
+        eq([rows(), focused()], [['Alpha', 'Beta', 'DOOM'], 'Store'], 'the focus on the side menu: restarted, DOOM last');
+        app._client.emit('state', inst({}));
+        // the HMI's focus on Beta's proxy
+        const beta = drawn.items.findIndex((i) => i.label === 'Beta');
+        app._components[proxy(1, beta)].emit('focus', { value: true });
+        app._client.emit('state', inst(done));
+        eq([rows(), focused()], [['DOOM', 'Alpha', 'Beta'], 'Beta'], 'the focus on a row: the rows stay, the focus on Beta');
+        app._client.emit('state', Object.assign(inst(done), { components: inst(done).components.concat([
+            comp({ id: 'gamma', title: 'Gamma', version: '1.0.0', installed: '1.0.0', status: 'installed' })]) }));
+        eq(drawn.items.map((i) => i.label).filter((l) => ['Alpha', 'Beta', 'DOOM', 'Gamma'].indexOf(l) >= 0), ['DOOM', 'Alpha', 'Beta', 'Gamma'],
+            'a row installed meanwhile: after them');
+        // a page opened from a row comes back to it
+        const all4 = (o) => Object.assign(inst(o), { components: inst(o).components.concat([
+            comp({ id: 'gamma', title: 'Gamma', version: '1.0.0', installed: '1.0.0', status: 'installed' })]) });
+        app._client.emit('state', all4({}));
+        const doomAt = drawn.items.findIndex((i) => i.label === 'DOOM');
+        app._components[proxy(1, doomAt)].emit('focus', { value: true });
+        drawn.proxyPress(1, doomAt);
+        eq([drawn.top().name, drawn.top().id], ['app', 'doom'], 'DOOM\'s page');
+        app._client.emit('state', all4(done));
+        drawn.pop();
+        eq([rows(), focused()], [['DOOM', 'Alpha', 'Beta'], 'DOOM'], 'back: the rows as they were, the focus on DOOM');
+        // a drag from a row: the rows stay through it and after it, until the focus moves
+        const box = drawn.items[drawn.focus];
+        gpu.emit('touch', 'down', box.x + 40, box.y + 20);
+        gpu.emit('touch', 'move', box.x + 40, box.y + 60);
+        eq([drawn.focus, drawn._model().held && drawn._model().held.apps.slice(0, 3)], [-1, ['doom', 'alpha', 'beta']], 'a drag: the rows held');
+        gpu.emit('touch', 'up', box.x + 40, box.y + 60);
+        drawn.render();
+        eq(rows(), ['DOOM', 'Alpha', 'Beta'], 'after the drag: as they were');
+        app._components[proxy(1, 0)].emit('focus', { value: true });
+        eq([rows(), focused()], [['Alpha', 'Beta', 'DOOM'], 'Store'], 'the focus off the rows: in order again');
+        drawn.setTab('store');
+        app._client.emit('state', st);
         // a popup over a layer page hides the layer
         if (mode === 'layer') {
             app._states[host(1)].emit('focus', { focus: false });
@@ -1649,7 +1702,37 @@ function runTiming() {
     });
 }
 
-run().then(runWidgetsExtra).then(runDrawn).then(runTiming).then(() => {
+/* The words follow the HMI's display language, English without a translation. */
+function runLanguage() {
+    const i18n = require(path.join(SRC, 'i18n.js'));
+    const check = () => (last(/^storeCheck\.0\.(Text|PrimaryText)=/) || '').split('=')[1];
+    const nav = () => (last(/^storeNavApps\.0\.(Text2ndCol|FrequencyText)=/) || '').split('=')[1];
+    app._setupLanguage();
+    app._setVisible(true);
+    app._forgetWritten();
+    app._client.emit('state', Object.assign({}, ST, { components: [comp({ status: 'update', version: '1.0.2' })] }));
+    return tick().then(() => {
+        eq(hmiContext, ['de.bmw.infotainment.hmi.hmicontext.HMIContext HMI_CID',
+            'de.bmw.infotainment.hmi.hmicontext2.HMIContext2 1'], 'both HMI contexts of the CID');
+        eq([check(), nav()], ['Check for updates', '1 update'], 'English');
+        displayLanguage('CHINESISCH_SIMPLE');
+        return tick();
+    }).then(() => {
+        eq([check(), nav()], ['检查更新', '1 项更新'], 'Simplified Chinese: the widget screens follow');
+        displayLanguage('DEUTSCH');
+        return tick();
+    }).then(() => {
+        eq([check(), nav()], ['Check for updates', '1 update'], 'a language without a translation: English');
+        displayLanguage('CHINESISCH_SIMPLE');
+        displayLanguage(255);
+        return tick();
+    }).then(() => {
+        eq(check(), 'Check for updates', 'an invalid value: English');
+        i18n.setHmiLanguage(null);
+    });
+}
+
+run().then(runWidgetsExtra).then(runLanguage).then(runDrawn).then(runTiming).then(() => {
     cleanUp();
     console.log(`store: ${checks} checks pass`);
     process.exit(0);
