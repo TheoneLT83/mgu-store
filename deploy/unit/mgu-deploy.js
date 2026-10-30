@@ -44,7 +44,7 @@ var cp = require('child_process');
 
 /* deploy/component.json's version; bumped when a file under deploy/unit/
  * changes. */
-var VERSION = '0.6.5';
+var VERSION = '0.6.7';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -487,6 +487,58 @@ function bounceManager() {
         sleepMs(250); waited += 250;
     }
     throw fail('app manager node child did not respawn; check oapcontroller');
+}
+/* The manager's node child, waited for up to bounceTimeoutMs: oapcontroller
+ * respawns a dead one within seconds. */
+function managerSoon() {
+    var waited = 0, pid;
+    while (!(pid = managerPid()) && waited < CFG.bounceTimeoutMs) { sleepMs(1000); waited += 1000; }
+    return pid;
+}
+/* What tells why no app manager runs, a screen at most. MainApp's uid's
+ * processes come from /proc, whatever ps shows; a long line keeps its
+ * start and its end, where the script is. */
+function managerReport() {
+    var out = [], cut = function (l) { l = l.trim(); return l.length > 160 ? l.slice(0, 70) + '...' + l.slice(-87) : l; };
+    var pkg = readJsonOrNull(path.join(mainappRoot(), 'package.json')), up = null, dropins = [], mounts = 0;
+    out.push('MainApp: ' + mainappRoot() + ' ' + (pkg && pkg.version ? pkg.version : '(no version)') +
+        (fs.existsSync(mainJs()) ? '' : ', no src/main.js'));
+    var sh = systemctl(['show', '-p', 'ActiveState', '-p', 'SubState', '-p', 'NRestarts', '-p', 'ActiveEnterTimestamp',
+        '-p', 'ExecMainStatus', 'oapcontroller.service']);
+    out.push('oapcontroller: ' + ((sh.stdout || '').trim().split('\n').join(', ') || 'no state (' + oneLine(sh.stderr || sh.error) + ')'));
+    try { dropins = fs.readdirSync(path.join(CFG.systemd, 'oapcontroller.service.d')); } catch (e) { /* none */ }
+    if (dropins.length) out.push('oapcontroller drop-ins: ' + dropins.sort().join(', '));
+    try { up = Math.floor(parseFloat(fs.readFileSync(path.join(CFG.proc, 'uptime'), 'utf8'))); } catch (e) { /* unreadable */ }
+    try {
+        mounts = fs.readFileSync(CFG.procMounts, 'utf8').split('\n').filter(function (l) { return l.split(' ')[1] === mainJs(); }).length;
+    } catch (e) { /* unreadable */ }
+    out.push('head unit up ' + (up === null ? '?' : up + ' s') + ', mounts over main.js: ' + mounts);
+    var mine = [];
+    try {
+        fs.readdirSync(CFG.proc).filter(function (n) { return /^\d+$/.test(n); }).forEach(function (n) {
+            try {
+                var uid = /\nUid:\s+(\d+)/.exec(fs.readFileSync(path.join(CFG.proc, n, 'status'), 'utf8'));
+                if (!uid || Number(uid[1]) !== MGR_UID) return;
+                mine.push(n + ' ' + fs.readFileSync(path.join(CFG.proc, n, 'cmdline'), 'utf8').split('\0').join(' ').trim());
+            } catch (e) { /* gone meanwhile */ }
+        });
+    } catch (e) { /* unreadable */ }
+    out.push('processes of uid ' + MGR_UID + ' (MainApp\'s):' + (mine.length ? '' : ' none'));
+    mine.slice(0, 3).forEach(function (l) { out.push('  ' + cut(l)); });
+    var lines = psLines(), head = lines[0] || '';
+    var procs = lines.slice(1).filter(function (l) {
+        return /(^|[\s\/])node(\s|$)|mainapp|main\.js|oapcontroller|uidrun/i.test(l) && !/mgu-deploy\.js/.test(l);
+    });
+    var first = procs.filter(function (l) { return /mainapp|main\.js|oapcontroller|uidrun/i.test(l); });
+    procs = first.concat(procs.filter(function (l) { return first.indexOf(l) < 0; }));
+    out.push('processes (' + (procs.length ? procs.length : 'none') + ' of node, MainApp, oapcontroller):');
+    if (procs.length) out.push('  ' + cut(head));
+    procs.slice(0, 8).forEach(function (l) { out.push('  ' + cut(l)); });
+    if (procs.length > 8) out.push('  (' + (procs.length - 8) + ' more)');
+    var j = run(CFG.journalctl, ['-u', 'oapcontroller', '-n', '300', '--no-pager', '-o', 'cat'], { allowFail: true });
+    var said = (j.stdout || '').split('\n').filter(function (l) { return /MainApp/.test(l) && !/HeartBeat|AliveTimer|MemoryCpu/.test(l); }).slice(-3);
+    said.forEach(function (l) { out.push('oapcontroller said: ' + cut(l.replace(/^.*?\[\d+: /, '').replace(/\]$/, ''))); });
+    return out;
 }
 function bindMounted(file) {
     try {
@@ -2725,6 +2777,13 @@ function installApp(a, state, decision) {
      * the request then fails as already updated. */
     if (!uid && existing && r.state === 'failed' && r.error === 'APP_ALREADY_UPDATED') {
         uid = installedAlready(a, r.why);
+    }
+    /* Without a manager nothing installs the app: no bounce, no 600 s watch */
+    if (!uid && !managerSoon()) {
+        say('no app manager is running on this head unit:');
+        managerReport().forEach(function (l) { say('  ' + l); });
+        throw fail('the app manager is not running, so ' + a.id + ' ' + a.version + ' cannot be installed now: ' +
+            'restart the head unit (a normal ignition cycle does it), wait for the home screen, then run the install again');
     }
     if (!uid) {
         say('installing ' + a.id + ' through a bounce: ' + r.why);

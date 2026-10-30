@@ -710,6 +710,37 @@ function testBounceGuard() {
         !r.out.includes('waiting') && Date.now() - n0 < MIN * 1000 && none.kills().length === 0, r.out);
 }
 
+/* No app manager running (MainApp's node child gone, oapcontroller not
+ * starting it): an app install fails at once, after the respawn wait, with
+ * what tells why on screen, and is rolled back; no bounce, no watch. */
+function testNoManagerInstall() {
+    const root = fakeRoot({ noManager: true });
+    const custom = () => readJsonOrNull(root.p(`var/opt/public/oap/oap_${MGR}/data/custom_apps.json`)) || {};
+    write(root.p('etc/systemd/system/oapcontroller.service.d/50-other.conf'), '[Service]\n');
+    write(root.p('proc/uptime'), '1234.56 100.00\n');
+    // a process of MainApp's uid that ps does not show as the manager
+    write(root.p('proc/555/status'), `Name:\tnode\nUid:\t${MGR}\t${MGR}\t${MGR}\t${MGR}\n`);
+    write(root.p('proc/555/cmdline'), ['/opt/node10/bin/node', '--max-old-space-size', '512', '/usr/lib/oap-mainapp/src/main.js', ''].join('\0'));
+    const app = appArtifact('fixture_app', '1.0.0', true);
+    const t0 = Date.now();
+    const r = root.run(['install', '--artifact', app, '--yes'],
+        { MGU_DEPLOY_BOUNCE_TIMEOUT_MS: '1000', MGU_DEPLOY_WATCH_TIMEOUT_MS: '60000',
+            FAKE_PS_EXTRA: '  77 root      9000 S    /usr/bin/node /var/opt/mgu-updater/current/updater.js' });
+    check('no manager: the app install fails without waiting out the watch', r.status === 1 && Date.now() - t0 < 20000 &&
+        !r.out.includes('nothing to bounce') && !r.out.includes('through a bounce') && root.kills().length === 0, r.out);
+    check('no manager: says so and what to do', r.out.includes('no app manager is running on this head unit') &&
+        r.out.includes('the app manager is not running, so fixture_app 1.0.0 cannot be installed now') &&
+        r.out.includes('then run the install again'), r.out);
+    check('no manager: shows MainApp, oapcontroller, uptime, mounts and processes',
+        r.out.includes(`MainApp: ${root.p('usr/lib/oap-mainapp')}`) && r.out.includes('oapcontroller: ActiveState=inactive') &&
+        r.out.includes('oapcontroller drop-ins: 50-other.conf') && r.out.includes('head unit up 1234 s, mounts over main.js:') &&
+        r.out.includes(`processes of uid ${MGR} (MainApp's):\n    555 /opt/node10/bin/node --max-old-space-size 512 /usr/lib/oap-mainapp/src/main.js\n`) &&
+        r.out.includes('processes (1 of node, MainApp, oapcontroller)') && r.out.includes('/var/opt/mgu-updater/current/updater.js') &&
+        root.systemctlCalls().some((l) => l.startsWith('show ') && l.endsWith('oapcontroller.service')), r.out);
+    check('no manager: rolled back: not listed, no package, no registry entry', !('fixture_app' in custom()) &&
+        !fs.existsSync(root.preinstalled('fixture_app', '1.0.0')) && !fs.existsSync(root.entry('fixture_app')), r.out);
+}
+
 function readJsonOrNull(p) {
     try {
         return readJson(p);
@@ -5028,6 +5059,7 @@ const SUITES = [
     testPendingReboot,
     testApps,
     testBounceGuard,
+    testNoManagerInstall,
     testRestore,
     testPrivacyRevert,
     testStatusJson,

@@ -1,5 +1,9 @@
 # Deploy tool changelog
 
+## 0.6.7
+
+- iDrive 7: an app install that finds no app manager running (no MainApp node child within 30 s) fails once those 30 s pass and is rolled back, with no 600 s wait for an install nothing makes. The output says to restart the head unit and run the install again, and shows what tells why: MainApp's folder and version, oapcontroller's state and drop-ins, the head unit's uptime, the mounts over `main.js`, the processes running as MainApp's uid, the node, MainApp and oapcontroller processes, and oapcontroller's last lines about MainApp.
+
 ## 0.6.5
 
 - A tool whose `current` is a folder, not a link (app-privacy 1.5.0 as an earlier installer left it), installs: the folder goes aside as `current.legacy-<pid>` and is removed once the new version is up. A failed install puts the folder back as `current`, with no `current.new` left; after a failed health check or app-privacy apply the tool's services restart on it and its app-privacy applies again, as with a previous version. The folder of an install that was killed comes back as `current` at the next changing run of the deploy tool, unless a new `current` is in place; then it is removed.
