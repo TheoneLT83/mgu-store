@@ -4480,12 +4480,12 @@ function testDefaultSources() {
     fs.unlinkSync(path.join(D, 'state', 'default-sources.json'));
     fs.writeFileSync(file, JSON.stringify({ schema: 1, sources: [
         { id: 'mgu-store', type: 'github', repo: 'robertnisipeanu/mgu-store', builtin: true },
-        { id: 's-1a2b', type: 'github', repo: 'CauliflowerMossGrape/IDrive7-Apps', channel: 'releases' }] }));
+        { id: 's-1a2b', type: 'github', repo: 'theonelt83/IDrive7-Apps', channel: 'releases' }] }));
     u = new Updater(conf());
     ok('default sources: one the owner added by hand is kept as it is and recorded, not doubled',
         JSON.stringify(stored()) === JSON.stringify([{ id: 'mgu-store', type: 'github', repo: 'robertnisipeanu/mgu-store', builtin: true },
-            { id: 's-1a2b', type: 'github', repo: 'CauliflowerMossGrape/IDrive7-Apps', channel: 'releases' }]) && u.stored.length === 2 &&
-        JSON.parse(fs.readFileSync(path.join(D, 'state', 'default-sources.json'), 'utf8')).added.join() === 'cauliflowermossgrape/idrive7-apps',
+            { id: 's-1a2b', type: 'github', repo: 'theonelt83/IDrive7-Apps', channel: 'releases' }]) && u.stored.length === 2 &&
+        JSON.parse(fs.readFileSync(path.join(D, 'state', 'default-sources.json'), 'utf8')).added.join() === 'theonelt83/idrive7-apps',
         JSON.stringify(stored()));
     // no sources.json: written with the built-in source and the default one
     fs.unlinkSync(file);
