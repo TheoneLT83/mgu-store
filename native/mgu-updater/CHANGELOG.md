@@ -1,5 +1,9 @@
 # Updater changelog
 
+## 0.8.11
+
+- robertnisipeanu/mgu-store 0.8.9 merged: a default source is added once, at the first start of the version that brings it (and seeded by the installers, `deploy/sources.json`); like any source it can be removed and is then not added again. This fork's default source stays TheoneLT83/idrive7-apps; upstream's robertnisipeanu/idrive-apps is not added (Waze on the cluster is in this Store already).
+
 ## 0.8.10
 
 - Without a GitHub token (GitHub's 60 API requests an hour, often spent on a car that shares a mobile network's address): a download named by a release asset's API URL that GitHub refuses for the limit comes from the release's download link (`<id>@<version>`), a component's changelog from raw.githubusercontent.com, and an icon named by a release asset from its download link. Before, these failed with `HTTP 403 from api.github.com` and `History not available`.

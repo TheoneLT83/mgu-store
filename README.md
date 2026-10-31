@@ -33,7 +33,7 @@ Installed: the apps and tools on the head unit.
 
 Settings: sources, Wi-Fi, accounts and phone access.
 
-![Settings, with the two default sources, Wi-Fi, Accounts and Check now](docs/screenshots/settings.png)
+![Settings, with the default sources, Wi-Fi, Accounts and Check now](docs/screenshots/settings.png)
 
 Adding a GitHub repository: pick its releases, tags or a branch.
 

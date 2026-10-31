@@ -61,7 +61,8 @@ them:
 - `builtin`: the Store's own source (`builtin_repo`, id `mgu-store`),
   always there and not removable.
 - **Default sources** (`default_sources`: `<owner>/<repo>[:<channel>]`
-  separated by spaces; `cauliflowermossgrape/idrive7-apps:branch`): each is
+  separated by spaces; `cauliflowermossgrape/idrive7-apps:branch
+  robertnisipeanu/idrive-apps:releases`): each is
   added once, at the first start of an updater that names it, unless a
   source of that repo is there already (the installers seed it too,
   `deploy/sources.json`). `state/default-sources.json` (`{"added":
@@ -440,7 +441,7 @@ removes the App Manager and leaves what it installed. The updater requires
 the unit are the deploy tool's `status --json` `idrive7.apps`
 (deploy/README.md, "idrive7-apps' own installer"). Each that has no origin
 yet gets one, the same way: the github source reading
-`cauliflowermossgrape/idrive7-apps` (the default source, "First start") is
+`cauliflowermossgrape/idrive7-apps` (a default source, "First start") is
 its origin once it has read that repository and the repository lists the
 app; one a complete listing (nothing left out) does not name is
 `imported` (in `state/appmanager.json` too), and so is every app while no
@@ -979,7 +980,7 @@ releases, branches, tags, contents, tarballs, the device flow), with
   not installable from nowhere), its app and tether replaced and refused,
   an adopted app updated from its repository, Remove as the deploy tool's
   uninstall of `oap-appmanager`;
-- apps idrive7-apps' own installer put there: an app its repository (the
+- apps idrive7-apps' own installer put there: an app its repository (a
   default source) lists given it as origin (with its update) once it is
   read, one it does not list imported, kept over a restart; with that
   source removed, imported, the source not added again;

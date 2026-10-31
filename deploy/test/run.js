@@ -4144,6 +4144,10 @@ function testMguInstall() {
         check('mgu-install: an unknown option is a usage error', r.status === 2 && r.stderr.includes('unknown option --source'), r.out);
         check('mgu-install: seeds the same sources as deploy/hu', JSON.stringify(require(MGU_INSTALL).SOURCES) ===
             JSON.stringify(readJson(path.join(DEPLOY, 'sources.json'))));
+        const defaults = /^default_sources = (.*)$/m.exec(fs.readFileSync(path.join(DEPLOY, '..', 'native', 'mgu-updater', 'updater.conf'), 'utf8'));
+        check('sources: the installers seed the updater\'s default sources', !!defaults && JSON.stringify(defaults[1].split(' ')) ===
+            JSON.stringify(readJson(path.join(DEPLOY, 'sources.json')).sources.filter((x) => !x.builtin).map((x) => `${x.repo}:${x.channel}`)),
+            defaults && defaults[1]);
 
         // the one-liner: the script on stdin (curl ... | node - first-install), the unit found on its own
         const unit3 = donorRoot();
