@@ -57,8 +57,10 @@ catalog fields `requires`, `optional`, `uninstallable`, `mguHmi`, `mguProvides`.
 
 ## The emulator gate
 
-A new version of `mgu-render` or `robertn_store` is published to GitHub only
-after it passed in the head-unit emulator, which runs on the owner's Mac:
+With `MGU_EMU_GATE=on`, a new version of `mgu-render` or `robertn_store` is
+published to GitHub only after it passed in the head-unit emulator, which runs
+on the original author's Mac. This fork publishes without the gate, after CI's
+tests:
 
 ```sh
 tools/emu-gate mgu-render          # 4 to 8 min a component
