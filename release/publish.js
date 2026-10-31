@@ -26,6 +26,7 @@ const REPO = path.join(__dirname, '..');
 const KIND = TARGET.slice(0, TARGET.indexOf(':'));
 const WHERE = KIND === 'dir' ? path.resolve(REPO, TARGET.slice(TARGET.indexOf(':') + 1)) : TARGET.slice(TARGET.indexOf(':') + 1);
 const CATALOG_TAG = 'catalog';
+let githubPrivate = null;     // the GitHub repository is private (downloadUrl), asked once
 
 function gh(args, opts = {}) {
     return cp.execFileSync('gh', args, Object.assign({ encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }, opts));
@@ -147,6 +148,20 @@ const targets = {
                 throw new Error(`${tag}: the release's asset is missing or not ${entry.artifact.size} bytes`);
             }
             return asset.url;
+        },
+        /* The URL the catalog gives for an entry's artifact. A public
+         * repository's is the release's download link
+         * (github.com/<repo>/releases/download/<id>@<version>/<name>): a car
+         * without a token downloads it outside the API's 60 requests an
+         * hour, which a car on a shared mobile address finds spent (HTTP
+         * 403). A private repository's stays the asset's API URL, for the
+         * car's token. */
+        downloadUrl(entry) {
+            if (githubPrivate === null) {
+                githubPrivate = gh(['api', `repos/${WHERE}`, '--jq', '.private']).trim() !== 'false';
+            }
+            return githubPrivate ? entry.artifact.url : `https://github.com/${WHERE}/releases/download/` +
+                `${encodeURIComponent(`${entry.id}@${entry.version}`)}/${encodeURIComponent(entry.artifact.name)}`;
         },
         uploadCatalog(catalogFile) {
             try {

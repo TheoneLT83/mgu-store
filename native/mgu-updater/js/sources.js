@@ -1204,11 +1204,13 @@ function githubReader(s, ctx) {
     const anonymous = () => !!rawHost && !ctx.tokenFor(s.id);
     const codeload = (ctx.githubCodeload || 'https://codeload.github.com').replace(/\/+$/, '');
     const encode = (rel) => rel.split('/').map(encodeURIComponent).join('/');
-    // an icon named by a release asset's name is that asset; an https URL stays
+    // an icon named by a release asset's name is that asset (without a token its download link, outside
+    // the API's limit); an https URL stays
     const assetIcon = (c, assets) => {
         if (c.icon && !/^https:\/\//.test(c.icon.ref)) {
             const a = assets.find((x) => x && x.name === c.icon.ref && typeof x.url === 'string');
-            c.icon = a ? Object.assign(c.icon, { ref: a.url }) : null;
+            const link = a && anonymous() && typeof a.browser_download_url === 'string' ? a.browser_download_url : a && a.url;
+            c.icon = a ? Object.assign(c.icon, { ref: link }) : null;
         }
         return c;
     };
@@ -1397,8 +1399,10 @@ function githubReader(s, ctx) {
             return Array.from(seen.values()).sort((x, y) => (x.date < y.date ? 1 : x.date > y.date ? -1 : 0)).slice(0, 20);
         }),
         /* A text file of the repo at ref (its default branch without one). */
-        text: (rel, ref) => content(`${repoUrl}/contents/${encode(rel)}${ref ? `?ref=${encodeURIComponent(ref)}` : ''}`,
-            path.posix.basename(rel), SMALL).then((b) => b.toString('utf8')),
+        // without a token from raw.githubusercontent.com (HEAD: the default branch), outside the API's limit
+        text: (rel, ref) => (anonymous() ? raw(`${rawHost}/${s.repo}/${ref || 'HEAD'}/${encode(rel)}`, path.posix.basename(rel), SMALL)
+            : content(`${repoUrl}/contents/${encode(rel)}${ref ? `?ref=${encodeURIComponent(ref)}` : ''}`, path.posix.basename(rel), SMALL))
+            .then((b) => b.toString('utf8')),
         /* What the repo can be added on: its name as GitHub spells it,
          * whether it has a release and an x.y.z tag, its default branch and
          * its branches (orderBranches). */
@@ -1449,7 +1453,15 @@ function githubReader(s, ctx) {
             .catch((err) => {
                 throw err.rateLimited ? Object.assign(new Error('GitHub rate limit reached'), { status: err.status, rateLimited: true }) : err;
             }),
-        artifact: (entry, onProgress) => raw(entry.artifact.url, entry.artifact.name, entry.artifact.size, onProgress),
+        // an asset's API URL past the API's limit without a token: the release's download link
+        // (release.js names a component's release <id>@<version>); the checksum still decides
+        artifact: (entry, onProgress) => raw(entry.artifact.url, entry.artifact.name, entry.artifact.size, onProgress).catch((err) => {
+            if (!err.rateLimited || !anonymous() || !/\/releases\/assets\/\d+$/.test(entry.artifact.url)) {
+                throw err;
+            }
+            return raw(`${webHost}/${s.repo}/releases/download/${encodeURIComponent(`${entry.id}@${entry.version}`)}/` +
+                encodeURIComponent(entry.artifact.name), entry.artifact.name, entry.artifact.size, onProgress);
+        }),
         // a repo tree's icon is its file at the listed commit
         icon: (entry) => (/^https:\/\//.test(entry.icon.ref) ? raw(entry.icon.ref, 'icon.png', ICON_BYTES)
             : entry.commit && safeRel(entry.icon.ref) ? iconOf(entry, (rel, max) => (safeRel(rel)

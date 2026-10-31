@@ -1,5 +1,9 @@
 # Updater changelog
 
+## 0.8.10
+
+- Without a GitHub token (GitHub's 60 API requests an hour, often spent on a car that shares a mobile network's address): a download named by a release asset's API URL that GitHub refuses for the limit comes from the release's download link (`<id>@<version>`), a component's changelog from raw.githubusercontent.com, and an icon named by a release asset from its download link. Before, these failed with `HTTP 403 from api.github.com` and `History not available`.
+
 ## 0.8.9
 
 - A new version of the updater installed from a USB stick or a folder reads the sticks mounted before it takes up the queue the version before left, so a queued install from a stick (one that needed the new updater first) goes ahead instead of failing with `no longer in its source`. (robertnisipeanu/mgu-store 0.8.8)

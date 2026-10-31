@@ -136,8 +136,12 @@ compress differently, which publishing reports as other content.
 ```
 
 It lists the newest published version of every component. `artifact.url`
-is where the unit downloads it: the GitHub asset's API URL, or a path
-relative to the catalog on a static host or a folder. The updater checks
+is where the unit downloads it: on GitHub, a public repository's release
+download link (`github.com/<repo>/releases/download/<id>@<version>/<name>`,
+outside the API's 60 requests an hour for a car without a token) or a
+private one's asset API URL (for the car's token); a path relative to the
+catalog on a static host or a folder. A publish relinks entries published
+with another URL. The updater checks
 `size` and `sha256` before anything is installed. The catalog is not
 signed: the unit trusts a source over HTTPS.
 
