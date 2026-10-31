@@ -248,12 +248,15 @@ names and to unplug the others or give `--host`. `--host <address>` and
 `--port <n>` (22) name the target themselves and skip the search
 (`--host` defaults to the hotspot's address). `--ssh-opt <option>`
 (repeatable, `ssh -o`, before the tool's own; e.g.
-`StrictHostKeyChecking=accept-new`) applies to whichever target is used;
+`ConnectTimeout=30`) applies to whichever target is used;
 through a jump host give `--host` as well (`--ssh-opt ProxyJump=<host>`),
 as the search runs from this computer. `--user <name>`
-(root) and `--identity <key file>` apply to either. With OpenSSH 8.8 or
-newer it adds `HostKeyAlgorithms=+ssh-rsa` and
-`PubkeyAcceptedAlgorithms=+ssh-rsa`, which the unit's sshd needs.
+(root) and `--identity <key file>` apply to either. The unit's host key
+is neither asked about nor kept (`StrictHostKeyChecking=no`,
+`UserKnownHostsFile=/dev/null`): every car's hotspot has the same address,
+and a unit's key can change. With OpenSSH 8.8 or newer it adds
+`HostKeyAlgorithms=+ssh-rsa` and `PubkeyAcceptedAlgorithms=+ssh-rsa`,
+which the unit's sshd needs.
 `--arm-debug` stays with `deploy/hu`.
 
 ```sh
@@ -358,6 +361,7 @@ mgu-deploy.sh updater-token --list [--json] | --remove <id>
 mgu-deploy.sh updater-sources                 # sources.json on stdin
 mgu-deploy.sh sdk-donor [--json]
 mgu-deploy.sh apply-pending                   # iDrive 8, at boot
+mgu-deploy.sh verify                          # at boot: the tools updated for this start
 mgu-deploy.sh appmanager [--json] | appmanager adopt [--yes]
 ```
 
@@ -384,6 +388,8 @@ first. `restore` needs `--yes`, or `YES` typed at a terminal.
 /var/opt/mgu-deploy/backups/<time>-<command>/, backups/stock/   (0700)
 /var/opt/mgu-deploy/main.js              the fallback copy of the manager's main.js
 /var/opt/mgu-deploy/inplace/request.json an in-place install request, while one is pending
+/var/opt/mgu-deploy/verify.json          the tools checked at the next start; last-verify.json the last outcome
+/var/opt/mgu-deploy/kept/<id>/<id>@<v>.tgz  iDrive 7: an app's installed package and the newest older one
 /var/opt/mgu-updater/sources.json        the updater's sources, seeded (0600)
 /var/opt/mgu-updater/credentials/        the updater's tokens: token-<id>, tokens.json (0600, folder 0700)
 /var/opt/mgu-uplink/uids.d/<id>          a tool's uids that get internet
@@ -393,6 +399,7 @@ first. `restore` needs `--yes`, or `YES` typed at a terminal.
 /var/opt/mgu-deploy/id8/last-apply.json  iDrive 8: what the last apply-pending did; trash/<time>/ what it removed
 /var/opt/mgu-deploy/appmanager.json      what was taken over from IterioDev's App Manager; appmanager-removed/ its folder
 /etc/systemd/system/mgu-deploy-apply.service   iDrive 8: applies the queue at boot (late.target.wants)
+/etc/systemd/system/mgu-deploy-verify.service  checks the tools updated for this start (late.target.wants)
 /usr/lib/oap-mainapp/preinstalled_apps/<id>@<version>.tgz
 /usr/lib/oap-mainapp21/preinstalled_apps/<id>@<version>.tgz   iDrive 8
 /usr/share/tm/prov/das_000.xml ... das_005.xml                 iDrive 8: provisioning, our apps' lines
@@ -456,7 +463,9 @@ or app-privacy changes (`id8-live.json`). From the next start on, changes
 are live; until then they are queued. A
 change the running MainApp-21 does not take (no hook, the request not
 taken or refused, MainApp-21 restarted) is queued instead, with what was
-placed for it put back; one its installer failed fails, rolled back. On a
+placed for it put back; one its installer failed fails, rolled back, an
+update with the app's folders as on iDrive 7 (below): MainApp-21 loads the
+previous version from them at its next start. On a
 MainApp-21 the copy does not fit, every change is queued. An app
 uninstalled live goes on app-privacy's override list
 (`local-only-apps.json`): provisioning lists it until the next start, and
@@ -633,7 +642,7 @@ removes them like any app.
 folder, every successful install or uninstall, and turning the
 fallback on, installs the files it runs from into
 `/var/opt/mgu-deploy/versions/<VERSION>/`, under the `component.json` beside
-the script (synthesized from `VERSION` and its seven files when there is
+the script (synthesized from `VERSION` and its nine files when there is
 none; run from `deploy/unit/`, the linker and packer come from `tools/`), switches `current` to it and keeps that version and the one `current`
 pointed to before; a newer version already current stays. Run from
 `versions/`, it is installed already. `state.json`, `backups/` and the
@@ -739,6 +748,29 @@ on the previous version and is checked again (the result is printed), and
 the install exits 1. With no previous version or folder, the new one stays current,
 reported as not healthy, exit 1.
 
+**Check.** `"check": ["<script>", "<arg>", ...]` names one of the tool's
+files: once a new version runs (after the health check and
+`postInstall`), it runs from `current/` as root, node for a `.js` file,
+else sh, for at most 5 minutes (`MGU_DEPLOY_CHECK_MS`). Exit 0 says the
+tool works. A failing check rolls back as a failed health check does, and
+the tool's running services restart on the previous version (they ran the
+new one for the check). mgu-render checks that it answers a client.
+
+**At the next start.** A new version that runs only from the next start
+(the tool is pending: a `keepRunning` service, a recmgr entry not loaded)
+is checked then, when it has a `check` or services that start at boot. It
+is noted in `verify.json` with the version before, and
+`mgu-deploy-verify.service` (enabled for `late.target`, in recmgr's list,
+run while `verify.json` exists) runs `verify` at the next start, once the
+head unit has been up 150 s (`MGU_DEPLOY_VERIFY_AFTER_S`): the tool's
+services that start at boot get the health check, then its `check` runs.
+One that fails goes back to the version before (`rollback`), its running
+services restarted whether `keepRunning` or not. Every entry goes from
+`verify.json` before anything runs, so each version is checked once and
+no start repeats it; the unit never restarts the head unit and exits 0.
+`last-verify.json` (`status --json` `last_verify`) holds the outcome:
+`{at, results: [{id, version, ok, error, previous, rolledBack}]}`.
+
 `uninstall <id>` stops the tool's running units (when recmgr has loaded
 them), removes its units, links and the recmgr names no other tool lists,
 and the whole `/var/opt/<id>`: besides `versions/` and `current`, a tool's
@@ -749,7 +781,8 @@ created is removed once it is empty; folders that were there before stay.
 
 ### Rollback
 
-`rollback <id>` switches a tool's `current` to its one other kept version.
+`rollback <id>` switches a tool's `current` to its one other kept version
+(`status --json` names it as the tool's `previous` when it is older).
 With no other version, or more than one, it is refused (exit 2, listing
 them). It snapshots first, then restarts that version's `restart` units under
 the same recmgr rules and health check; a failed check switches back,
@@ -761,9 +794,15 @@ install of the wanted artifact changes them. `rollback app-privacy` also runs
 its `apply` (below). `rollback mgu-deploy` switches `current` and exits; the
 shim and the updater run that version from the next call.
 
-Apps have no rollback (exit 2): the app manager refuses a downgrade, so an
-older app version is installed by uninstalling the app, then installing the
-older artifact.
+An app (iDrive 7) goes back to the newest kept older package: the app
+manager takes no older package for an installed app, so `rollback <app>`
+uninstalls it and installs that package, carrying its data folder over
+(owned by the uid it runs as then). When that install fails, the version
+that was there is installed again from its kept package (exit 1). Every
+app install keeps its package, and that of the version it replaces (from
+`preinstalled_apps`), in `kept/<id>/`; only the installed version and the
+newest older one stay, and an uninstall removes them. `status --json`
+gives an app's `previous` (null on iDrive 8, where it is refused).
 
 ### app-privacy
 
@@ -922,11 +961,17 @@ the other apps and their tiles keep running; there is no bounce.
   the app manager done after 21s: installing since +16s, ended +21s; update other_app ran until +16s; AppManagement child started +0s to +3s
   ```
 - When the manager's own install or update rejected the app in its
-  installer (not its AppManagement child or channel failing), leaving the
-  app as it was, the install fails at once
-  (exit 1, rolled back) with the manager's reason in one line, and no
-  bounce: a restarted manager runs the same install, and the bounce stops
-  every app.
+  installer (not its AppManagement child or channel failing), the install
+  fails at once (exit 1, rolled back) with the manager's reason in one
+  line, and no bounce to install it: a restarted manager runs the same
+  install, and the bounce stops every app. An update the manager rejects
+  (a manifest naming an interface the head unit does not have, say:
+  `UPDATE_FAILED`) has already unregistered the app, taking its tile, and
+  removed its `source/`, `someipInterfaces/`, `rhmiData/` and
+  `rhmiDataStartWidget/`. Before every update the installer copies those
+  folders aside with their owners, modes and ACLs; the rollback puts back
+  the ones that changed and restarts the manager once, which loads the
+  previous version with its uid, data and tile.
 - When the manager never had the install in hand (no hook, the request not
   taken, refused or failed, or the manager restarted meanwhile) the
   installer says why and installs through the bounce above, under the same

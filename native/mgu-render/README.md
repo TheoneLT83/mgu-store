@@ -87,6 +87,11 @@ from the installed HmiMain3D.
   Renderer's page. HmiMain3D lacking what the template needs is not tried
   again until the stamp changes; any other failure (the time limit, a
   signal, memory or disk) is tried again at the next install.
+- After an update the deploy tool runs `render_check.js` (its `check`),
+  at once or, while the old renderer keeps running, at the next start: a
+  client must get X_READY and READY with a screen size, and 20 s later the
+  service must still run with no restart and answer again. It draws
+  nothing. A renderer that fails goes back to the version before.
 - `mgu-render-hmi.service` (before `hmi.service`, at most 30 s) generates
   nothing: with a template for the current stamp it mounts a copy of
   `bmw/widget/` in `/run` with it over the original and writes
@@ -248,6 +253,16 @@ restarts), which the link replaces.
 `0x4d470100` ("MG") on the same compositor, so two apps in slot 0 never share
 an id. The embed surface `0x500` is on the HMI's own compositor (`wayland-1`),
 which neither community renderer connects to.
+
+**The screen's layer list.** Winston rewrites the centre screen's list on
+each `add_layer` from the calling connection's own copy (taken when it
+connected, changed only by its own requests), so a long-open connection drops
+the layers others added since. Our layer goes on through a connection made
+for that moment (`src/relist.c`), whose copy is the list as it is, so other
+programs' layers stay. A
+layer another program drops is put back on top, at once while its app is
+shown, otherwise at its next show; with no layer of ours dropping theirs, a
+renderer that puts its own layer back in turn finds nothing to answer.
 
 **Touch.** IterioDev's renderer diverts the display's touch with its own
 table (`ip touchroute`, ports 30568 in, 30569 out); ours has `ip mgu_render`

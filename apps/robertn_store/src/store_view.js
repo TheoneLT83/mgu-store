@@ -120,6 +120,14 @@ function removable(row, busy) {
         row.nextStart !== 'remove' && !row.queued && !(busy && busy.id === row.id);
 }
 
+/* Whether the component can go back to its version before now (after a
+ * confirm step): the updater offers it (previous), and nothing is running,
+ * queued or waiting for a restart for it. */
+function undoable(row, busy) {
+    return typeof row.previous === 'string' && !!row.previous && !!row.installed && !row.queued && !row.pendingReboot &&
+        !row.nextStart && !(busy && busy.id === row.id);
+}
+
 /* The second column of the start screen's Apps and Head-unit tools rows,
  * for the catalog rows of that kind: the running install, a failure, or
  * how many updates there are. */
@@ -379,6 +387,6 @@ function sourcesMessage(m) {
     }
 }
 
-module.exports = { listed, startPending, sourceNames, withSources, removable, hmiNames, notForUnit, parseSource, pickOptions, probeStatus, sourcesMessage, tokenMessage, PHASE, percent, rowState, rowAction, groupState, statusLine, sourceLabel, sourceState,
+module.exports = { listed, startPending, sourceNames, withSources, removable, undoable, hmiNames, notForUnit, parseSource, pickOptions, probeStatus, sourcesMessage, tokenMessage, PHASE, percent, rowState, rowAction, groupState, statusLine, sourceLabel, sourceState,
     sourcesState, sourceActions, sourceChannel, sourceAccount, tokenLabel, tokenState, tokenSources, accountsState, loginStatus, loginCode,
     phoneState, phoneAddress };

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.39
+
+Undo update on the page of an app or tool the updater can take back to its
+version before, after a confirm step. Each connection to the updater says
+which Store version this is, so a Store update that does not start goes
+back by itself (robertnisipeanu/mgu-store 0.9.14). Needs mgu-updater 0.8.8.
+
 ## 0.9.38
 
 The Store no longer stays on its plain widget screens after an app install. The install restarts the app manager, which

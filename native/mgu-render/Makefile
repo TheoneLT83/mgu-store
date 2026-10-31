@@ -4,8 +4,8 @@
 #                       Ubuntu 18.04 (Docker)
 #   make check-target   its loader, libraries and glibc versions
 #   make check-protocol IVI_LIB_DIR=<dir>   protocol/*.xml against the unit's libivi-*.so
-#   make test           protocol (all four dialects), touch-routing, community-socket, video-file, page-template-script and
-#                       embed-buffer (a mock HMI compositor) unit tests, and recorded sessions of both legacy kits replayed
+#   make test           protocol (all four dialects), touch-routing, community-socket, video-file, page-template-script,
+#                       embed-buffer (a mock HMI compositor) and layer-list (a mock Winston) unit tests, and recorded sessions of both legacy kits replayed
 #                       through the original daemons and this one, frames compared (Docker, Mesa)
 #
 # The in-* targets run inside those containers.
@@ -71,6 +71,10 @@ in-test: build/$(OUT)/mgu-render
 	$(CC) $(CFLAGS) -o build/$(OUT)/test_video test/test_video.c src/gfx.c src/log.c -lEGL -lGLESv2 -lm
 	LIBGL_ALWAYS_SOFTWARE=1 EGL_PLATFORM=surfaceless build/$(OUT)/test_video
 	sh test/test_hmi.sh
+	wayland-scanner server-header protocol/ivi-controller.xml $(GEN_DIR)/ivi-controller-server-protocol.h
+	$(CC) $(CFLAGS) -o build/$(OUT)/mock_winston test/mock_winston.c $(GEN_DIR)/ivi-controller-protocol.c -lwayland-server
+	$(CC) $(CFLAGS) -o build/$(OUT)/ivi_client test/ivi_client.c src/relist.c src/log.c $(GEN_DIR)/ivi-controller-protocol.c -lwayland-client
+	sh test/test_relist.sh build/$(OUT)
 	for x in ivi-application wayland-drm; do wayland-scanner server-header protocol/$$x.xml $(GEN_DIR)/$$x-server-protocol.h; done
 	$(CC) $(CFLAGS) -o build/$(OUT)/mock_hmi test/mock_hmi.c $(GEN_DIR)/ivi-application-protocol.c $(GEN_DIR)/wayland-drm-protocol.c -lwayland-server
 	$(CC) $(CFLAGS) -DMGU_FAKE_DMABUF -o build/$(OUT)/test_embed test/test_embed.c src/embed.c src/embed_gl.c src/gfx.c src/log.c \

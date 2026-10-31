@@ -1,5 +1,12 @@
 # Updater changelog
 
+## 0.8.8
+
+- `rollback {id}` (with the secret): Undo update, the component back to the version the deploy tool keeps from before (its rollback). Each row's `previous` names that version where it is offered: never for the updater, the deploy tool, the Store or what the updater requires, nor below what an installed component requires. Needs mgu-deploy 0.6.9.
+- A Store update stands once the new Store says `hello` (`{op: "hello", id, version}`, the Store 0.9.39 and newer at each connection). When a process of that Store runs and it has not said hello within 2 minutes, the Store goes back to its version before, and its row says `<version> did not start; <previous> is back`; so does one whose tile showed before the update and does not show 2 minutes after it (`<version>'s tile does not show; <previous> is back`). Kept across restarts in `state/store-trial.json`.
+- A tool the deploy tool's check at the start of the head unit found not working shows on its row: `<version> did not work after the restart (<why>); <previous> is back`.
+- Needs mgu-deploy 0.6.10 (its `rollback <app>`, `previous` and the check at the next start).
+
 ## 0.8.7
 
 - Every installed app can be removed, whatever its source's listing says (`uninstallable`): an app a repository or catalog lists without it (the idrive7-apps apps) shows Remove in the Store as an imported one does. The Store, the updater, the deploy tool and what the updater requires are never removable, whichever source lists them; a tool still needs `uninstallable: true`.

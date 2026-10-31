@@ -235,6 +235,13 @@ function run() {
         app._client.emit('state', Object.assign({}, base, { components: [comp({})] }));
         return tick();
     }).then(() => {
+        const hello = { op: 'hello', id: 'robertn_store', version: 'test' };
+        eq(sent.filter((r) => r.op === 'hello'), [hello], 'a connection says which Store this is');
+        app._client.emit('state', Object.assign({}, base, { components: [comp({})] }));
+        eq(sent.filter((r) => r.op === 'hello'), [hello], 'once per connection');
+        app._client.emit('down');
+        app._client.emit('state', Object.assign({}, base, { components: [comp({})] }));
+        eq(sent.filter((r) => r.op === 'hello'), [hello, hello], 'and again after a reconnect');
         eq(last(/storeNavSources\.Visible/), 'storeNavSources.Visible=0', 'Sources hidden');
         eq(last(/storeNavPhone\.Visible/), 'storeNavPhone.Visible=0', 'Phone access hidden');
         eq(last(/storeSourceAccounts\.Visible/), 'storeSourceAccounts.Visible=0', 'Accounts hidden');
@@ -1177,6 +1184,18 @@ function runDrawn() {
     }).then(() => {
         eq([states, drawn.top().name, drawn.items.map((i) => i.label).indexOf('Restart head unit') >= 0], [[], 'app', true],
             'none for an app queued for the next start; its page offers Restart head unit');
+        drawn.pop();
+        // Undo update: on the page of a component the updater offers it for, after its confirm step
+        app._client.emit('state', Object.assign({}, st, { components: st.components.map((c) => (c.id === 'doom' ?
+            Object.assign({}, c, { installed: '1.0.1', status: 'installed', previous: '1.0.0', pendingReboot: false, nextStart: null }) : c)) }));
+        drawn.push({ name: 'app', id: 'doom' });
+        const undo = drawn.items.find((i) => i.label === 'Undo update');
+        eq(undo && undo.act, { do: 'open', page: { name: 'confirm', kind: 'undo', id: 'doom' } }, 'Undo update on the page');
+        app._act(undo.act);
+        eq(drawn.items.map((i) => i.label), ['Cancel', 'Undo update'], 'its dialog: Cancel, Undo update');
+        reset();
+        app._act(drawn.items.find((i) => i.label === 'Undo update').act);
+        eq([sent.map(secretless), drawn.top().name], [[{ op: 'rollback', id: 'doom' }], 'app'], 'it asks for the rollback; the dialog closes');
         drawn.pop();
         app._client.emit('state', st);
         // a drag scrolls without pressing

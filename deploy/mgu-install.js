@@ -490,6 +490,10 @@ function rsaOpts() {
     return sshVersion >= 8.08 ? ['-o', 'HostKeyAlgorithms=+ssh-rsa', '-o', 'PubkeyAcceptedAlgorithms=+ssh-rsa'] : [];
 }
 
+/* The unit's host key is neither asked about nor kept: every car's hotspot
+ * has the same address, and a unit's key can change. */
+const HOST_KEY_OPTS = ['-o', 'StrictHostKeyChecking=no', '-o', 'UserKnownHostsFile=/dev/null', '-o', 'LogLevel=ERROR'];
+
 /* ssh's arguments for one remote command: the owner's -o options first
  * (ssh takes the first value of an option). */
 function sshArgs(o, remote) {
@@ -498,7 +502,7 @@ function sshArgs(o, remote) {
     if (o.identity) {
         args.push('-i', o.identity, '-o', 'IdentitiesOnly=yes');
     }
-    return args.concat(rsaOpts(), [`${o.user}@${o.host}`, remote]);
+    return args.concat(HOST_KEY_OPTS, rsaOpts(), [`${o.user}@${o.host}`, remote]);
 }
 
 /* Runs remote on the unit; input on its stdin; capture: its stdout returned. */

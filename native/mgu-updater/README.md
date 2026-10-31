@@ -735,7 +735,8 @@ each request, and whenever it changes (at most every 250 ms):
     "build": null, "optional": false, "uninstallable": true, "revision": null,
     "description": "…", "author": "…", "icon": "/var/opt/mgu-updater/state/icons/…png",
     "mguHmi": ["ID7"], "compat": "yes", "provides": null, "service": null,
-    "listedId": null, "installAs": "doom", "blocked": null, "pendingReboot": false, "problem": null, "nextStart": null, "queued": false, "error": null } ] }
+    "listedId": null, "installAs": "doom", "blocked": null, "pendingReboot": false, "problem": null, "nextStart": null, "queued": false,
+    "previous": null, "error": null } ] }
 ```
 
 - `components`: each origin's component of an id (Sources, "Ids"); `id`
@@ -763,6 +764,13 @@ each request, and whenever it changes (at most every 250 ms):
   `icon` the kept icon's path, or null (Sources, "Icons"); `problem` what
   an installed tool says is wrong, the string `problem` of its
   `/var/opt/<id>/status.json` (mgu-render's page template), else null.
+  `previous`: the version Undo update returns to (the deploy tool's
+  `rollback`, from the version it keeps), else null: never for the
+  updater, the deploy tool, the Store or what the updater requires, nor
+  below what an installed component requires. `error` also says when the
+  deploy tool's check at the start of the head unit found a tool's new
+  version not working (`last_verify`): `<version> did not work after the
+  restart (<why>); <previous> is back`, while that version runs.
 - `unit`: the head unit (`hmi` `ID7`, `ID8` or null, `firmware` its build
   string), null until the deploy tool says. `allProviders`: the installed tools
   providing each capability; `providers`: the first of them each, for the
@@ -771,8 +779,8 @@ each request, and whenever it changes (at most every 250 ms):
   package) ("Head units", "Capabilities").
 - `busy.phase`: `download`, `build` (a source package or a repo's build
   script), `verify`, `install`, `uninstall`, or `check` (a tool the
-  updater runs on, "Tools the updater runs on"); `busy.op`: `install` or
-  `uninstall`.
+  updater runs on, "Tools the updater runs on"); `busy.op`: `install`,
+  `uninstall` or `rollback`.
 - `sources`: stored ones in order, then USB media; `channel` is a GitHub
   source's channel in use; `auth` the token that reads it (null: none, or
   none reaches it); `error` of an `ok` source names the components it left
@@ -800,11 +808,14 @@ each request, and whenever it changes (at most every 250 ms):
 
 Requests: `{"op":"status"}`, `{"op":"check"}`, `{"op":"install","id"}`
 (with its missing requirements first), `{"op":"reboot"}`, from any app.
+`{"op":"hello","id","version"}` (no answer): a client says what it is; the
+Store says it at each connection (below, "The Store's update").
 **Privileged** ones carry `"secret"`:
 
 | Request | Does |
 |---|---|
 | `{"op":"uninstall","id"}` | removes an `uninstallable` component (every app but the Store) |
+| `{"op":"rollback","id"}` | Undo update: a component whose row has `previous` back to that version, through `mgu-deploy.sh rollback <id> --yes` |
 | `{"op":"source-add","type":"github","repo":"o/r","channel"?}`, `{"op":"source-add","type":"https","url"}` | adds a source (id: the repo's name, else `s-<hex>`) and reads it |
 | `{"op":"source-probe","repo":"o/r"}` | `{"type":"probe","repo",status}`: what a GitHub repo can be added on, read with each token in turn, then without one. `ok` with `name` (the repo as GitHub spells it), `releases` (it has a release), `tags` (an x.y.z tag), `defaultBranch` (null when no channel takes its name), `branches` (100 a page, at most 300, in the order offered: main, master, the default branch, the rest; names no channel takes left out) and `more` (there are more); `auth-needed` (no token reaches it, or it is not there; a 403 that is no rate limit counts as no reach), `offline`, `rate-limited` (a 429, or a 403 with `x-ratelimit-remaining: 0` or `retry-after`), `error` with `error`. A repo that is already a source is refused |
 | `{"op":"source-remove","id"}` | removes a source (not the built-in one); what it installed keeps it as its origin in `origins.json`, and the ids `aliases.json` keeps for it stay |
@@ -820,6 +831,17 @@ Requests: `{"op":"status"}`, `{"op":"check"}`, `{"op":"install","id"}`
 A refused request gets `{"type":"error","op",…,"error"}`; one without the
 right secret, `"error":"forbidden"`. The direct answer to a request
 (state, error or logs) carries the request's `"rid"`.
+
+**The Store's update.** Once the Store 0.9.39 or newer is installed, its
+update stands when that Store says hello. While it has not
+(`state/store-trial.json`, kept across restarts) and that version is
+installed, the updater looks for a process of the Store; once one runs,
+the Store has 2 minutes to say hello, else it goes back to its version
+before (the deploy tool's rollback) and its row's `error` says `<version>
+did not start; <previous> is back`. A Store whose tile showed before the
+update (its registry entry's provisioning flags) and does not show 2
+minutes after it is installed goes back too: `<version>'s tile does not
+show; <previous> is back`.
 
 **The secret.** At each start the daemon makes 32 random bytes (hex) and
 writes them, as the reader's own 0400 file, to the Store's data folder

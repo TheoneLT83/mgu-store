@@ -17,9 +17,6 @@ It installs:
 iDrive 8 is tested in an emulator only, not yet on a real car. On iDrive 8,
 installs and removals take effect at the next head-unit restart.
 
-The Store follows the head unit's display language: English or Simplified
-Chinese.
-
 ## Screenshots
 
 The Store: apps and head-unit tools from every source.
@@ -77,7 +74,7 @@ comes through the Store.
 | `--identity <file>` | root's private SSH key |
 | `--host <address>`, `--port <n>` | reach the head unit at this SSH address instead (port 22 unless given); for an SSH config alias, give its port with `--port` |
 | `--user <name>` | SSH user (default `root`) |
-| `--ssh-opt <option>` | an extra `ssh -o` option, e.g. `StrictHostKeyChecking=accept-new`; repeatable. Through a jump host, give `--host` too: `--host <head unit> --ssh-opt ProxyJump=<jump host>` |
+| `--ssh-opt <option>` | an extra `ssh -o` option, e.g. `ConnectTimeout=30`; repeatable. Through a jump host, give `--host` too: `--host <head unit> --ssh-opt ProxyJump=<jump host>` |
 | `--token` | asks for a GitHub token, for private repositories |
 | `--no-uplink` | leaves out the internet uplink |
 | `--no-renderer` | leaves out the renderer |

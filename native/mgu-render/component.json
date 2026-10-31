@@ -1,13 +1,13 @@
 {
   "id": "mgu-render",
   "kind": "tool",
-  "version": "0.6.6",
+  "version": "0.6.9",
   "title": "Renderer",
   "description": "Draws apps' screens on the GPU, over the HMI or inside the app's page",
   "mguProvides": "renderer",
   "mguHmi": ["ID7", "ID8"],
   "optional": true,
-  "requires": { "mgu-deploy": "0.6.1" },
+  "requires": { "mgu-deploy": "0.6.10" },
   "uninstallable": true,
   "build": ["make", "check-target"],
   "files": [
@@ -19,6 +19,7 @@
     { "path": "mgu-render-retire.sh", "from": "systemd/mgu-render-retire.sh", "mode": "0644" },
     { "path": "mgu-render-install.sh", "from": "systemd/mgu-render-install.sh", "mode": "0644" },
     { "path": "mgu_render_client.js", "from": "js/mgu_render_client.js", "mode": "0644" },
+    { "path": "render_check.js", "from": "js/render_check.js", "mode": "0644" },
     { "path": "LICENSE.mgu-renderd", "from": "LICENSE.mgu-renderd", "mode": "0644" }
   ],
   "units": [
@@ -38,5 +39,6 @@
   "recmgr": ["mgu-render", "mgu-render-hmi"],
   "restart": ["mgu-render.service"],
   "keepRunning": true,
-  "postInstall": ["mgu-render-install.sh"]
+  "postInstall": ["mgu-render-install.sh"],
+  "check": ["render_check.js"]
 }

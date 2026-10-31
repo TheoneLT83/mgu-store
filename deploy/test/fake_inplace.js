@@ -16,7 +16,11 @@
  * itself when the hook first looks it up, registered but without its
  * installationSource, which it sets 1.5 s later (the hook refuses the
  * install meanwhile), "failafter" installs or updates and then rejects
- * with $FAKE_INPLACE_REASON, "blink"
+ * with $FAKE_INPLACE_REASON, "reject" has the installer reject each
+ * install and update as MainApp's does when generateSomeipInterfaces
+ * refuses the manifest: an update after it unregistered the app and
+ * removed its folders (fake_manager.js rejectedUpdate), an install with
+ * nothing left, both with $FAKE_INPLACE_REASON or UPDATE_FAILED, "blink"
  * leaves the pid file empty for 400 ms at the start of each install or
  * update (no manager in ps), "respawn" puts another pid in the pid file at
  * the start of each install or update (oapcontroller respawned the
@@ -76,6 +80,11 @@ const settle = (fn) => {
         fs.writeFileSync(env.FAKE_MGR_PIDFILE, String(pid));
         return new Promise(() => {});
     }
+    if (mode === 'reject') {
+        return delay(100).then(fn).then(() => {
+            throw Object.assign(new Error('fake rejection'), { reason: env.FAKE_INPLACE_REASON || 'UPDATE_FAILED' });
+        });
+    }
     if (mode === 'blink') {
         fs.writeFileSync(env.FAKE_MGR_PIDFILE, '');
         return delay(400).then(() => fs.writeFileSync(env.FAKE_MGR_PIDFILE, String(process.pid))).then(fn);
@@ -96,9 +105,14 @@ const preinstalled = (opts) => !id8 || (opts && opts.requestSource === 'PREINSTA
 let stubQueue = Promise.resolve();
 const work = {
     install: (id, opts) => settle(() => {
+        if (mode === 'reject') return;
         if (!preinstalled(opts) || fake.install(id, ' in place') === null) throw new Error(`no package for ${id}`);
     }),
     update: (id, mechanism) => settle(() => {
+        if (mode === 'reject') {
+            fake.rejectedUpdate(id);
+            return;
+        }
         const platform = id8 ? preinstalled(mechanism) && mechanism.updateType === 'PLATFORM' : mechanism === 'PLATFORM';
         if (!platform || !fake.update(id, ' in place')) throw new Error(`no update for ${id}`);
     }),

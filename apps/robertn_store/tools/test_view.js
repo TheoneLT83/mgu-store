@@ -6,7 +6,7 @@
  *   node tools/test_view.js
  */
 const assert = require('assert');
-const { listed, sourceNames, withSources, rowState, rowAction, removable, groupState, statusLine, sourceLabel, sourceState, sourcesState, sourceActions,
+const { listed, sourceNames, withSources, rowState, rowAction, removable, undoable, groupState, statusLine, sourceLabel, sourceState, sourcesState, sourceActions,
     sourceChannel, sourceAccount, tokenLabel, tokenState, tokenSources, accountsState, loginStatus, loginCode, phoneState, phoneAddress,
     parseSource, pickOptions, probeStatus, sourcesMessage, tokenMessage } = require('../src/store_view.js');
 
@@ -163,6 +163,15 @@ const cases = [
     [rowAction(row({ status: 'installed', uninstallable: true, queued: true }), null), null],
     [rowAction(row({ status: 'installed', uninstallable: false }), null), null],
     [rowAction(row({ status: 'installed', uninstallable: 'yes' }), null), null],
+    // Undo update: where the updater offers it, nothing else running, queued or waiting for a restart
+    [undoable(row({ status: 'installed', previous: '1.0.0' }), null), true],
+    [undoable(row({ status: 'installed' }), null), false],
+    [undoable(row({ status: 'installed', previous: null }), null), false],
+    [undoable(row({ status: 'available', installed: null, previous: '1.0.0' }), null), false],
+    [undoable(row({ status: 'installed', previous: '1.0.0' }), { id: 'doom', phase: 'install' }), false],
+    [undoable(row({ status: 'installed', previous: '1.0.0', queued: true }), null), false],
+    [undoable(row({ status: 'installed', previous: '1.0.0', pendingReboot: true }), null), false],
+    [undoable(row({ status: 'installed', previous: '1.0.0', nextStart: 'remove' }), null), false],
     [sourceLabel(src({})), 'someone/idrive7-apps'],
     [sourceLabel(src({ label: undefined })), 'idrive7-apps'],
     [sourceState(src({})), 'OK'],

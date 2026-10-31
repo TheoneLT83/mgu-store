@@ -129,6 +129,13 @@ const cl = f.values.list.items;
 eq([text(f, 'title'), cl[0].title, cl[0].right], ['Renderer changelog', 'Version 0.4.0', 'chip:New']);
 ok(cl.filter((i) => i.note).length >= 3 && cl.filter((i) => i.note).every((i) => i.title.length <= 110), 'notes in lines');
 ok(cl.some((i) => i.title === 'Version 0.3.3'), 'the older version too');
+// Undo update: on the page of a component the updater offers it for, then its confirm step
+f = screen('tool-undo');
+eq(own(f), ['Undo update', 'Remove', 'Back'], 'Undo update beside Remove');
+eq(f.items[0].act, { do: 'open', page: { name: 'confirm', kind: 'undo', id: 'mgu-uplink' } });
+f = screen('confirm-undo');
+eq([text(f, 'title'), f.labels], ['Back to Network driver 0.3.2?', ['Cancel', 'Undo update']], 'its dialog');
+eq(f.items[1].act, { do: 'undo', id: 'mgu-uplink' });
 f = screen('app-incompatible');
 eq(own(f), ['Back'], 'not for this unit: nothing to press but its changelog');
 eq([text(f, 'note1'), text(f, 'note2')], ['Not for this head unit', 'For iDrive 8']);

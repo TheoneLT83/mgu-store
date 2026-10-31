@@ -1,5 +1,18 @@
 # mgu-render changelog
 
+## 0.6.9
+
+- robertnisipeanu/mgu-store's 0.6.7 and 0.6.8 (below) with this repository's renderer: its layer handling replaces 0.6.6's, and the install step stays `mgu-render-install.sh`.
+
+## 0.6.8
+
+- `render_check.js`, the deploy tool's check after an update (`check` in `component.json`; needs mgu-deploy 0.6.10): a client connects to the renderer's socket and must get its native answer (X_READY, then READY with a screen size); 20 s later the service must still run with no restart, and a second connection must get READY again. It draws nothing. A renderer that fails it goes back to the version before, at the install or at the next start of the head unit.
+
+## 0.6.7
+
+- A layer app's layer goes onto the centre screen through a connection made for it and closed again (`src/relist.c`), never through the renderer's own long-lived one. Winston applies a screen's `add_layer` to the layer list as the calling connection last saw or set it, so a connection open a while dropped every layer other programs (the HMI, another renderer) put on the screen since. The new connection sees the list as it is: our layer goes on top and every other layer stays.
+- When another program sets the screen's layers without ours, Winston says so (the layer's `screen` event) and the layer goes back on top: at once while the app is shown, at its next show otherwise. Taken off more than 10 times in 10 s while shown, it goes back at its next show (journal: `layer taken off the screen`).
+
 ## 0.6.6
 
 - An app's layer that something else takes off the centre screen while the app shows (the HMI or another renderer setting the screen's layers, as an app install's restart of the app manager can) goes back on, on top, and the journal says so (`layer taken off the screen while shown - put back`). The app went on drawing and reported on screen while the HMI's page showed under it: the Store's empty list during an app install.
