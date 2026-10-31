@@ -61,7 +61,7 @@ A new version of `mgu-render` or `robertn_store` is published to GitHub only
 after it passed in the head-unit emulator, which runs on the owner's Mac:
 
 ```sh
-tools/emu-gate mgu-render          # about 4 min a component
+tools/emu-gate mgu-render          # 4 to 8 min a component
 git add release/gate/mgu-render.json && git commit -m "mgu-render x.y.z: emulator gate"
 ```
 

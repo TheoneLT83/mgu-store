@@ -33,7 +33,7 @@ const VM = 'mgu-emu-gate';
 const OURS = [0x4d520000, 0x4d5200ff];   // mgu-render's layer ids
 const FOREIGN = 0x4d47fff0;              // the stand-in for another renderer's layer
 const STORE_TILE = [384, 190];           // the Store, the first tile in the published release's APPS menu
-const PICTURE_COLOURS = 150;             // sampled: the Store's page 290-690 colours, the HMI's empty page ~70, black 1
+const PICTURE_COLOURS = 120;             // sampled: the Store's page 190-690 colours, the HMI's empty page ~70, black 1
 
 const sleep = (s) => cp.spawnSync('sleep', [String(s)]);
 function run(cmd, args, opts = {}) {
