@@ -1227,21 +1227,28 @@ function testDaemon(certs, pubDir) {
             // still offline: a newer version on a USB stick
             const stick = path.join('/media', 'SELFSTICK');
             mkdirp(stick);
-            publish(stick, [entry(updaterKit(stick, '0.8.0'), 'tool', 'Updater')]);
+            // an app on it that needs that version: installing it updates the updater first
+            const stickApp = Object.assign(entry(appTgz(stick, 'stick_app', '0.1.0'), 'app', 'Stick App'), { requires: { 'mgu-updater': '0.8.0' } });
+            publish(stick, [entry(updaterKit(stick, '0.8.0'), 'tool', 'Updater'), stickApp]);
             // written by mgu-install.js usb-repo from the built-in source
             fs.writeFileSync(path.join(stick, 'mgu-copy.json'), JSON.stringify({ copyOf: 'https://updates.test:8443/catalog.json' }));
             fs.writeFileSync(path.join(T, 'no-mounts'), `/dev/sdz1 ${stick} vfat ro 0 0\n`);
             return waitFor(client, (s) => row(s, 'mgu-updater').version === '0.8.0' && row(s, 'mgu-updater').status === 'update' &&
                 row(s, 'mgu-updater').source === 'usb:SELFSTICK', 20000, 'the stick\'s updater offered offline')
                 .then(() => {
+                    // the shipped first check: the new version's first full check comes long after it starts
+                    fs.writeFileSync(conf, confText('first_check_s = 60'));
                     restarting();
-                    client.install('mgu-updater');
-                    return sleep(3000).then(() => waitFor(client, (s) => version(s) === '0.8.0' && !fs.existsSync(trialFile) && settled(s), 60000,
-                        'the stick\'s updater kept offline'));
+                    client.install('stick_app');
+                    return sleep(3000).then(() => waitFor(client, (s) => version(s) === '0.8.0' && !fs.existsSync(trialFile) &&
+                        !s.busy && !row(s, 'stick_app').queued, 60000, 'the stick\'s updater kept offline'));
                 })
-                .then(() => {
+                .then((st) => {
                     ok('trial: a version from a USB stick is kept without internet',
                         current() === 'versions/0.8.0' && !fs.existsSync(path.join(opt, 'mgu-updater', 'trial-local')));
+                    ok('trial: the app queued behind it installs from the stick once the new version runs',
+                        row(st, 'stick_app').installed === '0.1.0' && !row(st, 'stick_app').error, JSON.stringify(row(st, 'stick_app')));
+                    fs.writeFileSync(conf, confText());
                     fs.unlinkSync(path.join(T, 'no-mounts'));
                     cp.execFileSync('rm', ['-rf', stick]);
                     fs.copyFileSync(path.join(T, 'lease.json.good'), path.join(T, 'lease.json'));
@@ -2673,6 +2680,111 @@ function testUnitServices(certs, pubDir) {
         .then(() => {
             ok('index: a package the index no longer lists is no longer kept', !fs.existsSync(cached(renderer.sha256)) &&
                 fs.existsSync(cached(both.sha256)) && !comp('oap-cardash').id);
+            u.server.close();
+        });
+}
+
+/* Requirements across sources (another repository's catalog and mgu-store's): an
+ * app that requires a tool of its own catalog, which requires a renderer
+ * there and a newer deploy tool from mgu-store's. Installing the app
+ * installs, in order, the deploy tool update, the renderer, the tool and
+ * the app; the tool whose install the deploy tool reports restart-pending
+ * shows so. Removing them: the tool is refused while the app that needs it
+ * is installed; the app, then the tool, go through the deploy tool; the
+ * renderer and the deploy tool stay. */
+function testCrossSource(certs) {
+    const { Updater } = require('../js/updater');
+    const M = path.join(T, 'xs');
+    const opt = path.join(M, 'opt');
+    const oap = path.join(M, 'oap');
+    const state = path.join(M, 'state');
+    const store = path.join(M, 'store');
+    const apps = path.join(M, 'apps');
+    [M, opt, oap, state, store, apps, path.join(M, 'shm'), path.join(M, 'media')].forEach(mkdirp);
+    const deployLog = path.join(M, 'deploy.log');
+    fs.writeFileSync(deployLog, '');
+    Object.assign(process.env, { TOOL_ROOT: opt, OAP_ROOT: oap, FAKE_DEPLOY_LOG: deployLog, FAKE_PENDING: 'hooked-tool' });
+    delete process.env.FAKE_LEASE;
+    const deploySh = path.join(M, 'mgu-deploy.sh');
+    fs.writeFileSync(deploySh, DEPLOY_SH, { mode: 0o755 });
+    fs.writeFileSync(path.join(M, 'lease.json'), JSON.stringify({ interface: 'vethuplink', dns: [`127.0.0.1:${DNS_PORT}`] }));
+    fs.writeFileSync(path.join(M, 'ca.pem'), certs.ca);
+    const deployed = () => fs.readFileSync(deployLog, 'utf8').split('\n').filter((l) => /^(install|uninstall)/.test(l));
+    // the deploy tool installed, a version before the one that runs install hooks
+    mkdirp(path.join(opt, 'mgu-deploy', 'versions', '0.6.9'));
+    fs.writeFileSync(path.join(opt, 'mgu-deploy', 'versions', '0.6.9', 'component.json'), JSON.stringify({ id: 'mgu-deploy', kind: 'tool', version: '0.6.9' }));
+    fs.symlinkSync('versions/0.6.9', path.join(opt, 'mgu-deploy', 'current'));
+    const kit = (dir, id, version, extra) => toolKit(dir, id, version, { [`${id}.sh`]: ['#!/bin/sh\n', 0o755] }, extra);
+    publish(store, [entry(kit(store, 'mgu-deploy', '0.7.0'), 'tool', 'Deploy tool')], { schema: 2 });
+    const hooks = { activate: ['node', 'hook.js', 'activate'], deactivate: ['node', 'hook.js', 'deactivate'] };
+    const tool = { requires: { 'mgu-deploy': '0.7.0', 'lib-tool': '0.1.0' }, mguHmi: ['ID7'] };
+    publish(apps, [
+        Object.assign(entry(kit(apps, 'lib-tool', '0.1.0', { mguHmi: ['ID7'] }), 'tool', 'Library tool'), { mguHmi: ['ID7'] }),
+        Object.assign(entry(kit(apps, 'hooked-tool', '0.5.0', Object.assign({}, tool, hooks)), 'tool', 'Hooked tool'), tool, { uninstallable: true }),
+        Object.assign(entry(appTgz(apps, 'robertn_hooked_app', '0.3.0'), 'app', 'Hooked app'), { requires: { 'hooked-tool': '0.5.0' }, uninstallable: true })
+    ], { schema: 2 });
+    const sources = path.join(M, 'sources.json');
+    fs.writeFileSync(sources, JSON.stringify({ schema: 1, sources: [
+        { id: 'mgu-store', type: 'file', path: store, builtin: true },
+        { id: 'other-repo', type: 'file', path: apps }
+    ] }));
+    const conf = {
+        sources, credentials_dir: path.join(M, 'cred'), state_dir: state, tool_root: opt, oap_root: oap, mainapp_uid: '12201',
+        store_app: 'robertn_store', deploy: deploySh, lease: path.join(M, 'lease.json'), ca_file: path.join(M, 'ca.pem'),
+        github_api: API, github_web: GH_WEB, github_client_id: 'Iv1.test', builtin_repo: 'robertnisipeanu/mgu-store',
+        fetch_uid: String(FETCH_UID), fetch_gid: String(FETCH_UID), build_uid: '12995', build_gid: '12995',
+        build_timeout_s: '3', build_max_bytes: String(8 << 20), repo_max_bytes: String(8 << 20),
+        mounts: path.join(M, 'mounts'), usb_roots: path.join(M, 'media'), web_secret: path.join(M, 'web-secret'), web_uid: '12996', web_gid: '12202',
+        socket: path.join(M, 'shm', 'updater.sock'), socket_group: 'staff', deploy_tool: 'mgu-deploy', uplink_tool: 'mgu-uplink',
+        bootstrap_check_s: '6', privacy_tool: '', reboot: ''
+    };
+    fs.writeFileSync(conf.mounts, '');
+    const u = new Updater(conf);
+    const st = () => u.state();
+    const comp = (id) => st().components.find((c) => c.id === id) || {};
+    const priv = (req) => ask(conf.socket, Object.assign({ secret: u.secret }, req));
+    const idle = (what) => until(st, () => !st().busy && !st().components.some((c) => c.queued), 60000, what);
+    return u.serve()
+        .then(() => u.check())
+        .then(() => {
+            ok('cross-source: the tool lists its requirements and hooks\' iDrive', JSON.stringify(comp('hooked-tool').mguHmi) === '["ID7"]' &&
+                comp('lib-tool').source === 'other-repo' && comp('mgu-deploy').source === 'mgu-store', JSON.stringify(st().components));
+            return ask(conf.socket, { op: 'install', id: 'robertn_hooked_app' });
+        })
+        .then((err) => until(st, () => !st().busy && !st().components.some((c) => c.queued) &&
+            comp('robertn_hooked_app').status === 'installed', 60000, 'the app installed').then(() => err))
+        .then((err) => {
+            const order = deployed().map((l) => (/([a-z_-]+)@(\d+\.\d+\.\d+)\.tgz/.exec(l) || [])[0]);
+            ok('cross-source: installing the app installs the deploy tool update, the renderer, the tool, then the app',
+                err === null && JSON.stringify(order) === JSON.stringify(['mgu-deploy@0.7.0.tgz', 'lib-tool@0.1.0.tgz',
+                    'hooked-tool@0.5.0.tgz', 'robertn_hooked_app@0.3.0.tgz']), `${err} ${JSON.stringify(deployed())}`);
+            ok('cross-source: each from its own source', u.origins['mgu-deploy'].source === 'mgu-store' &&
+                u.origins['lib-tool'].source === 'other-repo' && u.origins['hooked-tool'].source === 'other-repo', JSON.stringify(u.origins));
+            ok('cross-source: the tool the deploy tool reports restart-pending shows so, the others do not',
+                comp('hooked-tool').pendingReboot === true && comp('lib-tool').pendingReboot === false &&
+                comp('robertn_hooked_app').pendingReboot === false, JSON.stringify(st().components.map((c) => [c.id, c.pendingReboot])));
+            delete process.env.FAKE_PENDING;
+            fs.writeFileSync(deployLog, '');
+            return Promise.all([priv({ op: 'uninstall', id: 'hooked-tool' }), priv({ op: 'uninstall', id: 'lib-tool' })]);
+        })
+        .then((errs) => {
+            ok('cross-source removal: the tool is refused while the app needs it; the renderer is not removable',
+                errs[0] === 'Hooked app needs hooked-tool' && errs[1] === 'lib-tool cannot be removed' && !deployed().length,
+                JSON.stringify(errs));
+            return priv({ op: 'uninstall', id: 'robertn_hooked_app' });
+        })
+        .then((err) => idle('the app removed').then(() => err))
+        .then((err) => {
+            ok('cross-source removal: the app goes first', err === null && comp('robertn_hooked_app').status === 'available' &&
+                comp('hooked-tool').status === 'installed', `${err} ${JSON.stringify(deployed())}`);
+            return priv({ op: 'uninstall', id: 'hooked-tool' });
+        })
+        .then((err) => idle('the tool removed').then(() => err))
+        .then((err) => {
+            ok('cross-source removal: then the tool, through the deploy tool, the renderer and the deploy tool stay',
+                err === null && JSON.stringify(deployed()) === JSON.stringify(['uninstall robertn_hooked_app --yes', 'uninstall hooked-tool --yes']) &&
+                comp('hooked-tool').status === 'available' && comp('lib-tool').status === 'installed' &&
+                comp('mgu-deploy').installed === '0.7.0', `${err} ${JSON.stringify(deployed())} ${JSON.stringify(st().components.map((c) => [c.id, c.status]))}`);
             u.server.close();
         });
 }
@@ -4700,6 +4812,7 @@ function main() {
             .then(() => testRequests(certs).catch((e) => ok('requests scenario', false, e.stack)))
             .then(() => testUnitServices(certs, pubDir).catch((e) => ok('unit and services scenario', false, e.stack)))
             .then(() => testIndexV2(certs, pubDir).catch((e) => ok('index v2 scenario', false, e.stack)))
+            .then(() => testCrossSource(certs).catch((e) => ok('cross-source requirements scenario', false, e.stack)))
             .then(() => testAppManager(certs, pubDir).catch((e) => ok('App Manager scenario', false, e.stack)))
             .then(() => testIdrive7(certs).catch((e) => ok('idrive7-apps installer scenario', false, e.stack)))
             .then(() => testIcons().catch((e) => ok('icons scenario', false, e.stack)))

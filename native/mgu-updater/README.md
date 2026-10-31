@@ -561,7 +561,8 @@ taken up the same way: the running daemon sees `current` move, writes
 `trial` with its own version, and hands over. That version commits once
 the deploy tool answers, without the sources: the car may have no internet
 while it is set up. So does a version installed from a USB stick or a
-folder.
+folder; it reads the sticks mounted then before it takes up what the
+version before left queued, so an install from a stick waits for that read.
 
 ## Tools the updater runs on
 

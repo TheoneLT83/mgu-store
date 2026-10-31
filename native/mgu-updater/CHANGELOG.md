@@ -1,5 +1,9 @@
 # Updater changelog
 
+## 0.8.9
+
+- A new version of the updater installed from a USB stick or a folder reads the sticks mounted before it takes up the queue the version before left, so a queued install from a stick (one that needed the new updater first) goes ahead instead of failing with `no longer in its source`. (robertnisipeanu/mgu-store 0.8.8)
+
 ## 0.8.8
 
 - `rollback {id}` (with the secret): Undo update, the component back to the version the deploy tool keeps from before (its rollback). Each row's `previous` names that version where it is offered: never for the updater, the deploy tool, the Store or what the updater requires, nor below what an installed component requires. Needs mgu-deploy 0.6.9.

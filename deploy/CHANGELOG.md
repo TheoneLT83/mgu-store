@@ -1,5 +1,18 @@
 # Deploy tool changelog
 
+## 0.7.1
+
+- robertnisipeanu/mgu-store's 0.6.10 and 0.7.0 (`activate` / `deactivate` hooks, files removed once unused, iDrive 8 keeps the previous version of a queued update) with this repository's 0.6.10 (below), `preUninstall` included: it runs before a tool's `deactivate`.
+
+## 0.7.0
+
+- A tool's `activate` and `deactivate` (`component.json`; `deploy/hu artifact` keeps them): commands run as root, without a shell, in the version's folder, for at most 120 s (`MGU_DEPLOY_HOOK_TIMEOUT_MS`). `activate` runs on every install, update and rollback once the version is in place and `/` is read-only again, before `postInstall` and `check`; a failure is rolled back: an update returns to the previous version, a first install is removed. An install that ran `activate` and is rolled back (a failed `activate` or `check`) runs the previous version's `activate` again. `deactivate` runs before a removal changes anything; a failure keeps the tool, and a removal that fails after it runs the tool's `activate` again. A `{"reboot": "<why>"}` last line marks the tool restart-pending (a removal's, the deploy tool).
+- A hook's `"removeWhenUnused": [<path>...]`: files on `/` a process may still run (a binary a hook replaced while it ran). One no process runs is removed at once; one still run waits in `remove-when-unused.json` (`status --json` `remove_when_unused`) and `mgu-deploy-cleanup.service` (enabled for `late.target` and in recmgr's list from the first one) removes it at a later start, once nothing runs it. `remove-unused` runs that removal. Snapshots hold the unit, its link and the list.
+
+## 0.6.10 (robertnisipeanu/mgu-store)
+
+- iDrive 8: an app update applied at the start of the head unit that MainApp-21 does not install (`UPDATE_FAILED`, for example a manifest naming an interface the head unit does not have) leaves the previous version installed. The update keeps that version (registry entry, home with its data, personal copies and vsomeip policy with their owners and modes, the ACLs of those under `/var/opt`, uid and package) until MainApp-21 has installed the new one; at the next start, before MainApp-21, a version it did not install is put back as it was, and MainApp-21 loads it at that start with its uid, data and tile. MainApp-21 is never restarted for it. `last_apply` reports it (`action` `restore`).
+
 ## 0.6.10
 
 - Both lines of changes together: this repository's 0.6.6 (`preUninstall`, CarPlay multitouch in `first-install`) and robertnisipeanu/mgu-store's 0.6.7-0.6.9 (`check`, the check at the next start, `rollback <app>`, a rejected app update keeps the previous version, no app manager fails at once), all below.

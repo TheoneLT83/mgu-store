@@ -192,8 +192,9 @@ tool itself):
 - the artifact's `component.json` is `{id, kind, version, title,
   description, files[{path, mode, sha256}], units[{name}], enable, recmgr,
   restart}`, `dropins[{unit, name}]` (each read from `from`), and `internet`
-  with `uids`, `mguHmi`, `mguProvides`, `keepRunning`, `crashNames` and
-  `postInstall` and `preUninstall` when the tool declares them;
+  with `uids`, `mguHmi`, `mguProvides`, `keepRunning`, `crashNames`,
+  `postInstall`, `preUninstall`, `check`, `activate` and `deactivate` when the
+  tool declares them;
 - members are sorted, owned 0:0, with the listed modes (`component.json` and
   units 0644) and one mtime: `SOURCE_DATE_EPOCH` when set, else the packer's
   fixed one (`tools/oap_pack.js`, which also writes the gzip header's OS byte
@@ -362,6 +363,7 @@ mgu-deploy.sh updater-sources                 # sources.json on stdin
 mgu-deploy.sh sdk-donor [--json]
 mgu-deploy.sh apply-pending                   # iDrive 8, at boot
 mgu-deploy.sh verify                          # at boot: the tools updated for this start
+mgu-deploy.sh remove-unused                   # at boot: files hooks handed over
 mgu-deploy.sh appmanager [--json] | appmanager adopt [--yes]
 ```
 
@@ -377,8 +379,8 @@ first. `restore` needs `--yes`, or `YES` typed at a terminal.
 /etc/systemd/system/<unit>               units; <target>.wants/<unit> for enable
 /etc/recmgr-restartlist.conf             recmgr's restart list
 /etc/crashhandler-restartlist.conf       the crash handler's restart list
-/var/opt/mgu-deploy/versions/<v>/        the deploy tool itself (mgu-deploy.js, .sh, fallback_build.js,
-                                         mgu-app-fallback.service, oap_link.js, oap_pack.js)
+/var/opt/mgu-deploy/versions/<v>/        the deploy tool itself (mgu-deploy.js, .sh, fallback_build.js, its
+                                         boot units, oap_link.js, oap_pack.js)
 /var/opt/mgu-deploy/current -> versions/<v>
 /var/opt/mgu-deploy/mgu-deploy.sh        shim: runs current/mgu-deploy.sh
 /var/opt/mgu-deploy/state.json           pending reboots, apps' uids, the last bounce
@@ -395,11 +397,13 @@ first. `restore` needs `--yes`, or `YES` typed at a terminal.
 /var/opt/mgu-uplink/uids.d/<id>          a tool's uids that get internet
 /var/opt/mgu-uplink/apps.d/<id>          an app that gets internet
 /run/mgu-deploy/sdk-donor/               the donor bundle's readable copy and its oap-sdk module (sdk-donor)
-/var/opt/mgu-deploy/id8/pending.json     iDrive 8: the queued app changes; queue/<id>@<version>.tgz their packages
+/var/opt/mgu-deploy/id8/pending.json     iDrive 8: the queued app changes (queue/<id>@<version>.tgz their packages), and the updates MainApp-21 has yet to install
 /var/opt/mgu-deploy/id8/last-apply.json  iDrive 8: what the last apply-pending did; trash/<time>/ what it removed
 /var/opt/mgu-deploy/appmanager.json      what was taken over from IterioDev's App Manager; appmanager-removed/ its folder
 /etc/systemd/system/mgu-deploy-apply.service   iDrive 8: applies the queue at boot (late.target.wants)
 /etc/systemd/system/mgu-deploy-verify.service  checks the tools updated for this start (late.target.wants)
+/var/opt/mgu-deploy/remove-when-unused.json    files hooks handed over that a process still ran
+/etc/systemd/system/mgu-deploy-cleanup.service removes them at boot once unused (late.target.wants)
 /usr/lib/oap-mainapp/preinstalled_apps/<id>@<version>.tgz
 /usr/lib/oap-mainapp21/preinstalled_apps/<id>@<version>.tgz   iDrive 8
 /usr/share/tm/prov/das_000.xml ... das_005.xml                 iDrive 8: provisioning, our apps' lines
@@ -511,8 +515,7 @@ whose das edits and removal steps it follows:
   run only while `id8/pending.json` exists; listed in recmgr where the unit
   has the list), which runs `apply-pending` at boot. `apply-pending` is
   refused while MainApp runs. Each change: an install uninstalls the
-  installed version first (its data goes with it, as the update says), puts
-  the package as `preinstalled_apps/<id>@<version>.tgz` and the app's two
+  installed version first, puts the package as `preinstalled_apps/<id>@<version>.tgz` and the app's two
   lines into every das file (`<app supportedECUs="HU"
   initialPreferPreinstalled="true">` before `</installable_apps>`, its
   enable line after `x_call`'s); a removal moves its registry entry, home,
@@ -521,6 +524,19 @@ whose das edits and removal steps it follows:
   and its packages and das lines. A das file without those anchors fails
   that change before anything moves. The result is in `last-apply.json`
   and `status`.
+- An update keeps the version it uninstalls (its registry entry, home,
+  personal copies and vsomeip policy in its trash folder with their owners
+  and modes, the ACLs of those under `/var/opt`, its uid, `uids.txt` line
+  and package) listed as `unconfirmed` in
+  `pending.json`, so `apply-pending` runs again at the next start. Before
+  MainApp-21 starts then, an app with a registry entry was installed and
+  stays; one without (MainApp-21 rejected the new package, for example a
+  manifest naming an interface the head unit does not have) gets that
+  version back as it was, the new package going to the trash, and
+  MainApp-21 loads it at that start with its uid, data and tile. Nothing
+  goes back over an entry, folder or other package of the app that is
+  there again. Each update is looked at once; MainApp-21 is never
+  restarted. A removal queued meanwhile applies to the version put back.
 
 ### Service packages
 
@@ -770,6 +786,53 @@ services restarted whether `keepRunning` or not. Every entry goes from
 no start repeats it; the unit never restarts the head unit and exits 0.
 `last-verify.json` (`status --json` `last_verify`) holds the outcome:
 `{at, results: [{id, version, ok, error, previous, rolledBack}]}`.
+
+**Activate and deactivate.** A tool may name a command its installs run,
+`"activate"`, and one its removal runs, `"deactivate"`: `["node", <argument>...]`
+(the Node this tool runs on) or `[<an executable file of the tool>,
+<argument>...]`, non-empty strings without `..`, no shell. Anything else
+refuses the install (exit 2). Each runs as root with this tool's
+environment, in the version's folder, for at most 120 s
+(`MGU_DEPLOY_HOOK_TIMEOUT_MS`), and its stdout and stderr go to this tool's
+output, prefixed `<id> activate:`. When its last non-empty stdout line is a
+JSON object, `"reboot"` is why the change needs a head-unit start (the tool
+is then pending with that reason), `"status"` a line for the output, and
+`"removeWhenUnused"` a list of files on `/` to remove once no process runs
+them (below).
+
+- `activate` runs on every install of the tool (the same version again too)
+  and a rollback to a version that has one, once the version's files, units,
+  the recmgr list and the restarts are done and `/` is read-only again (a
+  command that writes to `/` remounts it itself), after the health check and
+  app-privacy's apply and before `postInstall` and `check`. It must be
+  idempotent. A tool it leaves pending is checked at the next start. A
+  non-zero exit or the timeout fails the install: the units it started or
+  restarted are restarted on the previous version (or stopped when their
+  unit went with it) and a first install is removed. Whenever an install
+  that ran `activate` is rolled back (a failed `activate` or `check`), the
+  previous version's `activate` runs again.
+- `deactivate` runs before a removal changes anything, with the tool's units
+  and files in place. A non-zero exit refuses the removal (exit 2) and the
+  tool stays; a removal that fails after it is rolled back. Either way the
+  tool's `activate` runs again. A restart it asks for stays pending under
+  `mgu-deploy` (`<id> removed: <reason>`), since the tool's own entries go
+  with it.
+
+**Files removed once unused.** A hook that replaced a binary a process still
+runs keeps the old file linked (an unlinked file a process holds keeps `/`
+from going read-only) and hands it over with `"removeWhenUnused": [<absolute
+path>...]`; after a removal nothing of the tool is left to remove it. A
+file no process runs (no `/proc/<pid>/exe` is its inode) is removed at once,
+in a rootfs window. One a process runs waits in
+`/var/opt/mgu-deploy/remove-when-unused.json` (`status --json`
+`remove_when_unused`): `mgu-deploy-cleanup.service`, installed, enabled for
+`late.target` and added to recmgr's list on the first such file, runs
+`remove-unused` at each start while that file exists (it waits for the
+deploy tool's lock and always ends as succeeded), which removes what no
+process runs any more and keeps the rest for a later start. Only regular files are removed; a
+folder, a symlink, a relative path or one with `..` is left as it is, said in
+the output. Every snapshot holds the unit, its link and the list, so a
+failed install or removal puts them back with the recmgr list.
 
 `uninstall <id>` stops the tool's running units (when recmgr has loaded
 them), removes its units, links and the recmgr names no other tool lists,
@@ -1391,7 +1454,8 @@ stdout, read-only, taking no lock, of this shape:
                  { "id", "kind": "app", "version", "uid", "installationSource", "running",
                    "tile_provisioned", "tile_fallback", "tile_visible" }],
   "pending_reboot": [{ "id", "reason" }],
-  "last_apply": { "at", "results": [{ "id", "action", "version", "ok", "error"?, "log" }] } | null,   (iDrive 8)
+  "last_apply": { "at", "results": [{ "id", "action", "version", "ok", "error"?, "log", "rejected"? }] } | null,   (iDrive 8;
+                 action "restore": version put back in place of the rejected one)
   "display_bridge_socket": true, "display_bridge_todo_on_car": ["<key>: TODO(on-car): ..."],   (display-bridge)
   "fallback": { ... }, "backups": 3, "stock_backup": true, "updater_tokens": 1,
   "retired_leftovers": ["/usr/lib/oap-mainapp/src/main.js.capbak"],
@@ -1445,7 +1509,8 @@ beside the first, two in one call, one left after the other's uninstall),
 pending the next start; with the service stopped the socket restarted; a
 renderer package not restarted), iDrive 8 apps against made-up das files (queued, the boot unit,
 `apply-pending` refused while MainApp runs, applied, an update and a
-removal with everything moved to the trash, a flat package repacked, a
+removal with everything moved to the trash, an update MainApp-21 rejects
+put back at the next start (and one it installs left), a flat package repacked, a
 queued install dropped, refusals; with `MGU_TEST_ID8_PROV=<folder>` also
 against real das files, never part of the repository),
 IterioDev's App Manager on a made-up iDrive 8 laid out as its `install.sh`
