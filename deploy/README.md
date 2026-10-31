@@ -393,7 +393,7 @@ first. `restore` needs `--yes`, or `YES` typed at a terminal.
 /var/opt/mgu-uplink/uids.d/<id>          a tool's uids that get internet
 /var/opt/mgu-uplink/apps.d/<id>          an app that gets internet
 /run/mgu-deploy/sdk-donor/               the donor bundle's readable copy and its oap-sdk module (sdk-donor)
-/var/opt/mgu-deploy/id8/pending.json     iDrive 8: the queued app changes; queue/<id>@<version>.tgz their packages
+/var/opt/mgu-deploy/id8/pending.json     iDrive 8: the queued app changes (queue/<id>@<version>.tgz their packages), and the updates MainApp-21 has yet to install
 /var/opt/mgu-deploy/id8/last-apply.json  iDrive 8: what the last apply-pending did; trash/<time>/ what it removed
 /var/opt/mgu-deploy/appmanager.json      what was taken over from IterioDev's App Manager; appmanager-removed/ its folder
 /etc/systemd/system/mgu-deploy-apply.service   iDrive 8: applies the queue at boot (late.target.wants)
@@ -509,8 +509,7 @@ whose das edits and removal steps it follows:
   run only while `id8/pending.json` exists; listed in recmgr where the unit
   has the list), which runs `apply-pending` at boot. `apply-pending` is
   refused while MainApp runs. Each change: an install uninstalls the
-  installed version first (its data goes with it, as the update says), puts
-  the package as `preinstalled_apps/<id>@<version>.tgz` and the app's two
+  installed version first, puts the package as `preinstalled_apps/<id>@<version>.tgz` and the app's two
   lines into every das file (`<app supportedECUs="HU"
   initialPreferPreinstalled="true">` before `</installable_apps>`, its
   enable line after `x_call`'s); a removal moves its registry entry, home,
@@ -519,6 +518,18 @@ whose das edits and removal steps it follows:
   and its packages and das lines. A das file without those anchors fails
   that change before anything moves. The result is in `last-apply.json`
   and `status`.
+- An update keeps the version it uninstalls (its registry entry, home,
+  personal copies and vsomeip policy in its trash folder, their ACLs, its
+  uid, `uids.txt` line and package) listed as `unconfirmed` in
+  `pending.json`, so `apply-pending` runs again at the next start. Before
+  MainApp-21 starts then, an app with a registry entry was installed and
+  stays; one without (MainApp-21 rejected the new package, for example a
+  manifest naming an interface the head unit does not have) gets that
+  version back as it was, the new package going to the trash, and
+  MainApp-21 loads it at that start with its uid, data and tile. Nothing
+  goes back over an entry, folder or other package of the app that is
+  there again. Each update is looked at once; MainApp-21 is never
+  restarted. A removal queued meanwhile applies to the version put back.
 
 ### Service packages
 
@@ -1381,7 +1392,8 @@ stdout, read-only, taking no lock, of this shape:
                  { "id", "kind": "app", "version", "uid", "installationSource", "running",
                    "tile_provisioned", "tile_fallback", "tile_visible" }],
   "pending_reboot": [{ "id", "reason" }],
-  "last_apply": { "at", "results": [{ "id", "action", "version", "ok", "error"?, "log" }] } | null,   (iDrive 8)
+  "last_apply": { "at", "results": [{ "id", "action", "version", "ok", "error"?, "log", "rejected"? }] } | null,   (iDrive 8;
+                 action "restore": version put back in place of the rejected one)
   "display_bridge_socket": true, "display_bridge_todo_on_car": ["<key>: TODO(on-car): ..."],   (display-bridge)
   "fallback": { ... }, "backups": 3, "stock_backup": true, "updater_tokens": 1,
   "retired_leftovers": ["/usr/lib/oap-mainapp/src/main.js.capbak"],
@@ -1435,7 +1447,8 @@ beside the first, two in one call, one left after the other's uninstall),
 pending the next start; with the service stopped the socket restarted; a
 renderer package not restarted), iDrive 8 apps against made-up das files (queued, the boot unit,
 `apply-pending` refused while MainApp runs, applied, an update and a
-removal with everything moved to the trash, a flat package repacked, a
+removal with everything moved to the trash, an update MainApp-21 rejects
+put back at the next start (and one it installs left), a flat package repacked, a
 queued install dropped, refusals; with `MGU_TEST_ID8_PROV=<folder>` also
 against real das files, never part of the repository),
 IterioDev's App Manager on a made-up iDrive 8 laid out as its `install.sh`

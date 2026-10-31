@@ -1,5 +1,9 @@
 # Deploy tool changelog
 
+## 0.6.10
+
+- iDrive 8: an app update applied at the start of the head unit that MainApp-21 does not install (`UPDATE_FAILED`, for example a manifest naming an interface the head unit does not have) leaves the previous version installed. The update keeps that version (registry entry, home with its data, personal copies, vsomeip policy, ACLs, uid and package) until MainApp-21 has installed the new one; at the next start, before MainApp-21, a version it did not install is put back as it was, and MainApp-21 loads it at that start with its uid, data and tile. MainApp-21 is never restarted for it. `last_apply` reports it (`action` `restore`).
+
 ## 0.6.9
 
 - A tool's `check` (`component.json`: one of its files, then its arguments) runs once its new version runs, after the health check and `postInstall`: node for a `.js` file, else sh, from `current/`, for at most 5 minutes (`MGU_DEPLOY_CHECK_MS`). A failing check rolls the install back like a failed health check, its running services restarted on the previous version.
