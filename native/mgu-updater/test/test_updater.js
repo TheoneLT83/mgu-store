@@ -4416,6 +4416,17 @@ function testDefaultSources() {
     u = new Updater(conf());
     ok('default sources: one the installers seeded is kept as it is and recorded', stored().map((s) => s.id).join() === 'mgu-store,idrive7-apps' &&
         fs.existsSync(path.join(D, 'state', 'default-sources.json')), JSON.stringify(stored()));
+    // one the owner added by hand under another id, on another channel, the repo in other case: kept as it is, not doubled
+    fs.unlinkSync(path.join(D, 'state', 'default-sources.json'));
+    fs.writeFileSync(file, JSON.stringify({ schema: 1, sources: [
+        { id: 'mgu-store', type: 'github', repo: 'robertnisipeanu/mgu-store', builtin: true },
+        { id: 's-1a2b', type: 'github', repo: 'CauliflowerMossGrape/IDrive7-Apps', channel: 'releases' }] }));
+    u = new Updater(conf());
+    ok('default sources: one the owner added by hand is kept as it is and recorded, not doubled',
+        JSON.stringify(stored()) === JSON.stringify([{ id: 'mgu-store', type: 'github', repo: 'robertnisipeanu/mgu-store', builtin: true },
+            { id: 's-1a2b', type: 'github', repo: 'CauliflowerMossGrape/IDrive7-Apps', channel: 'releases' }]) && u.stored.length === 2 &&
+        JSON.parse(fs.readFileSync(path.join(D, 'state', 'default-sources.json'), 'utf8')).added.join() === 'cauliflowermossgrape/idrive7-apps',
+        JSON.stringify(stored()));
     // no sources.json: written with the built-in source and the default one
     fs.unlinkSync(file);
     fs.unlinkSync(path.join(D, 'state', 'default-sources.json'));
