@@ -1,5 +1,9 @@
 # mgu-render changelog
 
+## 0.6.10
+
+- An HMI surface makes the layer apps yield the screen only while it is visible and has a size (its configuration). The camera / driver-assistance video (dasvideo, surface 0x198) can stay visible at 0x0 on no layer from boot, showing nothing: every app and the Store were then hidden until the next reboot (seen on the car: "surface 0x198 visible: layer apps yield the screen" at start, never hidden again).
+
 ## 0.6.9
 
 - robertnisipeanu/mgu-store's 0.6.7 and 0.6.8 (below) with this repository's renderer: its layer handling replaces 0.6.6's, and the install step stays `mgu-render-install.sh`.

@@ -98,7 +98,8 @@ static EGLSurface init_es = EGL_NO_SURFACE;
 static int screen_w = 1920, screen_h = 720, refresh_mhz;
 
 /* yield surfaces (camera, video): layer mode hides while one is visible */
-static struct { uint32_t id; struct ivi_controller_surface *s; int visible; } yield[CFG_MAX_YIELD];
+/* an HMI surface the layer apps yield to: visible and with a size (its configuration); a visible 0x0 one shows nothing */
+static struct { uint32_t id; struct ivi_controller_surface *s; int visible, w, h; } yield[CFG_MAX_YIELD];
 static int nyield, yielding;
 
 typedef struct client {
@@ -178,20 +179,29 @@ static void c_layer(void *d, struct ivi_controller *c, uint32_t id) { (void)d, (
 
 static void update_all(void);
 static void bridge_tick(void);
-static void y_visibility(void *d, struct ivi_controller_surface *s, int32_t v) {
-    (void)s;
-    int i = (int)(intptr_t)d, any = 0;
-    yield[i].visible = v != 0;
-    for (int k = 0; k < nyield; k++) any |= yield[k].visible;
+static void yield_update(int i) {
+    int any = 0;
+    for (int k = 0; k < nyield; k++) any |= yield[k].visible && yield[k].w > 0 && yield[k].h > 0;
     if (any != yielding) {
         yielding = any;
         log_info(any ? "surface %#x visible: layer apps yield the screen" : "surface %#x hidden: layer apps may show", yield[i].id);
         update_all();
     }
 }
+static void y_visibility(void *d, struct ivi_controller_surface *s, int32_t v) {
+    (void)s;
+    int i = (int)(intptr_t)d;
+    yield[i].visible = v != 0;
+    yield_update(i);
+}
 static void y_opacity(void *d, struct ivi_controller_surface *s, wl_fixed_t o) { (void)d, (void)s, (void)o; }
 static void y_rect(void *d, struct ivi_controller_surface *s, int32_t x, int32_t y, int32_t w, int32_t h) { (void)d, (void)s, (void)x, (void)y, (void)w, (void)h; }
-static void y_config(void *d, struct ivi_controller_surface *s, int32_t w, int32_t h) { (void)d, (void)s, (void)w, (void)h; }
+static void y_config(void *d, struct ivi_controller_surface *s, int32_t w, int32_t h) {
+    (void)s;
+    int i = (int)(intptr_t)d;
+    yield[i].w = w; yield[i].h = h;
+    yield_update(i);
+}
 static void y_int(void *d, struct ivi_controller_surface *s, int32_t v) { (void)d, (void)s, (void)v; }
 static void y_layer(void *d, struct ivi_controller_surface *s, struct ivi_controller_layer *l) { (void)d, (void)s, (void)l; }
 static void y_stats(void *d, struct ivi_controller_surface *s, uint32_t a, uint32_t b, uint32_t c, uint32_t p, const char *n) {
@@ -201,7 +211,8 @@ static void y_destroyed(void *d, struct ivi_controller_surface *s) {
     int i = (int)(intptr_t)d;
     wl_proxy_destroy((struct wl_proxy *)s);
     yield[i].s = NULL;
-    y_visibility(d, NULL, 0);
+    yield[i].visible = 0;
+    yield_update(i);
 }
 static const struct ivi_controller_surface_listener yield_listener = {
     y_visibility, y_opacity, y_rect, y_rect, y_config, y_int, y_int, y_layer, y_stats, y_destroyed, y_int,
@@ -215,7 +226,7 @@ static void c_surface(void *d, struct ivi_controller *c, uint32_t id) {
         while (k < nyield && yield[k].id != id) k++;
         if (k == nyield) { if (nyield == CFG_MAX_YIELD) return; nyield++; }
         if (yield[k].s) return;
-        yield[k].id = id; yield[k].visible = 0;
+        yield[k].id = id; yield[k].visible = 0; yield[k].w = yield[k].h = 0;
         yield[k].s = ivi_controller_surface_create(c, id);
         ivi_controller_surface_add_listener(yield[k].s, &yield_listener, (void *)(intptr_t)k);
         log_info("watching surface %#x", id);
