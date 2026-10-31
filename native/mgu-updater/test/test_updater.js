@@ -2650,7 +2650,7 @@ function testCrossSource(certs) {
     fs.writeFileSync(path.join(M, 'lease.json'), JSON.stringify({ interface: 'vethuplink', dns: [`127.0.0.1:${DNS_PORT}`] }));
     fs.writeFileSync(path.join(M, 'ca.pem'), certs.ca);
     const deployed = () => fs.readFileSync(deployLog, 'utf8').split('\n').filter((l) => /^(install|uninstall)/.test(l));
-    // the deploy tool installed, one version before the one that runs install hooks
+    // the deploy tool installed, a version before the one that runs install hooks
     mkdirp(path.join(opt, 'mgu-deploy', 'versions', '0.6.9'));
     fs.writeFileSync(path.join(opt, 'mgu-deploy', 'versions', '0.6.9', 'component.json'), JSON.stringify({ id: 'mgu-deploy', kind: 'tool', version: '0.6.9' }));
     fs.symlinkSync('versions/0.6.9', path.join(opt, 'mgu-deploy', 'current'));
