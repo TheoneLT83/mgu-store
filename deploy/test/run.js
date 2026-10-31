@@ -4628,7 +4628,13 @@ function testId8Inplace() {
         up.out.includes('updated in place') && root.kills().length === 0 && readJson(root.entry('live8')).userId === 13001 &&
         root.managerLog().includes('update live8 1.1.0 uid 13001 in place') &&
         fs.existsSync(root.pre21('live8', '1.1.0')) && !fs.existsSync(root.pre21('live8', '1.0.0')), up.out);
+    // the update of live8 applied at this start, waiting for MainApp-21
+    const pend = readJson(root.p('var/opt/mgu-deploy/id8/pending.json'));
+    write(root.p('var/opt/mgu-deploy/id8/pending.json'), JSON.stringify(Object.assign({}, pend, { unconfirmed: [{ id: 'live8', version: '1.1.0', previous: '1.0.0', uid: 13001,
+        line: '13001=live8', bin: root.p('var/opt/mgu-deploy/id8/trash/x'), moved: [] }] })));
     const un = root.run(['uninstall', 'live8', '--yes']);
+    check('id8 in place: an uninstall drops the record of the app\'s update waiting for MainApp-21, so it does not come back',
+        readJson(root.p('var/opt/mgu-deploy/id8/pending.json')).unconfirmed === undefined && readJson(root.p('var/opt/mgu-deploy/id8/pending.json')).changes.length === pend.changes.length);
     check('id8 in place: an uninstall is MainApp-21\'s own; package, das lines and listing go, nothing queued, the id kept from the backend', un.status === 0 &&
         un.out.includes('live8 uninstalled in place') && root.kills().length === 0 && !fs.existsSync(root.entry('live8')) &&
         !fs.existsSync(root.pre21('live8', '1.1.0')) && JSON.stringify(id8Das(root)) === JSON.stringify(dasBefore) &&
@@ -4883,8 +4889,8 @@ function testId8Apps() {
         check(`${tag}: installing the installed version again drops its queued removal`, again.status === 0 &&
             again.out.includes('the queued removal of oap-cardash is dropped') && root.status().pending_reboot.length === 0, again.out);
         const up = root.run(['install', '--artifact', rhmiApp('oap-cardash', '1.1.5', ['ID8'], { npm: true, acl: ACL, appletId: 20097 }), '--yes']);
-        check(`${tag}: an update says the installed version and its data go first`, up.status === 0 &&
-            up.out.includes('1.1.4 is uninstalled first, and its data with it'), up.out);
+        check(`${tag}: an update says the installed version goes first and comes back with its data should MainApp-21 not install the new one`, up.status === 0 &&
+            up.out.includes('1.1.4 is uninstalled first and comes back, with its data, if MainApp-21 does not install 1.1.5'), up.out);
         const u = root.run(['uninstall', 'oap-cardash', '--yes']);
         check(`${tag}: uninstall replaces the queued update with a removal`, u.status === 0 &&
             JSON.stringify(root.status().pending_reboot) === JSON.stringify([{ id: 'oap-cardash', reason: 'removed at the next start' }]) &&
@@ -4919,6 +4925,72 @@ function testId8Apps() {
     check('id8: a system app is not removed', sys.status === 2, sys.out);
     const seven7 = fakeRoot().run(['apply-pending']);
     check('id8: apply-pending is refused on iDrive 7', seven7.status === 2 && seven7.out.includes('this head unit is iDrive 7'), seven7.out);
+}
+
+/* A queued iDrive 8 update MainApp-21 rejects at boot: apply-pending moves
+ * the installed version out and the new package in; MainApp-21's install
+ * of it fails (a uid assigned, nothing registered). The next apply-pending,
+ * before MainApp-21 starts, puts the previous version back with its uid
+ * and data; one MainApp-21 installed is left as it is. */
+function testId8RejectedUpdate() {
+    const root = id8Root();
+    const art = (v) => rhmiApp('oap-cardash', v, ['ID8'], { npm: true, acl: ACL, appletId: 20097 });
+    const uids = root.p(`var/opt/public/oap/oap_${MGR}/security/uids.txt`);
+    const home = (uid) => root.p(`var/opt/public/oap/oap_${uid}`);
+    const rj = (f) => { try { return readJson(f); } catch (e) { return {}; } };
+    const mainAppInstalls = (uid, v) => {
+        write(root.entry('oap-cardash'), JSON.stringify({ userId: uid, installationSource: 'PREINSTALLED' }));
+        write(path.join(home(uid), 'source/package.json'), JSON.stringify({ name: 'oap-cardash', version: v }));
+        write(uids, fs.readFileSync(uids, 'utf8').split('\n').filter((l) => l && !/=oap-cardash$/.test(l)).concat([`${uid}=oap-cardash`, '']).join('\n'));
+    };
+    write(uids, '13000=stock_app\n');
+    root.run(['install', '--artifact', art('1.1.4'), '--yes']);
+    root.noManager();
+    root.run(['apply-pending']);
+    mainAppInstalls(13001, '1.1.4');
+    write(path.join(home(13001), 'data/x'), 'data\n');
+    write(root.p('var/opt/personal/p1/oap/oap_13001/x'), 'p\n');
+    write(root.p('etc/vsomeip/13001_13001/policy.json'), '{}\n');
+    const q = root.run(['install', '--artifact', art('1.1.5'), '--yes']);
+    check('id8 rejected: an update is queued', q.status === 0 && q.out.includes('oap-cardash 1.1.5 installs at the next start'), q.out);
+    const a = root.run(['apply-pending']);
+    check('id8 rejected: at boot the update goes in, the installed version is kept until MainApp-21 takes it', a.status === 0 &&
+        fs.existsSync(root.pre21('oap-cardash', '1.1.5')) && !fs.existsSync(root.entry('oap-cardash')) &&
+        fs.existsSync(root.p('var/opt/mgu-deploy/id8/pending.json')) && root.status().pending_reboot.length === 0, a.out);
+    // MainApp-21 rejects 1.1.5: a new uid, nothing registered
+    write(uids, '13000=stock_app\n13002=oap-cardash\n');
+    const b = root.run(['apply-pending']);
+    const last = root.status().last_apply.results;
+    check('id8 rejected: the next start puts the previous version back with its uid and data', b.status === 0 &&
+        rj(root.entry('oap-cardash')).userId === 13001 && fs.existsSync(path.join(home(13001), 'data/x')) &&
+        rj(path.join(home(13001), 'source/package.json')).version === '1.1.4' &&
+        fs.existsSync(root.p('var/opt/personal/p1/oap/oap_13001/x')) && fs.existsSync(root.p('etc/vsomeip/13001_13001/policy.json')) &&
+        fs.readFileSync(uids, 'utf8') === '13000=stock_app\n13001=oap-cardash\n', b.out);
+    check('id8 rejected: and its package in place of the rejected one, reported in last_apply', fs.existsSync(root.pre21('oap-cardash', '1.1.4')) &&
+        !fs.existsSync(root.pre21('oap-cardash', '1.1.5')) && last.length === 1 && last[0].action === 'restore' &&
+        last[0].version === '1.1.4' && last[0].rejected === '1.1.5' && last[0].ok === true &&
+        b.out.includes('oap-cardash 1.1.5 was not installed by MainApp-21 at the last start: 1.1.4 is back'), b.out + JSON.stringify(last));
+    const c = root.run(['apply-pending']);
+    check('id8 rejected: it is put back once', c.status === 0 && c.out.includes('nothing queued') &&
+        !fs.existsSync(root.p('var/opt/mgu-deploy/id8/pending.json')), c.out);
+    // an update MainApp-21 takes stays
+    root.run(['install', '--artifact', art('1.1.6'), '--yes']);
+    root.run(['apply-pending']);
+    mainAppInstalls(13003, '1.1.6');
+    const d = root.run(['apply-pending']);
+    check('id8 rejected: an update MainApp-21 installed is left as it is', d.status === 0 && rj(root.entry('oap-cardash')).userId === 13003 &&
+        fs.existsSync(root.pre21('oap-cardash', '1.1.6')) && !fs.existsSync(root.pre21('oap-cardash', '1.1.4')) &&
+        !fs.existsSync(home(13001)) && !fs.existsSync(root.p('var/opt/mgu-deploy/id8/pending.json')) &&
+        root.status().last_apply.results[0].version === '1.1.6', d.out);
+    // a removal queued while the app was missing applies to the version put back
+    root.run(['install', '--artifact', art('1.1.7'), '--yes']);
+    root.run(['apply-pending']);
+    root.run(['uninstall', 'oap-cardash', '--yes']);
+    const e = root.run(['apply-pending']);
+    check('id8 rejected: a removal queued meanwhile removes the version put back', e.status === 0 && !fs.existsSync(root.entry('oap-cardash')) &&
+        !fs.existsSync(home(13003)) && !fs.existsSync(root.pre21('oap-cardash', '1.1.6')) &&
+        !fs.existsSync(root.pre21('oap-cardash', '1.1.7')) &&
+        JSON.stringify(root.status().last_apply.results.map((r) => r.action)) === '["restore","remove"]', e.out);
 }
 
 /* IterioDev's App Manager as his install.sh and his service leave it on an
@@ -5364,6 +5436,7 @@ const SUITES = [
     testKeepRunning,
     testPostInstall,
     testId8Apps,
+    testId8RejectedUpdate,
     testId8Inplace,
     testId8Guard,
     testId8LiveOn,

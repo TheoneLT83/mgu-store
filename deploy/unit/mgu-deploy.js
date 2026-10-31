@@ -44,7 +44,7 @@ var cp = require('child_process');
 
 /* deploy/component.json's version; bumped when a file under deploy/unit/
  * changes. */
-var VERSION = '0.6.9';
+var VERSION = '0.6.10';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -1151,6 +1151,7 @@ function rootfsWindowRun(ops) {
             else if (op.type === 'rmdir') fs.rmdirSync(op.path);
             else if (op.type === 'symlink') { mkdirp(path.dirname(op.path)); rmrf(op.path); fs.symlinkSync(op.target, op.path); }
             else if (op.type === 'copy') { mkdirp(path.dirname(op.path)); fs.writeFileSync(op.path, fs.readFileSync(op.src)); if (op.mode !== undefined) fs.chmodSync(op.path, op.mode); }
+            else if (op.type === 'tree') { rmrf(op.path); copyTree(op.src, op.path); }
         });
         return;
     }
@@ -1166,6 +1167,7 @@ function rootfsWindowRun(ops) {
         if (op.type === 'delete') lines.push('rm -rf ' + p);
         else if (op.type === 'mkdir') lines.push('mkdir -p ' + p);
         else if (op.type === 'rmdir') lines.push('rmdir ' + p);
+        else if (op.type === 'tree') lines.push('mkdir -p ' + d + '; rm -rf ' + p + '; cp -a ' + shQuote(op.src) + ' ' + p);
         else if (op.type === 'symlink') lines.push('mkdir -p ' + d + '; rm -rf ' + p + '; ln -s ' + shQuote(op.target) + ' ' + p);
         else if (op.type === 'copy') {
             lines.push('mkdir -p ' + d + '; cat ' + shQuote(op.src) + ' > ' + p + '.tmp-' + process.pid);
@@ -3101,9 +3103,11 @@ function touchedForUninstall(id) {
  * applied at the next start by mgu-deploy-apply.service, before
  * oapcontroller, the way IterioDev's App Manager does
  * (github.com/IterioDev/mgu-app-store, appmanager-service/oap.js):
- *   install    the installed version uninstalled first (its data goes),
- *              the package as preinstalled_apps/<id>@<version>.tgz, the
- *              app's two lines in every das file;
+ *   install    the installed version uninstalled first, the package as
+ *              preinstalled_apps/<id>@<version>.tgz, the app's two lines
+ *              in every das file; the uninstalled version comes back at
+ *              the start after, should MainApp-21 not have installed the
+ *              new one (confirmId8);
  *   uninstall  its registry entry, home and personal copies, vsomeip
  *              policy folder, uids.txt line and diag status entries; then
  *              its packages and das lines.
@@ -3137,10 +3141,21 @@ function readPending() {
     var p = readJsonOrNull(ID8_PENDING);
     return p && Array.isArray(p.changes) ? p.changes : [];
 }
-function writePending(changes) {
-    if (!changes.length) { rmrf(ID8_PENDING); return; }
+/* pending.json's unconfirmed: the updates applied at the last start, each
+ * with the version it moved out (kept in its trash folder) until MainApp-21
+ * has installed the new one. */
+function readUnconfirmed() {
+    var p = readJsonOrNull(ID8_PENDING);
+    return p && Array.isArray(p.unconfirmed) ? p.unconfirmed : [];
+}
+/* Without unconfirmed, the file's own stay. */
+function writePending(changes, unconfirmed) {
+    if (!unconfirmed) unconfirmed = readUnconfirmed();
+    if (!changes.length && !unconfirmed.length) { rmrf(ID8_PENDING); return; }
+    var p = { changes: changes };
+    if (unconfirmed.length) p.unconfirmed = unconfirmed;
     mkdirp(ID8_DIR, 0o700);
-    writeAtomic(ID8_PENDING, JSON.stringify({ changes: changes }, null, 2) + '\n', 0o600);
+    writeAtomic(ID8_PENDING, JSON.stringify(p, null, 2) + '\n', 0o600);
 }
 /* The apps provisioning lists with the preinstalled marker line: ours and
  * the App Manager's, waiting for MainApp or installed. */
@@ -3370,7 +3385,8 @@ function installAppId8(a, state, decision, backup) {
     copyFileMode(a.file, file, 0o600);
     queueId8({ action: 'install', id: a.id, version: a.version, file: file, sha256: sha256File(file) });
     say(a.id + ' ' + a.version + ' ' + ID8_INSTALLS + ' of the head unit' +
-        (existing ? '; ' + existing.version + ' is uninstalled first, and its data with it' : ''));
+        (existing ? '; ' + existing.version + ' is uninstalled first and comes back, with its data, if MainApp-21 does not install ' +
+            a.version : ''));
 }
 function uninstallAppId8(id, state, queueOnly) {
     if (ID8_PROTECTED.indexOf(id) >= 0) throw refuse(id + ' is a system app');
@@ -3496,6 +3512,7 @@ function uninstallLiveId8(id) {
     rmrf(appEntryFile(id) + '.tmp');
     rmrf(home);
     queueId8({ id: id });
+    writePending(readPending(), readUnconfirmed().filter(function (u) { return u.id !== id; }));
     listLocalOnly(id);
     say(id + ' uninstalled');
     return { done: true };
@@ -3517,36 +3534,41 @@ function copyTree(src, dst) {
     /* the mode as it was, whatever the umask took off (after chown, which clears setuid) */
     fs.chmodSync(dst, st.mode & 0o7777);
 }
-/* Moves p into bin under its own path (/var/opt/x -> <bin>/var/opt/x). A
- * path on the read-only root is copied here and deleted in the rootfs
- * window (ops). */
-function trashPath(p, bin, ops, log) {
+/* An app's home, personal copies and vsomeip policy folder. */
+function id8AppFolders(uid) {
+    var personal = path.join(CFG.varOpt, 'personal'), out = [appHome(uid)];
+    (fs.existsSync(personal) ? fs.readdirSync(personal) : []).forEach(function (pr) {
+        out.push(path.join(personal, pr, 'oap', 'oap_' + uid));
+    });
+    return out.concat([path.join(CFG.etc, 'vsomeip', uid + '_' + uid)]);
+}
+function moveTree(src, dst) {
+    mkdirp(path.dirname(dst));
+    try { fs.renameSync(src, dst); } catch (e) {
+        if (e.code !== 'EXDEV') throw e;
+        copyTree(src, dst); rmrf(src);
+    }
+}
+/* Moves p into bin under its own path (/var/opt/x -> <bin>/var/opt/x),
+ * noting it in moved. A path on the read-only root is copied here and
+ * deleted in the rootfs window (ops). */
+function trashPath(p, bin, ops, log, moved) {
     if (!lstatOrNull(p)) return false;
     var dst = path.join(bin, p);
     if (isRootfsPath(p)) { copyTree(p, dst); ops.push({ type: 'delete', path: p }); }
-    else {
-        mkdirp(path.dirname(dst));
-        try { fs.renameSync(p, dst); } catch (e) {
-            if (e.code !== 'EXDEV') throw e;
-            copyTree(p, dst); rmrf(p);
-        }
-    }
+    else moveTree(p, dst);
+    if (moved) moved.push(p);
     log(p);
     return true;
 }
 /* Everything of an installed app but its package and das lines. */
-function uninstallId8(id, bin, ops, log) {
+function uninstallId8(id, bin, ops, log, moved) {
     var entry = readJsonOrNull(appEntryFile(id)), uid = entry && Number(entry.userId) > 0 ? entry.userId : null;
-    trashPath(appEntryFile(id), bin, ops, log);
+    trashPath(appEntryFile(id), bin, ops, log, moved);
     if (uid) {
-        trashPath(appHome(uid), bin, ops, log);
-        var personal = path.join(CFG.varOpt, 'personal');
-        (fs.existsSync(personal) ? fs.readdirSync(personal) : []).forEach(function (pr) {
-            trashPath(path.join(personal, pr, 'oap', 'oap_' + uid), bin, ops, log);
-        });
-        trashPath(path.join(CFG.etc, 'vsomeip', uid + '_' + uid), bin, ops, log);
+        id8AppFolders(uid).forEach(function (p) { trashPath(p, bin, ops, log, moved); });
     }
-    var uids = path.join(mgrHome(), 'security', 'uids.txt');
+    var uids = uidsFile();
     if (fs.existsSync(uids)) {
         var lines = fs.readFileSync(uids, 'utf8').split('\n');
         var keep = lines.filter(function (l) { return l.split('=')[1] !== id; });
@@ -3607,11 +3629,14 @@ function rootFreeKB() {
     var f = (r.stdout || '').trim().split('\n').pop().split(/\s+/);
     return r.status === 0 && Number(f[3]) >= 0 ? Number(f[3]) : Infinity;
 }
+function uidsFile() { return path.join(mgrHome(), 'security', 'uids.txt'); }
 /* One queued change, at boot with MainApp not running. The das edits are
  * worked out before anything moves, so a das file without its anchors
- * fails the change with nothing changed. */
+ * fails the change with nothing changed. An update returns what it moved
+ * out of the installed version (unconfirmed), to put back should
+ * MainApp-21 not install the new one. */
 function applyId8(c, bin, log) {
-    var ops = [], install = c.action === 'install', dest = null, edits;
+    var ops = [], install = c.action === 'install', dest = null, edits, moved = [], kept = null;
     if (ID8_PROTECTED.indexOf(c.id) >= 0) throw fail('a system app');
     if (!install && c.action !== 'remove') throw fail('unknown action ' + c.action);
     if (install) {
@@ -3620,23 +3645,94 @@ function applyId8(c, bin, log) {
         dest = path.join(preinstalledDir(), c.id + '@' + c.version + '.tgz');
     }
     edits = dasEdits(c.id, install);
-    uninstallId8(c.id, bin, ops, log);
-    preinstalledFor(c.id).forEach(function (p) { trashPath(p, bin, ops, log); });
+    var entry = install ? readJsonOrNull(appEntryFile(c.id)) : null;
+    if (entry && Number(entry.userId) > 0) kept = keepPreviousId8(c, entry.userId, bin);
+    uninstallId8(c.id, bin, ops, log, moved);
+    preinstalledFor(c.id).forEach(function (p) { trashPath(p, bin, ops, log, moved); });
     if (install) { ops.push({ type: 'copy', src: c.file, path: dest, mode: 0o644, uid: 0, gid: 0 }); log(dest); }
     rootfsWindow(ops.concat(dasOps(edits)));
     edits.forEach(function (e) { log(e.path + (install ? ' +' : ' -') + c.id); });
     if (install && sha256File(dest) !== c.sha256) throw fail('package checksum mismatch at ' + dest);
+    if (kept) kept.moved = moved;
+    return kept;
+}
+/* The installed version's uid, uids.txt line and version, and the ACLs of
+ * its folders under /var/opt, recorded in bin before an update moves it
+ * there. */
+function keepPreviousId8(c, uid, bin) {
+    var pkg = readJsonOrNull(path.join(appHome(uid), 'source', 'package.json')) || {}, line = uid + '=' + c.id;
+    try {
+        fs.readFileSync(uidsFile(), 'utf8').split('\n').forEach(function (l) { if (l.split('=')[1] === c.id) line = l; });
+    } catch (e) { /* no uids.txt */ }
+    var kept = { id: c.id, version: c.version, previous: typeof pkg.version === 'string' ? pkg.version : null,
+        uid: uid, line: line, bin: bin };
+    var present = id8AppFolders(uid).filter(function (p) { return !isRootfsPath(p) && lstatOrNull(p); });
+    if (FAKE || !present.length) return kept;
+    mkdirp(bin, 0o700);
+    kept.acl = path.join(bin, c.id + '.acl');
+    fs.writeFileSync(kept.acl, runOk(CFG.getfacl, ['-R', '-p'].concat(present)).stdout, { mode: 0o600 });
+    return kept;
+}
+/* At the start after an update, before MainApp-21: with no registry entry
+ * for the app, MainApp-21 did not install the new version, and the one it
+ * replaced goes back as it was: its registry entry, folders (with their
+ * ACLs), uids.txt line and package, the new package to the trash. Nothing
+ * goes back over an entry, folder or other package that is there again.
+ * What is under /var/opt goes back first; in the rootfs window the new
+ * package goes after the old one is back. */
+function confirmId8(u, bin) {
+    if (lstatOrNull(appEntryFile(u.id))) { say(u.id + ' ' + u.version + ': installed by MainApp-21'); return null; }
+    var res = { id: u.id, action: 'restore', version: u.previous, rejected: u.version, ok: false, log: [] };
+    var log = function (l) { res.log.push(l); };
+    try {
+        var placed = path.join(preinstalledDir(), u.id + '@' + u.version + '.tgz'), ops = [];
+        var other = preinstalledFor(u.id).filter(function (p) { return p !== placed; });
+        if (other.length) throw fail('another package of it is in place: ' + other.join(', '));
+        (u.moved || []).forEach(function (p) {
+            if (!lstatOrNull(path.join(u.bin, p))) throw fail(path.join(u.bin, p) + ' is gone');
+            if (!isRootfsPath(p) && lstatOrNull(p)) throw fail(p + ' is there again');
+        });
+        if (!(u.moved || []).length) throw fail('nothing of it was kept');
+        u.moved.forEach(function (p) { if (!isRootfsPath(p)) { moveTree(path.join(u.bin, p), p); log(p); } });
+        if (u.acl && lstatOrNull(u.acl)) runOk(CFG.setfacl, ['--restore=' + u.acl]);
+        if (fs.existsSync(uidsFile())) {
+            var lines = fs.readFileSync(uidsFile(), 'utf8').split('\n').filter(function (l) { return l.split('=')[1] !== u.id; });
+            lines.splice(lines[lines.length - 1] === '' ? lines.length - 1 : lines.length, 0, u.line);
+            fs.writeFileSync(uidsFile(), lines.join('\n'));
+            log(uidsFile() + ' +' + u.line);
+        }
+        u.moved.forEach(function (p) {
+            if (!isRootfsPath(p)) return;
+            var from = path.join(u.bin, p);
+            ops.push(fs.lstatSync(from).isDirectory() ? { type: 'tree', src: from, path: p } :
+                { type: 'copy', src: from, path: p, mode: 0o644, uid: 0, gid: 0 });
+            log(p);
+        });
+        trashPath(placed, bin, ops, log);
+        rootfsWindow(ops);
+        res.ok = true;
+        say(u.id + ' ' + u.version + ' was not installed by MainApp-21 at the last start: ' + (u.previous || 'the version before') +
+            ' is back, with its data');
+    } catch (e) {
+        res.error = e.message;
+        process.stderr.write(u.id + ': putting back ' + (u.previous || 'the version before') + ' failed: ' + e.message + '\n');
+    }
+    return res;
 }
 function cmdApplyPending() {
     if (!isId8()) throw refuse('apply-pending applies queued iDrive 8 app changes; this head unit is ' + hmiName(unitInfo().hmi || 'unknown'));
-    var changes = readPending(), results = [];
-    if (!changes.length) { say('nothing queued'); return 0; }
+    var changes = readPending(), unconfirmed = readUnconfirmed(), results = [], kept = [];
+    if (!changes.length && !unconfirmed.length) { say('nothing queued'); return 0; }
     if (managerPid()) throw refuse('the app manager is running; queued changes apply before it starts (' + APPLY_UNIT + ')');
     var bin = path.join(ID8_TRASH, timestamp());
+    /* each update is looked at once: its record goes before anything moves */
+    if (unconfirmed.length) writePending(changes, []);
+    unconfirmed.forEach(function (u) { var r = confirmId8(u, bin); if (r) results.push(r); });
     changes.forEach(function (c) {
         var res = { id: c.id, action: c.action, version: c.version || null, ok: false, log: [] };
         try {
-            applyId8(c, bin, function (l) { res.log.push(l); });
+            var k = applyId8(c, bin, function (l) { res.log.push(l); });
+            if (k) kept.push(k);
             res.ok = true;
             say(c.id + (c.version ? ' ' + c.version : '') + ': ' + (c.action === 'install' ? 'installed for MainApp' : 'removed'));
         } catch (e) {
@@ -3645,11 +3741,12 @@ function cmdApplyPending() {
         }
         results.push(res);
     });
-    writeAtomic(ID8_LAST, JSON.stringify({ at: new Date().toISOString(), results: results }, null, 2) + '\n', 0o644);
+    if (results.length) writeAtomic(ID8_LAST, JSON.stringify({ at: new Date().toISOString(), results: results }, null, 2) + '\n', 0o644);
     changes.forEach(function (c) { if (c.file) rmrf(c.file); });
-    writePending([]);
+    writePending([], kept);
     if (fs.existsSync(ID8_TRASH)) {
-        var old = fs.readdirSync(ID8_TRASH).sort();
+        var keep = kept.map(function (k) { return path.basename(k.bin); });
+        var old = fs.readdirSync(ID8_TRASH).sort().filter(function (n) { return keep.indexOf(n) < 0; });
         old.slice(0, Math.max(0, old.length - 3)).forEach(function (n) { rmrf(path.join(ID8_TRASH, n)); });
     }
     return results.every(function (r) { return r.ok; }) ? 0 : 1;
