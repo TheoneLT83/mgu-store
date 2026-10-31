@@ -50,6 +50,7 @@ const UNIT_FILES = [
     { name: 'mgu-app-fallback.service', mode: 0o644 },
     { name: 'mgu-deploy-apply.service', mode: 0o644 },
     { name: 'mgu-deploy-verify.service', mode: 0o644 },
+    { name: 'mgu-deploy-cleanup.service', mode: 0o644 },
     { name: 'mgu-app-fallback-id8.service', mode: 0o644 },
     { name: 'oap_link.js', mode: 0o644, dir: path.join(__dirname, '..', 'tools') },
     { name: 'oap_pack.js', mode: 0o644, dir: path.join(__dirname, '..', 'tools') }
@@ -184,7 +185,8 @@ function buildArtifact(compDir, outDir) {
         manifest.internet = c.internet;
         manifest.uids = c.uids;
     }
-    ['mguHmi', 'mguProvides', 'keepRunning', 'crashNames', 'postInstall', 'check'].forEach((k) => {
+    ['mguHmi', 'mguProvides', 'keepRunning', 'crashNames', 'postInstall', 'check', 'requires', 'uninstallable',
+        'activate', 'deactivate'].forEach((k) => {
         if (c[k] !== undefined) {
             manifest[k] = c[k];
         }

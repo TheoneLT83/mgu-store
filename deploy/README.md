@@ -192,8 +192,9 @@ tool itself):
 - the artifact's `component.json` is `{id, kind, version, title,
   description, files[{path, mode, sha256}], units[{name}], enable, recmgr,
   restart}`, `dropins[{unit, name}]` (each read from `from`), and `internet`
-  with `uids`, `mguHmi`, `mguProvides`, `keepRunning`, `crashNames` and
-  `postInstall` when the tool declares them;
+  with `uids`, `mguHmi`, `mguProvides`, `keepRunning`, `crashNames`,
+  `postInstall`, `check`, `requires`, `uninstallable`, `activate` and
+  `deactivate` when the tool declares them;
 - members are sorted, owned 0:0, with the listed modes (`component.json` and
   units 0644) and one mtime: `SOURCE_DATE_EPOCH` when set, else the packer's
   fixed one (`tools/oap_pack.js`, which also writes the gzip header's OS byte
@@ -360,6 +361,7 @@ mgu-deploy.sh updater-sources                 # sources.json on stdin
 mgu-deploy.sh sdk-donor [--json]
 mgu-deploy.sh apply-pending                   # iDrive 8, at boot
 mgu-deploy.sh verify                          # at boot: the tools updated for this start
+mgu-deploy.sh remove-unused                   # at boot: files hooks handed over
 mgu-deploy.sh appmanager [--json] | appmanager adopt [--yes]
 ```
 
@@ -375,8 +377,8 @@ first. `restore` needs `--yes`, or `YES` typed at a terminal.
 /etc/systemd/system/<unit>               units; <target>.wants/<unit> for enable
 /etc/recmgr-restartlist.conf             recmgr's restart list
 /etc/crashhandler-restartlist.conf       the crash handler's restart list
-/var/opt/mgu-deploy/versions/<v>/        the deploy tool itself (mgu-deploy.js, .sh, fallback_build.js,
-                                         mgu-app-fallback.service, oap_link.js, oap_pack.js)
+/var/opt/mgu-deploy/versions/<v>/        the deploy tool itself (mgu-deploy.js, .sh, fallback_build.js, its
+                                         boot units, oap_link.js, oap_pack.js)
 /var/opt/mgu-deploy/current -> versions/<v>
 /var/opt/mgu-deploy/mgu-deploy.sh        shim: runs current/mgu-deploy.sh
 /var/opt/mgu-deploy/state.json           pending reboots, apps' uids, the last bounce
@@ -398,6 +400,8 @@ first. `restore` needs `--yes`, or `YES` typed at a terminal.
 /var/opt/mgu-deploy/appmanager.json      what was taken over from IterioDev's App Manager; appmanager-removed/ its folder
 /etc/systemd/system/mgu-deploy-apply.service   iDrive 8: applies the queue at boot (late.target.wants)
 /etc/systemd/system/mgu-deploy-verify.service  checks the tools updated for this start (late.target.wants)
+/var/opt/mgu-deploy/remove-when-unused.json    files hooks handed over that a process still ran
+/etc/systemd/system/mgu-deploy-cleanup.service removes them at boot once unused (late.target.wants)
 /usr/lib/oap-mainapp/preinstalled_apps/<id>@<version>.tgz
 /usr/lib/oap-mainapp21/preinstalled_apps/<id>@<version>.tgz   iDrive 8
 /usr/share/tm/prov/das_000.xml ... das_005.xml                 iDrive 8: provisioning, our apps' lines
@@ -772,6 +776,50 @@ services restarted whether `keepRunning` or not. Every entry goes from
 no start repeats it; the unit never restarts the head unit and exits 0.
 `last-verify.json` (`status --json` `last_verify`) holds the outcome:
 `{at, results: [{id, version, ok, error, previous, rolledBack}]}`.
+
+**Activate and deactivate.** A tool may name a command its installs run,
+`"activate"`, and one its removal runs, `"deactivate"`: `["node", <argument>...]`
+(the Node this tool runs on) or `[<an executable file of the tool>,
+<argument>...]`, non-empty strings without `..`, no shell. Anything else
+refuses the install (exit 2). Each runs as root with this tool's
+environment, in the version's folder, for at most 120 s
+(`MGU_DEPLOY_HOOK_TIMEOUT_MS`), and its stdout and stderr go to this tool's
+output, prefixed `<id> activate:`. When its last non-empty stdout line is a
+JSON object, `"reboot"` is why the change needs a head-unit start (the tool
+is then pending with that reason), `"status"` a line for the output, and
+`"removeWhenUnused"` a list of files on `/` to remove once no process runs
+them (below).
+
+- `activate` runs on every install of the tool (the same version again too)
+  and a rollback to a version that has one, once the version's files, units,
+  the recmgr list and the restarts are done and `/` is read-only again (a
+  command that writes to `/` remounts it itself), after the health check and
+  app-privacy's apply and before `postInstall` and `check`. It must be
+  idempotent. A tool it leaves pending is checked at the next start. A
+  non-zero exit or the timeout fails the install: the units it started or
+  restarted are restarted on the previous version (or stopped when their
+  unit went with it), the previous version's `activate` runs again, and a
+  first install is removed.
+- `deactivate` runs before a removal changes anything, with the tool's units
+  and files in place. A non-zero exit refuses the removal (exit 2) and the
+  tool stays whole. A restart it asks for stays pending under `mgu-deploy`
+  (`<id> removed: <reason>`), since the tool's own entries go with it.
+
+**Files removed once unused.** A hook that replaced a binary a process still
+runs keeps the old file linked (an unlinked file a process holds keeps `/`
+from going read-only) and hands it over with `"removeWhenUnused": [<absolute
+path>...]`; after a removal nothing of the tool is left to remove it. A
+file no process runs (no `/proc/<pid>/exe` is its inode) is removed at once,
+in a rootfs window. One a process runs waits in
+`/var/opt/mgu-deploy/remove-when-unused.json` (`status --json`
+`remove_when_unused`): `mgu-deploy-cleanup.service`, installed, enabled for
+`late.target` and added to recmgr's list on the first such file, runs
+`remove-unused` at each start while that file exists (a oneshot that stays
+active whatever it exits with), which removes what no process runs any more
+and keeps the rest for a later start. Only regular files are removed; a
+folder, a symlink, a relative path or one with `..` is left as it is, said in
+the output. Every snapshot holds the unit, its link and the list, so a
+failed install or removal puts them back with the recmgr list.
 
 `uninstall <id>` stops the tool's running units (when recmgr has loaded
 them), removes its units, links and the recmgr names no other tool lists,
