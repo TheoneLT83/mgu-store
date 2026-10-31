@@ -1850,9 +1850,9 @@ function testSelf() {
     check('self: deploy/hu artifact deploy builds mgu-deploy@<version>.tgz', builds.every((b) => b.r.status === 0 && fs.existsSync(b.file)),
         builds.map((b) => b.r.stderr).join('\n'));
     check('self: two builds are byte-identical', sha256(fs.readFileSync(builds[0].file)) === sha256(fs.readFileSync(builds[1].file)));
-    check('self: the artifact holds its nine files and its manifest', JSON.stringify(tarList(builds[0].file)) === JSON.stringify([
+    check('self: the artifact holds its ten files and its manifest', JSON.stringify(tarList(builds[0].file)) === JSON.stringify([
         'component.json', 'files/fallback_build.js', 'files/mgu-app-fallback-id8.service', 'files/mgu-app-fallback.service',
-        'files/mgu-deploy-apply.service', 'files/mgu-deploy-verify.service',
+        'files/mgu-deploy-apply.service', 'files/mgu-deploy-cleanup.service', 'files/mgu-deploy-verify.service',
         'files/mgu-deploy.js', 'files/mgu-deploy.sh',
         'files/oap_link.js', 'files/oap_pack.js']),
     tarList(builds[0].file).join(' '));
@@ -1882,7 +1882,7 @@ function testSelf() {
     // the kit layout: component.json beside the script
     const kit = fs.mkdtempSync(path.join(T, 'kit-'));
     ['mgu-deploy.js', 'mgu-deploy.sh', 'fallback_build.js', 'mgu-app-fallback.service', 'mgu-deploy-apply.service', 'mgu-deploy-verify.service',
-        'mgu-app-fallback-id8.service'].forEach((n) =>
+        'mgu-deploy-cleanup.service', 'mgu-app-fallback-id8.service'].forEach((n) =>
         fs.copyFileSync(path.join(DEPLOY, 'unit', n), path.join(kit, n)));
     LINK_FILES.forEach((n) => fs.copyFileSync(path.join(TOOLS, n), path.join(kit, n)));
     fs.copyFileSync(path.join(DEPLOY, 'component.json'), path.join(kit, 'component.json'));
@@ -2366,6 +2366,214 @@ function testPrivacyId8() {
         fs.existsSync(root.p('var/opt/mgu-deploy/id8/queue/robertn_x8@1.0.0.tgz')), r.out);
 }
 
+/* A copy of the fixture tool with an activate and a deactivate hook
+ * (fake_hook.js as hook.js, run by "node"), at the given version. */
+function hookArtifact(version, edit) {
+    const dir = fixtureCopy(version, (c) => {
+        c.files.push({ path: 'hook.js', from: 'hook.js', mode: '0644' });
+        c.activate = ['node', 'hook.js', 'activate'];
+        c.deactivate = ['node', 'hook.js', 'deactivate'];
+        c.requires = { 'lib-tool': '0.1.0' };
+        if (edit) {
+            edit(c);
+        }
+    });
+    fs.copyFileSync(path.join(HERE, 'fake_hook.js'), path.join(dir, 'hook.js'));
+    // the same hook as a program of the tool, run directly
+    fs.mkdirSync(path.join(dir, 'bin'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'bin', 'hook'), `#!/bin/sh\nexec "$FAKE_NODE" "$(dirname "$0")/../hook.js" "$@"\n`, { mode: 0o755 });
+    const out = fs.mkdtempSync(path.join(T, 'art-'));
+    const r = hu(['artifact', dir, '--out', out]);
+    if (r.status !== 0) {
+        throw new Error(`deploy/hu artifact failed: ${r.stderr}`);
+    }
+    return path.join(out, `fixture-tool@${version}.tgz`);
+}
+
+function testHooks() {
+    const art = (v) => hookArtifact(v);
+    const m = JSON.parse(untar(art('1.0.0'))['component.json'].data);
+    check('hooks: deploy/hu artifact keeps activate and deactivate',
+        JSON.stringify(m.activate) === '["node","hook.js","activate"]' && JSON.stringify(m.deactivate) === '["node","hook.js","deactivate"]' &&
+        m.requires === undefined, JSON.stringify(m));
+
+    const root = fakeRoot({ recmgr: ['fixture-tool'], active: 'fixture-tool.service' });
+    const hookLog = `${root.R}.hooks.log`;
+    const hooks = () => (fs.existsSync(hookLog) ? fs.readFileSync(hookLog, 'utf8').split('\n').filter(Boolean) : []);
+    const env = (extra) => Object.assign({ FAKE_HOOK_LOG: hookLog }, extra || {});
+    const current = () => fs.readlinkSync(path.join(root.tool('fixture-tool'), 'current'));
+    const pending = () => root.status().pending_reboot;
+
+    let r = root.run(['install', '--artifact', art('1.0.0'), '--yes'], env({ FAKE_HOOK_REBOOT: 'patch written; takes effect at the next head-unit start' }));
+    check('hooks: an install runs activate once, as the installed version, in its folder, units in place and started',
+        r.status === 0 && JSON.stringify(hooks()) === JSON.stringify(['activate 1.0.0 cwd=fixture-tool/versions/1.0.0 current=versions/1.0.0 unit=yes active=active']),
+        `${r.out}\n${hooks().join('\n')}`);
+    check('hooks: its stdout and stderr go to the log, its JSON result line does not',
+        r.out.includes('fixture-tool activate: hook activate@1.0.0 says hello') && r.out.includes('fixture-tool activate: hook activate@1.0.0 on stderr') &&
+        r.out.includes('fixture-tool activate: activate@1.0.0 done') && !r.out.includes('{"status"'), r.out);
+    check('hooks: a "reboot" reason is a pending reboot of the tool, which status --json lists',
+        pending().some((p) => p.id === 'fixture-tool' && p.reason === 'patch written; takes effect at the next head-unit start'), JSON.stringify(pending()));
+
+    r = root.run(['install', '--artifact', art('1.0.0'), '--yes'], env());
+    check('hooks: installing the same version again runs activate again', r.status === 0 && hooks().length === 2 &&
+        hooks()[1].startsWith('activate 1.0.0 '), `${r.out}\n${hooks().join('\n')}`);
+
+    r = root.run(['install', '--artifact', art('1.0.1'), '--yes'], env());
+    check('hooks: an update runs the new version\'s activate', r.status === 0 && current() === 'versions/1.0.1' &&
+        hooks()[2] === 'activate 1.0.1 cwd=fixture-tool/versions/1.0.1 current=versions/1.0.1 unit=yes active=active', `${r.out}\n${hooks().join('\n')}`);
+
+    r = root.run(['install', '--artifact', art('1.0.2'), '--yes'], env({ FAKE_HOOK_FAIL: 'activate@1.0.2' }));
+    check('hooks: a failed activate rolls the update back, runs the previous version\'s activate again, exit 1',
+        r.status === 1 && current() === 'versions/1.0.1' && !fs.existsSync(path.join(root.tool('fixture-tool'), 'versions/1.0.2')) &&
+        JSON.stringify(hooks().slice(3).map((l) => l.split(' ').slice(0, 2).join(' '))) === JSON.stringify(['activate 1.0.2', 'activate 1.0.1']) &&
+        r.out.includes('activate exited 3: hook activate@1.0.2 failing as asked'), `${r.out}\n${hooks().join('\n')}`);
+
+    r = root.run(['install', '--artifact', art('1.0.3'), '--yes'], env({ FAKE_HOOK_SLOW: 'activate@1.0.3', MGU_DEPLOY_HOOK_TIMEOUT_MS: '1000' }));
+    check('hooks: an activate past the timeout is killed and rolled back like a failure',
+        r.status === 1 && current() === 'versions/1.0.1' && r.out.includes('activate timed out after 1 s'), r.out);
+
+    root.run(['install', '--artifact', art('1.0.4'), '--yes'], env());
+    let n = hooks().length;
+    r = root.run(['rollback', 'fixture-tool', '--yes'], env());
+    check('hooks: rollback runs the older version\'s activate', r.status === 0 && current() === 'versions/1.0.1' &&
+        hooks().slice(n).length === 1 && hooks()[n].startsWith('activate 1.0.1 '), `${r.out}\n${hooks().slice(n).join('\n')}`);
+    root.run(['install', '--artifact', art('1.0.4'), '--yes'], env());
+    n = hooks().length;
+    r = root.run(['rollback', 'fixture-tool', '--yes'], env({ FAKE_HOOK_FAIL: 'activate@1.0.1' }));
+    check('hooks: a rollback whose activate fails returns to the current version and activates it again, exit 1',
+        r.status === 1 && current() === 'versions/1.0.4' &&
+        JSON.stringify(hooks().slice(n).map((l) => l.split(' ').slice(0, 2).join(' '))) === JSON.stringify(['activate 1.0.1', 'activate 1.0.4']), `${r.out}\n${hooks().slice(n).join('\n')}`);
+
+    // a check that fails after the new version's activate ran
+    const checked = (v) => hookArtifact(v, (c) => { c.check = ['hook.js', 'check']; });
+    const cr = fakeRoot({ recmgr: ['fixture-tool'], active: 'fixture-tool.service' });
+    const clog = `${cr.R}.hooks.log`;
+    cr.run(['install', '--artifact', checked('2.0.0'), '--yes'], { FAKE_HOOK_LOG: clog });
+    fs.writeFileSync(clog, '');
+    r = cr.run(['install', '--artifact', checked('2.0.1'), '--yes'], { FAKE_HOOK_LOG: clog, FAKE_HOOK_FAIL: 'check@2.0.1' });
+    const cl = fs.readFileSync(clog, 'utf8').split('\n').filter(Boolean).map((l) => l.split(' ').slice(0, 2).join(' '));
+    check('hooks: a check failing after the activate ran rolls back and runs the previous version\'s activate again, exit 1',
+        r.status === 1 && fs.readlinkSync(path.join(cr.tool('fixture-tool'), 'current')) === 'versions/2.0.0' &&
+        JSON.stringify(cl) === JSON.stringify(['activate 2.0.1', 'check 2.0.1', 'activate 2.0.0']), `${r.out}\n${cl.join('; ')}`);
+
+    n = hooks().length;
+    r = root.run(['uninstall', 'fixture-tool', '--yes'], env({ FAKE_HOOK_FAIL: 'deactivate@1.0.4' }));
+    check('hooks: a failed deactivate refuses the removal, exit 2, the tool stays whole and is activated again',
+        r.status === 2 && current() === 'versions/1.0.4' && fs.existsSync(root.p('etc/systemd/system/fixture-tool.service')) &&
+        r.out.includes('deactivate exited 3') && r.out.includes('fixture-tool stays installed') &&
+        hooks().slice(-1)[0].startsWith('activate 1.0.4 '), `${r.out}\n${hooks().slice(-2).join('\n')}`);
+    r = root.run(['uninstall', 'fixture-tool', '--yes'], env({ FAKE_HOOK_REBOOT: 'patch removed; the original runs from the next start' }));
+    check('hooks: deactivate runs before anything is removed (units in place, still running), then the tool goes',
+        r.status === 0 && hooks()[n + 2] === 'deactivate 1.0.4 cwd=fixture-tool/versions/1.0.4 current=versions/1.0.4 unit=yes active=active' &&
+        !fs.existsSync(root.tool('fixture-tool')) && !fs.existsSync(root.p('etc/systemd/system/fixture-tool.service')), `${r.out}\n${hooks().join('\n')}`);
+    check('hooks: its reboot reason stays pending under the deploy tool, the tool\'s own entries gone',
+        pending().some((p) => p.id === 'mgu-deploy' && p.reason === 'fixture-tool removed: patch removed; the original runs from the next start'),
+        JSON.stringify(pending()));
+
+    const fresh = fakeRoot({ recmgr: ['fixture-tool'] });
+    r = fresh.run(['install', '--artifact', art('1.0.0'), '--yes'], { FAKE_HOOK_LOG: `${fresh.R}.hooks.log`, FAKE_HOOK_FAIL: 'activate@1.0.0' });
+    check('hooks: a first install whose activate fails is removed again, units and all, exit 1',
+        r.status === 1 && !fs.existsSync(fresh.tool('fixture-tool')) && !fs.existsSync(fresh.p('etc/systemd/system/fixture-tool.service')) &&
+        !fs.existsSync(fresh.p('etc/systemd/system/sockets.target.wants/fixture-tool.socket')), r.out);
+
+    const bad = [
+        ['an empty activate', (c) => { c.activate = []; }],
+        ['activate as a string', (c) => { c.activate = 'node hook.js activate'; }],
+        ['an argument with ..', (c) => { c.activate = ['node', '../hook.js']; }],
+        ['an absolute program', (c) => { c.deactivate = ['/bin/sh', '-c', 'true']; }],
+        ['a program the tool does not ship as executable', (c) => { c.activate = ['hook.js', 'activate']; }],
+        ['an empty argument', (c) => { c.activate = ['node', '']; }]
+    ];
+    bad.forEach(([what, edit]) => {
+        const rr = fakeRoot();
+        const before = rr.hash();
+        const res = rr.run(['install', '--artifact', hookArtifact('1.1.0', edit), '--yes']);
+        check(`hooks: ${what} is refused, exit 2, nothing changed`, res.status === 2 && /(activate|deactivate) is \["node"/.test(res.out) &&
+            rr.hash().hash === before.hash, res.out);
+    });
+    const ok = fakeRoot({ recmgr: ['fixture-tool'] });
+    r = ok.run(['install', '--artifact', hookArtifact('1.1.0', (c) => {
+        c.files.push({ path: 'bin/hook', from: 'bin/hook', mode: '0755' });
+        c.activate = ['bin/hook', 'activate'];
+    }), '--yes'], { FAKE_HOOK_LOG: `${ok.R}.hooks.log` });
+    check('hooks: an executable file of the tool runs directly', r.status === 0 && r.out.includes('hook activate@1.1.0 says hello'), r.out);
+}
+
+/* A hook's "removeWhenUnused": a file no process runs goes at once; one a
+ * process runs waits for mgu-deploy-cleanup.service, installed, enabled and
+ * in the recmgr list, whose remove-unused removes it once nothing runs it. */
+function testRemoveWhenUnused() {
+    const root = fakeRoot({ recmgr: ['fixture-tool'], active: 'fixture-tool.service' });
+    const hookLog = `${root.R}.hooks.log`;
+    root.run(['install', '--artifact', hookArtifact('1.0.0'), '--yes'], { FAKE_HOOK_LOG: hookLog });
+    const kept = root.p('usr/bin/thing.old-running');
+    write(kept, 'old binary\n', 0o755);
+    // a process runs it: its fake /proc exe is that file
+    fs.mkdirSync(root.p('proc/777'), { recursive: true });
+    fs.symlinkSync(kept, root.p('proc/777/exe'));
+    let r = root.run(['uninstall', 'fixture-tool', '--yes'], { FAKE_HOOK_LOG: hookLog, FAKE_HOOK_UNUSED: JSON.stringify([kept]) });
+    const unit = root.p('etc/systemd/system/mgu-deploy-cleanup.service');
+    check('unused: a file a process runs is kept and queued, the removal goes on', r.status === 0 && fs.existsSync(kept) &&
+        !fs.existsSync(root.tool('fixture-tool')) && JSON.stringify(root.status().remove_when_unused) === JSON.stringify([kept]) &&
+        r.out.includes('removed at a later start, once no process runs it'), r.out);
+    check('unused: the cleanup unit is installed, enabled and in the recmgr list',
+        fs.readFileSync(unit, 'utf8') === fs.readFileSync(path.join(HERE, '..', 'unit', 'mgu-deploy-cleanup.service'), 'utf8') &&
+        fs.readlinkSync(root.p('etc/systemd/system/late.target.wants/mgu-deploy-cleanup.service')) === '../mgu-deploy-cleanup.service' &&
+        /\[Whitelist\][^[]*mgu-deploy-cleanup[^[]*\[WhitelistExitSuccess\][^[]*mgu-deploy-cleanup/.test(fs.readFileSync(root.p('etc/recmgr-restartlist.conf'), 'utf8')));
+    check('unused: the unit runs only with something queued, waits for the lock with no start timeout, always ends as succeeded',
+        /ConditionPathExists=\/var\/opt\/mgu-deploy\/remove-when-unused\.json/.test(fs.readFileSync(unit, 'utf8')) &&
+        /^Type=simple$/m.test(fs.readFileSync(unit, 'utf8')) && /^ExecStart=-\/bin\/sh \S+mgu-deploy\.sh remove-unused$/m.test(fs.readFileSync(unit, 'utf8')));
+    r = root.run(['remove-unused']);
+    check('unused: remove-unused keeps it while a process runs it', r.status === 0 && fs.existsSync(kept) &&
+        JSON.stringify(root.status().remove_when_unused) === JSON.stringify([kept]) && r.out.includes('still run by a process'), r.out);
+    // the next start: nothing runs it
+    cp.execFileSync('rm', ['-rf', root.p('proc/777')]);
+    r = root.run(['remove-unused']);
+    check('unused: once nothing runs it, remove-unused removes it and empties the queue', r.status === 0 && !fs.existsSync(kept) &&
+        !fs.existsSync(root.p('var/opt/mgu-deploy/remove-when-unused.json')) && root.status().remove_when_unused.length === 0 &&
+        r.out.includes('removed ' + kept), r.out);
+    r = root.run(['remove-unused']);
+    check('unused: with nothing queued it has nothing to do', r.status === 0 && r.out.includes('nothing to remove'), r.out);
+
+    // a removal that fails after its deactivate handed a file over is rolled
+    // back whole: the cleanup unit, its link and the queue with the recmgr list
+    const fl = fakeRoot({ recmgr: ['fixture-tool'], active: 'fixture-tool.service' });
+    fl.run(['install', '--artifact', hookArtifact('1.0.0'), '--yes'], { FAKE_HOOK_LOG: `${fl.R}.hooks.log` });
+    const held = fl.p('usr/bin/held.old-running');
+    write(held, 'old binary\n', 0o755);
+    fs.mkdirSync(fl.p('proc/778'), { recursive: true });
+    fs.symlinkSync(held, fl.p('proc/778/exe'));
+    const recBefore = fs.readFileSync(fl.p('etc/recmgr-restartlist.conf'), 'utf8');
+    r = fl.run(['uninstall', 'fixture-tool', '--yes'], { FAKE_HOOK_LOG: `${fl.R}.hooks.log`, FAKE_HOOK_UNUSED: JSON.stringify([held]),
+        FAKE_FAIL: 'stop fixture-tool.service' });
+    check('unused: a removal failing after the hand-over rolls back the cleanup unit, its link, the queue and the recmgr list',
+        r.status === 1 && fs.existsSync(fl.tool('fixture-tool')) && r.out.includes('mgu-deploy-cleanup.service installed') &&
+        !fs.existsSync(fl.p('etc/systemd/system/mgu-deploy-cleanup.service')) &&
+        !fs.existsSync(fl.p('etc/systemd/system/late.target.wants/mgu-deploy-cleanup.service')) &&
+        !fs.existsSync(fl.p('var/opt/mgu-deploy/remove-when-unused.json')) &&
+        fs.readFileSync(fl.p('etc/recmgr-restartlist.conf'), 'utf8') === recBefore, r.out);
+    const flog = fs.readFileSync(`${fl.R}.hooks.log`, 'utf8').split('\n').filter(Boolean).map((l) => l.split(' ').slice(0, 2).join(' '));
+    check('unused: and the tool, back after its deactivate ran, is activated again',
+        JSON.stringify(flog.slice(-2)) === JSON.stringify(['deactivate 1.0.0', 'activate 1.0.0']), flog.join('; '));
+
+    const now = fakeRoot({ recmgr: ['fixture-tool'] });
+    now.run(['install', '--artifact', hookArtifact('1.0.0'), '--yes'], { FAKE_HOOK_LOG: `${now.R}.hooks.log` });
+    const free = now.p('usr/bin/free.old-running');
+    write(free, 'old binary\n', 0o755);
+    const dir = now.p('usr/bin/somedir');
+    fs.mkdirSync(dir, { recursive: true });
+    const link = now.p('usr/bin/link');
+    fs.symlinkSync(free, link);
+    r = now.run(['uninstall', 'fixture-tool', '--yes'], { FAKE_HOOK_LOG: `${now.R}.hooks.log`,
+        FAKE_HOOK_UNUSED: JSON.stringify([free, dir, link, 'relative/path', `${now.R}/usr/bin/../etc/passwd`, now.p('usr/bin/gone')]) });
+    check('unused: a file no process runs goes at once, nothing queued, no unit', r.status === 0 && !fs.existsSync(free) &&
+        !fs.existsSync(now.p('var/opt/mgu-deploy/remove-when-unused.json')) && !fs.existsSync(now.p('etc/systemd/system/mgu-deploy-cleanup.service')), r.out);
+    check('unused: a folder or a symlink is left as it is, a relative or ".." path ignored, each said',
+        fs.existsSync(dir) && fs.lstatSync(link).isSymbolicLink() && fs.existsSync(now.p('etc/passwd')) &&
+        r.out.includes('somedir is not a regular file') && r.out.includes('"relative/path" is not an absolute file path') &&
+        r.out.includes('../etc/passwd') && r.out.includes('is not an absolute file path'), r.out);
+}
+
 /* stock and the newest ten snapshots stay */
 function testBackupRetention() {
     const root = fakeRoot();
@@ -2758,7 +2966,7 @@ function testHuToken() {
         x.stdin(1).toString() === `${TOKEN}\n`, `${x.r.stderr}\n${x.calls.join('\n')}`);
     const staged = Object.keys(untarBuf(x.stdin(0))).sort().join(' ');
     check('hu: the staging upload carries the deploy tool with its linker and packer', staged ===
-        'component.json fallback_build.js mgu-app-fallback-id8.service mgu-app-fallback.service mgu-deploy-apply.service mgu-deploy-verify.service mgu-deploy.js mgu-deploy.sh oap_link.js oap_pack.js', staged);
+        'component.json fallback_build.js mgu-app-fallback-id8.service mgu-app-fallback.service mgu-deploy-apply.service mgu-deploy-cleanup.service mgu-deploy-verify.service mgu-deploy.js mgu-deploy.sh oap_link.js oap_pack.js', staged);
     check('hu token: not in any ssh argument, the staging upload or the output',
         x.calls.every((c) => !c.includes(TOKEN)) && !zlib.gunzipSync(x.stdin(0)).includes(TOKEN) &&
         !`${x.r.stdout}${x.r.stderr}`.includes(TOKEN));
@@ -5393,6 +5601,8 @@ const SUITES = [
     testAppRollback,
     testRollback,
     testPrivacyTool,
+    testHooks,
+    testRemoveWhenUnused,
     testPrivacyId8,
     testRestoreRefusals,
     testStaleFiles,
