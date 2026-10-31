@@ -3334,7 +3334,12 @@ class Updater {
         const needsCatalog = !fs.existsSync(local);
         const deadline = Date.now() + TRIAL_WAIT_MS;
         const fetched = () => !needsCatalog || (readLease(this.conf).online && this.reached());
-        const attempt = () => (!needsCatalog ? Promise.resolve() : (readLease(this.conf).online ? this.check() : Promise.resolve())
+        // a local one: the sticks are read before the queue it takes up, which may install from them
+        const sticks = () => {
+            this.scanUsb();
+            return Promise.all(this.usb.map((u) => this.checkSource(u.id)));
+        };
+        const attempt = () => (!needsCatalog ? sticks() : (readLease(this.conf).online ? this.check() : Promise.resolve())
             .then(() => fetched() || Date.now() >= deadline ? undefined
                 : new Promise((r) => setTimeout(r, 3000)).then(attempt)));
         this.busy = { id: SELF, phase: 'check' };

@@ -1211,21 +1211,28 @@ function testDaemon(certs, pubDir) {
             // still offline: a newer version on a USB stick
             const stick = path.join('/media', 'SELFSTICK');
             mkdirp(stick);
-            publish(stick, [entry(updaterKit(stick, '0.8.0'), 'tool', 'Updater')]);
+            // an app on it that needs that version: installing it updates the updater first
+            const stickApp = Object.assign(entry(appTgz(stick, 'stick_app', '0.1.0'), 'app', 'Stick App'), { requires: { 'mgu-updater': '0.8.0' } });
+            publish(stick, [entry(updaterKit(stick, '0.8.0'), 'tool', 'Updater'), stickApp]);
             // written by mgu-install.js usb-repo from the built-in source
             fs.writeFileSync(path.join(stick, 'mgu-copy.json'), JSON.stringify({ copyOf: 'https://updates.test:8443/catalog.json' }));
             fs.writeFileSync(path.join(T, 'no-mounts'), `/dev/sdz1 ${stick} vfat ro 0 0\n`);
             return waitFor(client, (s) => row(s, 'mgu-updater').version === '0.8.0' && row(s, 'mgu-updater').status === 'update' &&
                 row(s, 'mgu-updater').source === 'usb:SELFSTICK', 20000, 'the stick\'s updater offered offline')
                 .then(() => {
+                    // the shipped first check: the new version's first full check comes long after it starts
+                    fs.writeFileSync(conf, confText('first_check_s = 60'));
                     restarting();
-                    client.install('mgu-updater');
-                    return sleep(3000).then(() => waitFor(client, (s) => version(s) === '0.8.0' && !fs.existsSync(trialFile) && settled(s), 60000,
-                        'the stick\'s updater kept offline'));
+                    client.install('stick_app');
+                    return sleep(3000).then(() => waitFor(client, (s) => version(s) === '0.8.0' && !fs.existsSync(trialFile) &&
+                        !s.busy && !row(s, 'stick_app').queued, 60000, 'the stick\'s updater kept offline'));
                 })
-                .then(() => {
+                .then((st) => {
                     ok('trial: a version from a USB stick is kept without internet',
                         current() === 'versions/0.8.0' && !fs.existsSync(path.join(opt, 'mgu-updater', 'trial-local')));
+                    ok('trial: the app queued behind it installs from the stick once the new version runs',
+                        row(st, 'stick_app').installed === '0.1.0' && !row(st, 'stick_app').error, JSON.stringify(row(st, 'stick_app')));
+                    fs.writeFileSync(conf, confText());
                     fs.unlinkSync(path.join(T, 'no-mounts'));
                     cp.execFileSync('rm', ['-rf', stick]);
                     fs.copyFileSync(path.join(T, 'lease.json.good'), path.join(T, 'lease.json'));
