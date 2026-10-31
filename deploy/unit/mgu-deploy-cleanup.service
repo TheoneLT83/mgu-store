@@ -5,11 +5,10 @@ After=multi-user.target
 ConditionPathExists=/var/opt/mgu-deploy/remove-when-unused.json
 
 [Service]
-Type=oneshot
-RemainAfterExit=yes
-# what it could not remove waits for the next start; the unit stays active
+Type=simple
+# waits for the deploy tool's lock; what it could not remove waits for the
+# next start, and the unit always ends as succeeded
 ExecStart=-/bin/sh /var/opt/mgu-deploy/mgu-deploy.sh remove-unused
-TimeoutStartSec=120
 
 [Install]
 WantedBy=late.target

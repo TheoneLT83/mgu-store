@@ -185,8 +185,7 @@ function buildArtifact(compDir, outDir) {
         manifest.internet = c.internet;
         manifest.uids = c.uids;
     }
-    ['mguHmi', 'mguProvides', 'keepRunning', 'crashNames', 'postInstall', 'check', 'requires', 'uninstallable',
-        'activate', 'deactivate'].forEach((k) => {
+    ['mguHmi', 'mguProvides', 'keepRunning', 'crashNames', 'postInstall', 'check', 'activate', 'deactivate'].forEach((k) => {
         if (c[k] !== undefined) {
             manifest[k] = c[k];
         }

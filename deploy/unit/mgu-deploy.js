@@ -1850,16 +1850,10 @@ function privacyReverted() {
 }
 
 /* ---- activate and deactivate ------------------------------------------------- */
-/* A tool's component.json may name a command run once a version is in place,
- * "activate", and one run before the tool is removed, "deactivate": argv[0]
- * "node" (the Node this tool runs on) or an executable file of the tool, the
- * other arguments passed as they are, no shell. It runs as root with this
- * tool's environment, in the version's folder, for at most hookTimeoutMs, and
- * its output goes to this tool's output. When its last non-empty stdout line
- * is a JSON object, "reboot" is why the change needs a head-unit restart,
- * "status" a line for the output, and "removeWhenUnused" files on / for this
- * tool to remove once no process runs them (handOver). Returns { ok, why } or
- * { ok, reboot }. */
+/* A tool's "activate" (run once a version is in place) and "deactivate" (run
+ * before it is removed), deploy/README.md "Activate and deactivate". The
+ * last stdout line, when a JSON object, carries "reboot" (why a head-unit
+ * start is needed), "status" and "removeWhenUnused" (handOver). */
 var HOOK_SHAPE = 'is ["node", <argument>...] or [<an executable file of the tool>, <argument>...], non-empty strings without ".."';
 function hookOk(c, k) {
     var v = c[k];
@@ -1969,9 +1963,9 @@ function cmdRemoveUnused() {
 
 /* Installs one tool artifact; tx records what was there before, for
  * rollbackTool. A failed health check, app-privacy apply, activate or check
- * throws with e.health / e.privacy / e.activate / e.check set. The activate
- * runs on every install, the same version's again too. Versions other than
- * the new one and the one current pointed to are pruned only once it is up. */
+ * throws with e.health / e.privacy / e.activate / e.check set. Versions other
+ * than the new one and the one current pointed to are pruned only once it is
+ * up. */
 function installTool(a, state, tx) {
     var c = a.component, root = path.join(CFG.varOpt, c.id);
     var versions = path.join(root, 'versions');
@@ -2095,6 +2089,7 @@ function installTool(a, state, tx) {
         if (!pr.ok) { e = fail('app-privacy ' + c.version + ': ' + pr.why); e.privacy = true; throw e; }
     }
     if (c.activate) {
+        tx.activated = true;
         var hr = runHook(c.id, dest, c, 'activate', state);
         if (!hr.ok) { e = fail(c.id + ' ' + c.version + ': activate ' + hr.why); e.activate = touched; throw e; }
         if (hr.reboot) addPending(state, c.id, hr.reboot);
@@ -2247,8 +2242,8 @@ function cmdVerify() {
  * install created goes, a socket it started whose unit is gone again is
  * stopped, and units it restarted restart on what is current again. After a
  * failed activate the units it started or restarted are restarted on what
- * is current again, or stopped when their unit went with the failed version,
- * and that version's activate runs again. */
+ * is current again, or stopped when their unit went with the failed version;
+ * whenever this install ran its activate, the previous version's runs again. */
 function rollbackTool(a, tx, backup, e, state) {
     var c = a.component;
     var was = tx.before ? c.id + ' ' + tx.before : tx.legacy ? c.id + '\'s earlier install' : null;
@@ -2299,14 +2294,17 @@ function rollbackTool(a, tx, backup, e, state) {
         var again = e.activate.filter(function (u) { return fs.existsSync(path.join(CFG.systemd, u)); });
         e.activate.forEach(function (u) { if (again.indexOf(u) < 0) { systemctl(['stop', u]); say('stopped ' + u); } });
         restartAgain(again, was || c.id);
-        var back = tx.before && tx.before !== c.version ? path.join(tx.root, 'versions', tx.before) : null;
-        var prev = back ? readJsonOrNull(path.join(back, 'component.json')) : null;
-        if (prev && prev.activate) {
-            var hr = runHook(c.id, back, prev, 'activate', state);
-            if (hr.ok && hr.reboot) addPending(state, c.id, hr.reboot);
-            say(hr.ok ? was + ' activated again' : was + ' activate failed too: ' + hr.why);
-        }
     }
+    if (tx.activated) reactivate(c.id, tx.before && tx.before !== c.version ? path.join(tx.root, 'versions', tx.before) : null, state);
+}
+/* Runs the activate of the version in dir again, after a change that ran
+ * another version's activate or the tool's deactivate did not go through. */
+function reactivate(id, dir, state) {
+    var prev = dir ? readJsonOrNull(path.join(dir, 'component.json')) : null;
+    if (!prev || !prev.activate) return;
+    var hr = runHook(id, dir, prev, 'activate', state);
+    if (hr.ok && hr.reboot) addPending(state, id, hr.reboot);
+    say(hr.ok ? id + ' ' + prev.version + ' activated again' : id + ' ' + prev.version + ' activate failed too: ' + hr.why);
 }
 /* The deploy tool is a tool like the others: /var/opt/mgu-deploy/
  * versions/<version>/ with its component.json, and current switched by
@@ -3182,6 +3180,9 @@ function uninstallApp(id, state) {
     leftovers.forEach(function (l) { say('leftover: ' + l); });
     say(id + ' uninstalled');
 }
+/* The version folder whose deactivate ran in this removal, for cmdUninstall
+ * to activate again when the removal is rolled back. */
+var deactivated = null;
 function uninstallTool(id, state) {
     var tools = installedTools().filter(function (t) { return t.id === id; });
     if (!tools.length) throw refuse(id + ': no installed tool with that id');
@@ -3195,6 +3196,7 @@ function uninstallTool(id, state) {
     if (c.deactivate) {
         var hr = runHook(id, path.join(root, 'versions', currentTarget(root)), c, 'deactivate', state);
         if (!hr.ok) throw refuse(id + ' ' + c.version + ': deactivate ' + hr.why + '; ' + id + ' stays installed');
+        deactivated = path.join(root, 'versions', currentTarget(root));
         if (hr.reboot) addPending(state, 'mgu-deploy', id + ' removed: ' + hr.reboot);
     }
     (c.units || []).forEach(function (u) {
@@ -5283,6 +5285,11 @@ function cmdUninstall(args) {
         if (e.code !== 2) {
             process.stderr.write('uninstall failed, rolling back from ' + backup + '\n');
             try { restoreSnapshot(backup); settleFallback(); } catch (e2) { process.stderr.write('rollback failed: ' + e2.message + '\n'); }
+            if (deactivated) {
+                var back = loadState();
+                reactivate(id, deactivated, back);
+                saveState(back);
+            }
         }
         throw e;
     }

@@ -2373,7 +2373,7 @@ function hookArtifact(version, edit) {
         c.files.push({ path: 'hook.js', from: 'hook.js', mode: '0644' });
         c.activate = ['node', 'hook.js', 'activate'];
         c.deactivate = ['node', 'hook.js', 'deactivate'];
-        c.requires = { 'shared-renderer': '0.1.0' };
+        c.requires = { 'lib-tool': '0.1.0' };
         if (edit) {
             edit(c);
         }
@@ -2393,9 +2393,9 @@ function hookArtifact(version, edit) {
 function testHooks() {
     const art = (v) => hookArtifact(v);
     const m = JSON.parse(untar(art('1.0.0'))['component.json'].data);
-    check('hooks: deploy/hu artifact keeps activate, deactivate and requires',
+    check('hooks: deploy/hu artifact keeps activate and deactivate',
         JSON.stringify(m.activate) === '["node","hook.js","activate"]' && JSON.stringify(m.deactivate) === '["node","hook.js","deactivate"]' &&
-        m.requires['shared-renderer'] === '0.1.0', JSON.stringify(m));
+        m.requires === undefined, JSON.stringify(m));
 
     const root = fakeRoot({ recmgr: ['fixture-tool'], active: 'fixture-tool.service' });
     const hookLog = `${root.R}.hooks.log`;
@@ -2443,6 +2443,18 @@ function testHooks() {
     check('hooks: a rollback whose activate fails returns to the current version and activates it again, exit 1',
         r.status === 1 && current() === 'versions/1.0.4' &&
         JSON.stringify(hooks().slice(n).map((l) => l.split(' ').slice(0, 2).join(' '))) === JSON.stringify(['activate 1.0.1', 'activate 1.0.4']), `${r.out}\n${hooks().slice(n).join('\n')}`);
+
+    // a check that fails after the new version's activate ran
+    const checked = (v) => hookArtifact(v, (c) => { c.check = ['hook.js', 'check']; });
+    const cr = fakeRoot({ recmgr: ['fixture-tool'], active: 'fixture-tool.service' });
+    const clog = `${cr.R}.hooks.log`;
+    cr.run(['install', '--artifact', checked('2.0.0'), '--yes'], { FAKE_HOOK_LOG: clog });
+    fs.writeFileSync(clog, '');
+    r = cr.run(['install', '--artifact', checked('2.0.1'), '--yes'], { FAKE_HOOK_LOG: clog, FAKE_HOOK_FAIL: 'check@2.0.1' });
+    const cl = fs.readFileSync(clog, 'utf8').split('\n').filter(Boolean).map((l) => l.split(' ').slice(0, 2).join(' '));
+    check('hooks: a check failing after the activate ran rolls back and runs the previous version\'s activate again, exit 1',
+        r.status === 1 && fs.readlinkSync(path.join(cr.tool('fixture-tool'), 'current')) === 'versions/2.0.0' &&
+        JSON.stringify(cl) === JSON.stringify(['activate 2.0.1', 'check 2.0.1', 'activate 2.0.0']), `${r.out}\n${cl.join('; ')}`);
 
     n = hooks().length;
     r = root.run(['uninstall', 'fixture-tool', '--yes'], env({ FAKE_HOOK_FAIL: 'deactivate@1.0.4' }));
@@ -2493,7 +2505,7 @@ function testRemoveWhenUnused() {
     const root = fakeRoot({ recmgr: ['fixture-tool'], active: 'fixture-tool.service' });
     const hookLog = `${root.R}.hooks.log`;
     root.run(['install', '--artifact', hookArtifact('1.0.0'), '--yes'], { FAKE_HOOK_LOG: hookLog });
-    const kept = root.p('usr/bin/thing.woc-running');
+    const kept = root.p('usr/bin/thing.old-running');
     write(kept, 'old binary\n', 0o755);
     // a process runs it: its fake /proc exe is that file
     fs.mkdirSync(root.p('proc/777'), { recursive: true });
@@ -2507,9 +2519,9 @@ function testRemoveWhenUnused() {
         fs.readFileSync(unit, 'utf8') === fs.readFileSync(path.join(HERE, '..', 'unit', 'mgu-deploy-cleanup.service'), 'utf8') &&
         fs.readlinkSync(root.p('etc/systemd/system/late.target.wants/mgu-deploy-cleanup.service')) === '../mgu-deploy-cleanup.service' &&
         /\[Whitelist\][^[]*mgu-deploy-cleanup[^[]*\[WhitelistExitSuccess\][^[]*mgu-deploy-cleanup/.test(fs.readFileSync(root.p('etc/recmgr-restartlist.conf'), 'utf8')));
-    check('unused: the unit runs only with something queued and stays active after it ran',
+    check('unused: the unit runs only with something queued, waits for the lock with no start timeout, always ends as succeeded',
         /ConditionPathExists=\/var\/opt\/mgu-deploy\/remove-when-unused\.json/.test(fs.readFileSync(unit, 'utf8')) &&
-        /RemainAfterExit=yes/.test(fs.readFileSync(unit, 'utf8')) && /mgu-deploy\.sh remove-unused/.test(fs.readFileSync(unit, 'utf8')));
+        /^Type=simple$/m.test(fs.readFileSync(unit, 'utf8')) && /^ExecStart=-\/bin\/sh \S+mgu-deploy\.sh remove-unused$/m.test(fs.readFileSync(unit, 'utf8')));
     r = root.run(['remove-unused']);
     check('unused: remove-unused keeps it while a process runs it', r.status === 0 && fs.existsSync(kept) &&
         JSON.stringify(root.status().remove_when_unused) === JSON.stringify([kept]) && r.out.includes('still run by a process'), r.out);
@@ -2526,7 +2538,7 @@ function testRemoveWhenUnused() {
     // back whole: the cleanup unit, its link and the queue with the recmgr list
     const fl = fakeRoot({ recmgr: ['fixture-tool'], active: 'fixture-tool.service' });
     fl.run(['install', '--artifact', hookArtifact('1.0.0'), '--yes'], { FAKE_HOOK_LOG: `${fl.R}.hooks.log` });
-    const held = fl.p('usr/bin/held.woc-running');
+    const held = fl.p('usr/bin/held.old-running');
     write(held, 'old binary\n', 0o755);
     fs.mkdirSync(fl.p('proc/778'), { recursive: true });
     fs.symlinkSync(held, fl.p('proc/778/exe'));
@@ -2539,10 +2551,13 @@ function testRemoveWhenUnused() {
         !fs.existsSync(fl.p('etc/systemd/system/late.target.wants/mgu-deploy-cleanup.service')) &&
         !fs.existsSync(fl.p('var/opt/mgu-deploy/remove-when-unused.json')) &&
         fs.readFileSync(fl.p('etc/recmgr-restartlist.conf'), 'utf8') === recBefore, r.out);
+    const flog = fs.readFileSync(`${fl.R}.hooks.log`, 'utf8').split('\n').filter(Boolean).map((l) => l.split(' ').slice(0, 2).join(' '));
+    check('unused: and the tool, back after its deactivate ran, is activated again',
+        JSON.stringify(flog.slice(-2)) === JSON.stringify(['deactivate 1.0.0', 'activate 1.0.0']), flog.join('; '));
 
     const now = fakeRoot({ recmgr: ['fixture-tool'] });
     now.run(['install', '--artifact', hookArtifact('1.0.0'), '--yes'], { FAKE_HOOK_LOG: `${now.R}.hooks.log` });
-    const free = now.p('usr/bin/free.woc-running');
+    const free = now.p('usr/bin/free.old-running');
     write(free, 'old binary\n', 0o755);
     const dir = now.p('usr/bin/somedir');
     fs.mkdirSync(dir, { recursive: true });

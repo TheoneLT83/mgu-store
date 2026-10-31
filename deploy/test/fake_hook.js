@@ -1,13 +1,13 @@
 'use strict';
-// A tool's activate and deactivate for the deploy tests, run from the
-// tool's version folder as `node hook.js <activate|deactivate>`. Appends
+// A tool's activate, deactivate and check for the deploy tests, run from the
+// tool's folder as `node hook.js <activate|deactivate|check>`. Appends
 // "<command> <version> cwd=<folder under var/opt> current=<current's
 // target> unit=<yes|no: fixture-tool.service in place> active=<its state in
 // fake_systemctl.sh>" to $FAKE_HOOK_LOG and prints a line on stdout and one
 // on stderr. "<command>@<version>" listed in $FAKE_HOOK_SLOW sleeps 5 s
 // first; listed in $FAKE_HOOK_FAIL, it exits 3. Its last stdout line is
 // {"status", "reboot", "removeWhenUnused"}, "reboot" being $FAKE_HOOK_REBOOT
-// and "removeWhenUnused" the JSON in $FAKE_HOOK_UNUSED when set.
+// and a deactivate's "removeWhenUnused" the JSON in $FAKE_HOOK_UNUSED when set.
 const fs = require('fs');
 const path = require('path');
 
@@ -42,7 +42,7 @@ const result = { status: me + ' done' };
 if (env.FAKE_HOOK_REBOOT) {
     result.reboot = env.FAKE_HOOK_REBOOT;
 }
-if (env.FAKE_HOOK_UNUSED) {
+if (env.FAKE_HOOK_UNUSED && which === 'deactivate') {
     result.removeWhenUnused = JSON.parse(env.FAKE_HOOK_UNUSED);
 }
 console.log(JSON.stringify(result));

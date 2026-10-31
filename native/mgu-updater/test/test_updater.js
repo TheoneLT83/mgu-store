@@ -2657,9 +2657,9 @@ function testCrossSource(certs) {
     const kit = (dir, id, version, extra) => toolKit(dir, id, version, { [`${id}.sh`]: ['#!/bin/sh\n', 0o755] }, extra);
     publish(store, [entry(kit(store, 'mgu-deploy', '0.7.0'), 'tool', 'Deploy tool')], { schema: 2 });
     const hooks = { activate: ['node', 'hook.js', 'activate'], deactivate: ['node', 'hook.js', 'deactivate'] };
-    const tool = { requires: { 'mgu-deploy': '0.7.0', 'shared-renderer': '0.1.0' }, mguHmi: ['ID7'] };
+    const tool = { requires: { 'mgu-deploy': '0.7.0', 'lib-tool': '0.1.0' }, mguHmi: ['ID7'] };
     publish(apps, [
-        Object.assign(entry(kit(apps, 'shared-renderer', '0.1.0', { mguHmi: ['ID7'] }), 'tool', 'Shared renderer'), { mguHmi: ['ID7'] }),
+        Object.assign(entry(kit(apps, 'lib-tool', '0.1.0', { mguHmi: ['ID7'] }), 'tool', 'Library tool'), { mguHmi: ['ID7'] }),
         Object.assign(entry(kit(apps, 'hooked-tool', '0.5.0', Object.assign({}, tool, hooks)), 'tool', 'Hooked tool'), tool, { uninstallable: true }),
         Object.assign(entry(appTgz(apps, 'robertn_hooked_app', '0.3.0'), 'app', 'Hooked app'), { requires: { 'hooked-tool': '0.5.0' }, uninstallable: true })
     ], { schema: 2 });
@@ -2688,7 +2688,7 @@ function testCrossSource(certs) {
         .then(() => u.check())
         .then(() => {
             ok('cross-source: the tool lists its requirements and hooks\' iDrive', JSON.stringify(comp('hooked-tool').mguHmi) === '["ID7"]' &&
-                comp('shared-renderer').source === 'other-repo' && comp('mgu-deploy').source === 'mgu-store', JSON.stringify(st().components));
+                comp('lib-tool').source === 'other-repo' && comp('mgu-deploy').source === 'mgu-store', JSON.stringify(st().components));
             return ask(conf.socket, { op: 'install', id: 'robertn_hooked_app' });
         })
         .then((err) => until(st, () => !st().busy && !st().components.some((c) => c.queued) &&
@@ -2696,20 +2696,20 @@ function testCrossSource(certs) {
         .then((err) => {
             const order = deployed().map((l) => (/([a-z_-]+)@(\d+\.\d+\.\d+)\.tgz/.exec(l) || [])[0]);
             ok('cross-source: installing the app installs the deploy tool update, the renderer, the tool, then the app',
-                err === null && JSON.stringify(order) === JSON.stringify(['mgu-deploy@0.7.0.tgz', 'shared-renderer@0.1.0.tgz',
+                err === null && JSON.stringify(order) === JSON.stringify(['mgu-deploy@0.7.0.tgz', 'lib-tool@0.1.0.tgz',
                     'hooked-tool@0.5.0.tgz', 'robertn_hooked_app@0.3.0.tgz']), `${err} ${JSON.stringify(deployed())}`);
             ok('cross-source: each from its own source', u.origins['mgu-deploy'].source === 'mgu-store' &&
-                u.origins['shared-renderer'].source === 'other-repo' && u.origins['hooked-tool'].source === 'other-repo', JSON.stringify(u.origins));
+                u.origins['lib-tool'].source === 'other-repo' && u.origins['hooked-tool'].source === 'other-repo', JSON.stringify(u.origins));
             ok('cross-source: the tool the deploy tool reports restart-pending shows so, the others do not',
-                comp('hooked-tool').pendingReboot === true && comp('shared-renderer').pendingReboot === false &&
+                comp('hooked-tool').pendingReboot === true && comp('lib-tool').pendingReboot === false &&
                 comp('robertn_hooked_app').pendingReboot === false, JSON.stringify(st().components.map((c) => [c.id, c.pendingReboot])));
             delete process.env.FAKE_PENDING;
             fs.writeFileSync(deployLog, '');
-            return Promise.all([priv({ op: 'uninstall', id: 'hooked-tool' }), priv({ op: 'uninstall', id: 'shared-renderer' })]);
+            return Promise.all([priv({ op: 'uninstall', id: 'hooked-tool' }), priv({ op: 'uninstall', id: 'lib-tool' })]);
         })
         .then((errs) => {
             ok('cross-source removal: the tool is refused while the app needs it; the renderer is not removable',
-                errs[0] === 'Hooked app needs hooked-tool' && errs[1] === 'shared-renderer cannot be removed' && !deployed().length,
+                errs[0] === 'Hooked app needs hooked-tool' && errs[1] === 'lib-tool cannot be removed' && !deployed().length,
                 JSON.stringify(errs));
             return priv({ op: 'uninstall', id: 'robertn_hooked_app' });
         })
@@ -2723,7 +2723,7 @@ function testCrossSource(certs) {
         .then((err) => {
             ok('cross-source removal: then the tool, through the deploy tool, the renderer and the deploy tool stay',
                 err === null && JSON.stringify(deployed()) === JSON.stringify(['uninstall robertn_hooked_app --yes', 'uninstall hooked-tool --yes']) &&
-                comp('hooked-tool').status === 'available' && comp('shared-renderer').status === 'installed' &&
+                comp('hooked-tool').status === 'available' && comp('lib-tool').status === 'installed' &&
                 comp('mgu-deploy').installed === '0.7.0', `${err} ${JSON.stringify(deployed())} ${JSON.stringify(st().components.map((c) => [c.id, c.status]))}`);
             u.server.close();
         });

@@ -193,8 +193,8 @@ tool itself):
   description, files[{path, mode, sha256}], units[{name}], enable, recmgr,
   restart}`, `dropins[{unit, name}]` (each read from `from`), and `internet`
   with `uids`, `mguHmi`, `mguProvides`, `keepRunning`, `crashNames`,
-  `postInstall`, `check`, `requires`, `uninstallable`, `activate` and
-  `deactivate` when the tool declares them;
+  `postInstall`, `check`, `activate` and `deactivate` when the tool declares
+  them;
 - members are sorted, owned 0:0, with the listed modes (`component.json` and
   units 0644) and one mtime: `SOURCE_DATE_EPOCH` when set, else the packer's
   fixed one (`tools/oap_pack.js`, which also writes the gzip header's OS byte
@@ -798,12 +798,15 @@ them (below).
   idempotent. A tool it leaves pending is checked at the next start. A
   non-zero exit or the timeout fails the install: the units it started or
   restarted are restarted on the previous version (or stopped when their
-  unit went with it), the previous version's `activate` runs again, and a
-  first install is removed.
+  unit went with it) and a first install is removed. Whenever an install
+  that ran `activate` is rolled back (a failed `activate` or `check`), the
+  previous version's `activate` runs again.
 - `deactivate` runs before a removal changes anything, with the tool's units
   and files in place. A non-zero exit refuses the removal (exit 2) and the
-  tool stays whole. A restart it asks for stays pending under `mgu-deploy`
-  (`<id> removed: <reason>`), since the tool's own entries go with it.
+  tool stays whole; a removal that fails after it is rolled back and the
+  tool's `activate` runs again. A restart it asks for stays pending under
+  `mgu-deploy` (`<id> removed: <reason>`), since the tool's own entries go
+  with it.
 
 **Files removed once unused.** A hook that replaced a binary a process still
 runs keeps the old file linked (an unlinked file a process holds keeps `/`
@@ -814,9 +817,9 @@ in a rootfs window. One a process runs waits in
 `/var/opt/mgu-deploy/remove-when-unused.json` (`status --json`
 `remove_when_unused`): `mgu-deploy-cleanup.service`, installed, enabled for
 `late.target` and added to recmgr's list on the first such file, runs
-`remove-unused` at each start while that file exists (a oneshot that stays
-active whatever it exits with), which removes what no process runs any more
-and keeps the rest for a later start. Only regular files are removed; a
+`remove-unused` at each start while that file exists (it waits for the
+deploy tool's lock and always ends as succeeded), which removes what no
+process runs any more and keeps the rest for a later start. Only regular files are removed; a
 folder, a symlink, a relative path or one with `..` is left as it is, said in
 the output. Every snapshot holds the unit, its link and the list, so a
 failed install or removal puts them back with the recmgr list.
