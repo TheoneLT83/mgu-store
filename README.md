@@ -33,7 +33,7 @@ Installed: the apps and tools on the head unit.
 
 Settings: sources, Wi-Fi, accounts and phone access.
 
-![Settings, with the two default sources, Wi-Fi, Accounts and Check now](docs/screenshots/settings.png)
+![Settings, with the default sources, Wi-Fi, Accounts and Check now](docs/screenshots/settings.png)
 
 Adding a GitHub repository: pick its releases, tags or a branch.
 
@@ -97,8 +97,11 @@ restart (Settings → **Restart head unit**).
 
 ### Sources
 
-The Store comes with two sources: this repository and
-[idrive7-apps](https://github.com/cauliflowermossgrape/idrive7-apps).
+The Store comes with these sources: this repository,
+[idrive7-apps](https://github.com/cauliflowermossgrape/idrive7-apps) and
+[idrive-apps](https://github.com/robertnisipeanu/idrive-apps) (with the
+renderer that draws on the instrument cluster and the HUD, and the CarPlay
+map on the instrument cluster).
 
 To add one: Settings → **Add source**, then type `owner/repo`, a GitHub
 link, or the `https://` address of a `catalog.json`. For a GitHub

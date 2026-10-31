@@ -4416,12 +4416,106 @@ function testDefaultSources() {
     u = new Updater(conf());
     ok('default sources: one the installers seeded is kept as it is and recorded', stored().map((s) => s.id).join() === 'mgu-store,idrive7-apps' &&
         fs.existsSync(path.join(D, 'state', 'default-sources.json')), JSON.stringify(stored()));
+    // one the owner added by hand under another id, on another channel, the repo in other case: kept as it is, not doubled
+    fs.unlinkSync(path.join(D, 'state', 'default-sources.json'));
+    fs.writeFileSync(file, JSON.stringify({ schema: 1, sources: [
+        { id: 'mgu-store', type: 'github', repo: 'robertnisipeanu/mgu-store', builtin: true },
+        { id: 's-1a2b', type: 'github', repo: 'CauliflowerMossGrape/IDrive7-Apps', channel: 'releases' }] }));
+    u = new Updater(conf());
+    ok('default sources: one the owner added by hand is kept as it is and recorded, not doubled',
+        JSON.stringify(stored()) === JSON.stringify([{ id: 'mgu-store', type: 'github', repo: 'robertnisipeanu/mgu-store', builtin: true },
+            { id: 's-1a2b', type: 'github', repo: 'CauliflowerMossGrape/IDrive7-Apps', channel: 'releases' }]) && u.stored.length === 2 &&
+        JSON.parse(fs.readFileSync(path.join(D, 'state', 'default-sources.json'), 'utf8')).added.join() === 'cauliflowermossgrape/idrive7-apps',
+        JSON.stringify(stored()));
     // no sources.json: written with the built-in source and the default one
     fs.unlinkSync(file);
     fs.unlinkSync(path.join(D, 'state', 'default-sources.json'));
     u = new Updater(conf());
     ok('default sources: without sources.json, written with the built-in source first', stored().map((s) => `${s.id}:${s.repo}`).join() ===
         'mgu-store:robertnisipeanu/mgu-store,idrive7-apps:cauliflowermossgrape/idrive7-apps', JSON.stringify(stored()));
+}
+
+/* A default source of a repo whose catalog release is read through the API,
+ * while the repo is private: it needs a token, the other sources are read;
+ * once the repo is public it is read without one, and a tool of its catalog
+ * installs with the library tool the same catalog lists. */
+function testDefaultPrivate(certs) {
+    const { Updater } = require('../js/updater');
+    const M = path.join(T, 'defpriv');
+    const opt = path.join(M, 'opt');
+    const oap = path.join(M, 'oap');
+    const store = path.join(M, 'store');
+    [M, opt, oap, store, path.join(M, 'shm'), path.join(M, 'media')].forEach(mkdirp);
+    const deployLog = path.join(M, 'deploy.log');
+    fs.writeFileSync(deployLog, '');
+    Object.assign(process.env, { TOOL_ROOT: opt, OAP_ROOT: oap, FAKE_DEPLOY_LOG: deployLog });
+    delete process.env.FAKE_LEASE;
+    delete process.env.FAKE_PENDING;
+    const deploySh = path.join(M, 'mgu-deploy.sh');
+    fs.writeFileSync(deploySh, DEPLOY_SH, { mode: 0o755 });
+    fs.writeFileSync(path.join(M, 'lease.json'), JSON.stringify({ interface: 'vethuplink', dns: [`127.0.0.1:${DNS_PORT}`] }));
+    fs.writeFileSync(path.join(M, 'ca.pem'), certs.ca);
+    mkdirp(path.join(opt, 'mgu-deploy', 'versions', '0.7.0'));
+    fs.writeFileSync(path.join(opt, 'mgu-deploy', 'versions', '0.7.0', 'component.json'), JSON.stringify({ id: 'mgu-deploy', kind: 'tool', version: '0.7.0' }));
+    fs.symlinkSync('versions/0.7.0', path.join(opt, 'mgu-deploy', 'current'));
+    publish(store, [], { schema: 2 });
+    // the repo's catalog release: each artifact a release asset the catalog names by its API URL
+    const repo = 'owner/apps-repo';
+    const kit = (id, version, extra) => toolKit(M, id, version, { [`${id}.sh`]: ['#!/bin/sh\n', 0o755] }, extra);
+    const libExtra = { title: 'Library tool', requires: { 'mgu-deploy': '0.4.0' }, uninstallable: true };
+    const toolExtra = { title: 'Hooked tool', requires: { 'mgu-deploy': '0.7.0', 'lib-tool': '0.1.0' }, uninstallable: true };
+    const files = [[kit('lib-tool', '0.1.0', libExtra), libExtra], [kit('hooked-tool', '0.5.0', toolExtra), toolExtra]];
+    ghRepo('owner/other-repo', { catalog: Buffer.from(JSON.stringify({ schema: 2, commit: 'test', components: [] })) });
+    ghRepo(repo, { private: true, tokens: ['tok-all'] });
+    gh.repos[repo].releases = [{ assets: files.map(([file]) => ({ name: path.basename(file), data: fs.readFileSync(file) })) }];
+    gh.repos[repo].catalog = Buffer.from(JSON.stringify({ schema: 2, commit: 'test', components: files.map(([file, extra]) => {
+        const data = fs.readFileSync(file);
+        return Object.assign(entry(file, 'tool', extra.title), extra,
+            { artifact: { name: path.basename(file), size: data.length, sha256: sha256(data), url: `${API}/repos/${repo}/releases/assets/${path.basename(file)}` } });
+    }) }));
+    const sources = path.join(M, 'sources.json');
+    fs.writeFileSync(sources, JSON.stringify({ schema: 1, sources: [{ id: 'mgu-store', type: 'file', path: store, builtin: true }] }));
+    const conf = {
+        sources, credentials_dir: path.join(M, 'cred'), state_dir: path.join(M, 'state'), tool_root: opt, oap_root: oap, mainapp_uid: '12201',
+        store_app: 'robertn_store', deploy: deploySh, lease: path.join(M, 'lease.json'), ca_file: path.join(M, 'ca.pem'),
+        github_api: API, github_web: GH_WEB, github_client_id: '', builtin_repo: 'robertnisipeanu/mgu-store',
+        fetch_uid: String(FETCH_UID), fetch_gid: String(FETCH_UID), build_uid: '12995', build_gid: '12995',
+        build_timeout_s: '3', build_max_bytes: String(8 << 20), repo_max_bytes: String(8 << 20),
+        mounts: path.join(M, 'mounts'), usb_roots: path.join(M, 'media'), web_secret: path.join(M, 'web-secret'), web_uid: '12996', web_gid: '12202',
+        socket: path.join(M, 'shm', 'updater.sock'), socket_group: 'staff', deploy_tool: 'mgu-deploy', uplink_tool: 'mgu-uplink',
+        bootstrap_check_s: '6', privacy_tool: '', reboot: '', default_sources: 'owner/other-repo:releases owner/apps-repo:releases'
+    };
+    fs.writeFileSync(conf.mounts, '');
+    const u = new Updater(conf);
+    const st = () => u.state();
+    const src = (id) => st().sources.find((s) => s.id === id) || {};
+    const comp = (id) => st().components.find((c) => c.id === id) || {};
+    return u.serve()
+        .then(() => u.check())
+        .then(() => {
+            ok('default sources: added under their repos\' names, read from their releases', JSON.stringify(u.stored.map((s) => [s.id, s.repo || null, s.channel || null])) ===
+                '[["mgu-store",null,null],["other-repo","owner/other-repo","releases"],["apps-repo","owner/apps-repo","releases"]]', JSON.stringify(u.stored));
+            ok('default sources: one of a repo still private needs a token; the others are read', src('apps-repo').status === 'auth-needed' &&
+                src('other-repo').status === 'ok' && src('mgu-store').status === 'ok' && !comp('lib-tool').id && !comp('hooked-tool').id,
+                JSON.stringify(st().sources));
+            gh.repos[repo].private = false;
+            return u.check();
+        })
+        .then(() => {
+            ok('default sources: once the repo is public it is read without a token', src('apps-repo').status === 'ok' && src('apps-repo').auth === null &&
+                comp('hooked-tool').source === 'apps-repo' && comp('hooked-tool').status === 'available', JSON.stringify([src('apps-repo'), comp('hooked-tool')]));
+            return ask(conf.socket, { op: 'install', id: 'hooked-tool' });
+        })
+        .then((err) => until(st, () => !st().busy && !st().components.some((c) => c.queued) && comp('hooked-tool').status === 'installed',
+            60000, 'the tool installed').then(() => err))
+        .then((err) => {
+            const order = fs.readFileSync(deployLog, 'utf8').split('\n').filter((l) => /^install/.test(l))
+                .map((l) => (/([a-z_-]+@\d+\.\d+\.\d+)\.tgz/.exec(l) || [])[1]);
+            ok('default sources: a tool of its catalog installs with the library tool the same catalog lists', err === null &&
+                JSON.stringify(order) === '["lib-tool@0.1.0","hooked-tool@0.5.0"]' && u.origins['lib-tool'].source === 'apps-repo' &&
+                u.origins['hooked-tool'].source === 'apps-repo', `${err} ${JSON.stringify(order)}`);
+            u.server.close();
+        });
 }
 
 /* A unit whose sources each had a token file of their own (mgu-updater 0.2):
@@ -4760,6 +4854,7 @@ function main() {
             .then(() => testUndo().catch((e) => ok('undo scenario', false, e.stack)))
             .then(() => testPythonRepo().catch((e) => ok('python repo scenario', false, e.stack)))
             .then(() => testIdClash().catch((e) => ok('id clash scenario', false, e.stack)))
+            .then(() => testDefaultPrivate(certs).catch((e) => ok('default private source scenario', false, e.stack)))
             .then(() => testDaemon(certs, pubDir))
             .then(() => {
                 dnsSrv.close();
