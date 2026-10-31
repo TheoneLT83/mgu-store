@@ -519,8 +519,9 @@ whose das edits and removal steps it follows:
   that change before anything moves. The result is in `last-apply.json`
   and `status`.
 - An update keeps the version it uninstalls (its registry entry, home,
-  personal copies and vsomeip policy in its trash folder, their ACLs, its
-  uid, `uids.txt` line and package) listed as `unconfirmed` in
+  personal copies and vsomeip policy in its trash folder with their owners
+  and modes, the ACLs of those under `/var/opt`, its uid, `uids.txt` line
+  and package) listed as `unconfirmed` in
   `pending.json`, so `apply-pending` runs again at the next start. Before
   MainApp-21 starts then, an app with a registry entry was installed and
   stays; one without (MainApp-21 rejected the new package, for example a

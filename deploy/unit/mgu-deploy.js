@@ -1151,6 +1151,7 @@ function rootfsWindowRun(ops) {
             else if (op.type === 'rmdir') fs.rmdirSync(op.path);
             else if (op.type === 'symlink') { mkdirp(path.dirname(op.path)); rmrf(op.path); fs.symlinkSync(op.target, op.path); }
             else if (op.type === 'copy') { mkdirp(path.dirname(op.path)); fs.writeFileSync(op.path, fs.readFileSync(op.src)); if (op.mode !== undefined) fs.chmodSync(op.path, op.mode); }
+            else if (op.type === 'tree') { rmrf(op.path); copyTree(op.src, op.path); }
         });
         return;
     }
@@ -1166,6 +1167,7 @@ function rootfsWindowRun(ops) {
         if (op.type === 'delete') lines.push('rm -rf ' + p);
         else if (op.type === 'mkdir') lines.push('mkdir -p ' + p);
         else if (op.type === 'rmdir') lines.push('rmdir ' + p);
+        else if (op.type === 'tree') lines.push('mkdir -p ' + d + '; rm -rf ' + p + '; cp -a ' + shQuote(op.src) + ' ' + p);
         else if (op.type === 'symlink') lines.push('mkdir -p ' + d + '; rm -rf ' + p + '; ln -s ' + shQuote(op.target) + ' ' + p);
         else if (op.type === 'copy') {
             lines.push('mkdir -p ' + d + '; cat ' + shQuote(op.src) + ' > ' + p + '.tmp-' + process.pid);
@@ -3510,6 +3512,7 @@ function uninstallLiveId8(id) {
     rmrf(appEntryFile(id) + '.tmp');
     rmrf(home);
     queueId8({ id: id });
+    writePending(readPending(), readUnconfirmed().filter(function (u) { return u.id !== id; }));
     listLocalOnly(id);
     say(id + ' uninstalled');
     return { done: true };
@@ -3653,8 +3656,9 @@ function applyId8(c, bin, log) {
     if (kept) kept.moved = moved;
     return kept;
 }
-/* The installed version's uid, uids.txt line and version, and its folders'
- * ACLs, recorded in bin before an update moves it there. */
+/* The installed version's uid, uids.txt line and version, and the ACLs of
+ * its folders under /var/opt, recorded in bin before an update moves it
+ * there. */
 function keepPreviousId8(c, uid, bin) {
     var pkg = readJsonOrNull(path.join(appHome(uid), 'source', 'package.json')) || {}, line = uid + '=' + c.id;
     try {
@@ -3662,7 +3666,7 @@ function keepPreviousId8(c, uid, bin) {
     } catch (e) { /* no uids.txt */ }
     var kept = { id: c.id, version: c.version, previous: typeof pkg.version === 'string' ? pkg.version : null,
         uid: uid, line: line, bin: bin };
-    var present = id8AppFolders(uid).filter(function (p) { return lstatOrNull(p); });
+    var present = id8AppFolders(uid).filter(function (p) { return !isRootfsPath(p) && lstatOrNull(p); });
     if (FAKE || !present.length) return kept;
     mkdirp(bin, 0o700);
     kept.acl = path.join(bin, c.id + '.acl');
@@ -3673,7 +3677,9 @@ function keepPreviousId8(c, uid, bin) {
  * for the app, MainApp-21 did not install the new version, and the one it
  * replaced goes back as it was: its registry entry, folders (with their
  * ACLs), uids.txt line and package, the new package to the trash. Nothing
- * goes back over an entry, folder or other package that is there again. */
+ * goes back over an entry, folder or other package that is there again.
+ * What is under /var/opt goes back first; in the rootfs window the new
+ * package goes after the old one is back. */
 function confirmId8(u, bin) {
     if (lstatOrNull(appEntryFile(u.id))) { say(u.id + ' ' + u.version + ': installed by MainApp-21'); return null; }
     var res = { id: u.id, action: 'restore', version: u.previous, rejected: u.version, ok: false, log: [] };
@@ -3687,11 +3693,6 @@ function confirmId8(u, bin) {
             if (!isRootfsPath(p) && lstatOrNull(p)) throw fail(p + ' is there again');
         });
         if (!(u.moved || []).length) throw fail('nothing of it was kept');
-        trashPath(placed, bin, ops, log);
-        u.moved.forEach(function (p) {
-            if (isRootfsPath(p)) { ops.push({ type: 'copy', src: path.join(u.bin, p), path: p, mode: 0o644, uid: 0, gid: 0 }); log(p); }
-        });
-        rootfsWindow(ops);
         u.moved.forEach(function (p) { if (!isRootfsPath(p)) { moveTree(path.join(u.bin, p), p); log(p); } });
         if (u.acl && lstatOrNull(u.acl)) runOk(CFG.setfacl, ['--restore=' + u.acl]);
         if (fs.existsSync(uidsFile())) {
@@ -3700,6 +3701,15 @@ function confirmId8(u, bin) {
             fs.writeFileSync(uidsFile(), lines.join('\n'));
             log(uidsFile() + ' +' + u.line);
         }
+        u.moved.forEach(function (p) {
+            if (!isRootfsPath(p)) return;
+            var from = path.join(u.bin, p);
+            ops.push(fs.lstatSync(from).isDirectory() ? { type: 'tree', src: from, path: p } :
+                { type: 'copy', src: from, path: p, mode: 0o644, uid: 0, gid: 0 });
+            log(p);
+        });
+        trashPath(placed, bin, ops, log);
+        rootfsWindow(ops);
         res.ok = true;
         say(u.id + ' ' + u.version + ' was not installed by MainApp-21 at the last start: ' + (u.previous || 'the version before') +
             ' is back, with its data');

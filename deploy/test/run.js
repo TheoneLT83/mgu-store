@@ -4628,7 +4628,13 @@ function testId8Inplace() {
         up.out.includes('updated in place') && root.kills().length === 0 && readJson(root.entry('live8')).userId === 13001 &&
         root.managerLog().includes('update live8 1.1.0 uid 13001 in place') &&
         fs.existsSync(root.pre21('live8', '1.1.0')) && !fs.existsSync(root.pre21('live8', '1.0.0')), up.out);
+    // the update of live8 applied at this start, waiting for MainApp-21
+    const pend = readJson(root.p('var/opt/mgu-deploy/id8/pending.json'));
+    write(root.p('var/opt/mgu-deploy/id8/pending.json'), JSON.stringify(Object.assign({}, pend, { unconfirmed: [{ id: 'live8', version: '1.1.0', previous: '1.0.0', uid: 13001,
+        line: '13001=live8', bin: root.p('var/opt/mgu-deploy/id8/trash/x'), moved: [] }] })));
     const un = root.run(['uninstall', 'live8', '--yes']);
+    check('id8 in place: an uninstall drops the record of the app\'s update waiting for MainApp-21, so it does not come back',
+        readJson(root.p('var/opt/mgu-deploy/id8/pending.json')).unconfirmed === undefined && readJson(root.p('var/opt/mgu-deploy/id8/pending.json')).changes.length === pend.changes.length);
     check('id8 in place: an uninstall is MainApp-21\'s own; package, das lines and listing go, nothing queued, the id kept from the backend', un.status === 0 &&
         un.out.includes('live8 uninstalled in place') && root.kills().length === 0 && !fs.existsSync(root.entry('live8')) &&
         !fs.existsSync(root.pre21('live8', '1.1.0')) && JSON.stringify(id8Das(root)) === JSON.stringify(dasBefore) &&
@@ -4883,7 +4889,7 @@ function testId8Apps() {
         check(`${tag}: installing the installed version again drops its queued removal`, again.status === 0 &&
             again.out.includes('the queued removal of oap-cardash is dropped') && root.status().pending_reboot.length === 0, again.out);
         const up = root.run(['install', '--artifact', rhmiApp('oap-cardash', '1.1.5', ['ID8'], { npm: true, acl: ACL, appletId: 20097 }), '--yes']);
-        check(`${tag}: an update says the installed version and its data go first`, up.status === 0 &&
+        check(`${tag}: an update says the installed version goes first and comes back with its data should MainApp-21 not install the new one`, up.status === 0 &&
             up.out.includes('1.1.4 is uninstalled first and comes back, with its data, if MainApp-21 does not install 1.1.5'), up.out);
         const u = root.run(['uninstall', 'oap-cardash', '--yes']);
         check(`${tag}: uninstall replaces the queued update with a removal`, u.status === 0 &&
