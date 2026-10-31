@@ -1,5 +1,9 @@
 # Updater changelog
 
+## 0.8.9
+
+- Default source: robertnisipeanu/idrive-apps, from its catalog release, added once at the first start of this version (and seeded by the installers, `deploy/sources.json`). Like any source it can be removed; once removed it is not added again.
+
 ## 0.8.8
 
 - A new version of the updater installed from a USB stick or a folder reads the sticks mounted before it takes up the queue the version before left, so a queued install from a stick (one that needed the new updater first) goes ahead instead of failing with `no longer in its source`.
