@@ -185,6 +185,8 @@ function buildArtifact(compDir, outDir) {
         manifest.internet = c.internet;
         manifest.uids = c.uids;
     }
+    // what the deploy tool reads; requires and uninstallable are the catalog's
+    // (release.js), and adding them would change published tools' bytes
     ['mguHmi', 'mguProvides', 'keepRunning', 'crashNames', 'postInstall', 'check', 'activate', 'deactivate'].forEach((k) => {
         if (c[k] !== undefined) {
             manifest[k] = c[k];

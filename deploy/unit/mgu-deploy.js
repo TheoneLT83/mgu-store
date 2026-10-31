@@ -3180,8 +3180,8 @@ function uninstallApp(id, state) {
     leftovers.forEach(function (l) { say('leftover: ' + l); });
     say(id + ' uninstalled');
 }
-/* The version folder whose deactivate ran in this removal, for cmdUninstall
- * to activate again when the removal is rolled back. */
+/* The version folder whose deactivate ran (or started) in this removal, for
+ * cmdUninstall to activate again when the removal does not go through. */
 var deactivated = null;
 function uninstallTool(id, state) {
     var tools = installedTools().filter(function (t) { return t.id === id; });
@@ -3194,9 +3194,9 @@ function uninstallTool(id, state) {
      * keeps the tool. A restart it asks for is pending under the deploy tool,
      * since the tool's own entries go with it. */
     if (c.deactivate) {
-        var hr = runHook(id, path.join(root, 'versions', currentTarget(root)), c, 'deactivate', state);
-        if (!hr.ok) throw refuse(id + ' ' + c.version + ': deactivate ' + hr.why + '; ' + id + ' stays installed');
         deactivated = path.join(root, 'versions', currentTarget(root));
+        var hr = runHook(id, deactivated, c, 'deactivate', state);
+        if (!hr.ok) throw refuse(id + ' ' + c.version + ': deactivate ' + hr.why + '; ' + id + ' stays installed');
         if (hr.reboot) addPending(state, 'mgu-deploy', id + ' removed: ' + hr.reboot);
     }
     (c.units || []).forEach(function (u) {
@@ -5285,11 +5285,13 @@ function cmdUninstall(args) {
         if (e.code !== 2) {
             process.stderr.write('uninstall failed, rolling back from ' + backup + '\n');
             try { restoreSnapshot(backup); settleFallback(); } catch (e2) { process.stderr.write('rollback failed: ' + e2.message + '\n'); }
-            if (deactivated) {
+        }
+        if (deactivated) {
+            try {
                 var back = loadState();
                 reactivate(id, deactivated, back);
                 saveState(back);
-            }
+            } catch (e3) { process.stderr.write(id + ': activating it again failed: ' + e3.message + '\n'); }
         }
         throw e;
     }

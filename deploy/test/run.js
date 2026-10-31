@@ -2458,12 +2458,13 @@ function testHooks() {
 
     n = hooks().length;
     r = root.run(['uninstall', 'fixture-tool', '--yes'], env({ FAKE_HOOK_FAIL: 'deactivate@1.0.4' }));
-    check('hooks: a failed deactivate refuses the removal, exit 2, the tool stays whole',
+    check('hooks: a failed deactivate refuses the removal, exit 2, the tool stays whole and is activated again',
         r.status === 2 && current() === 'versions/1.0.4' && fs.existsSync(root.p('etc/systemd/system/fixture-tool.service')) &&
-        r.out.includes('deactivate exited 3') && r.out.includes('fixture-tool stays installed'), r.out);
+        r.out.includes('deactivate exited 3') && r.out.includes('fixture-tool stays installed') &&
+        hooks().slice(-1)[0].startsWith('activate 1.0.4 '), `${r.out}\n${hooks().slice(-2).join('\n')}`);
     r = root.run(['uninstall', 'fixture-tool', '--yes'], env({ FAKE_HOOK_REBOOT: 'patch removed; the original runs from the next start' }));
     check('hooks: deactivate runs before anything is removed (units in place, still running), then the tool goes',
-        r.status === 0 && hooks()[n + 1] === 'deactivate 1.0.4 cwd=fixture-tool/versions/1.0.4 current=versions/1.0.4 unit=yes active=active' &&
+        r.status === 0 && hooks()[n + 2] === 'deactivate 1.0.4 cwd=fixture-tool/versions/1.0.4 current=versions/1.0.4 unit=yes active=active' &&
         !fs.existsSync(root.tool('fixture-tool')) && !fs.existsSync(root.p('etc/systemd/system/fixture-tool.service')), `${r.out}\n${hooks().join('\n')}`);
     check('hooks: its reboot reason stays pending under the deploy tool, the tool\'s own entries gone',
         pending().some((p) => p.id === 'mgu-deploy' && p.reason === 'fixture-tool removed: patch removed; the original runs from the next start'),

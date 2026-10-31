@@ -803,7 +803,7 @@ them (below).
   previous version's `activate` runs again.
 - `deactivate` runs before a removal changes anything, with the tool's units
   and files in place. A non-zero exit refuses the removal (exit 2) and the
-  tool stays whole; a removal that fails after it is rolled back and the
+  tool stays; a removal that fails after it is rolled back. Either way the
   tool's `activate` runs again. A restart it asks for stays pending under
   `mgu-deploy` (`<id> removed: <reason>`), since the tool's own entries go
   with it.
