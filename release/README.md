@@ -14,6 +14,7 @@ node release/release.js build [<id>...]         # reproducible build of HEAD int
 node release/release.js check [<id>...]         # build twice, compare the artifacts byte for byte
 node release/release.js bump <id> <x.y.z>       # set a component's version
 node release/release.js publish [--dry-run]     # (GitHub Actions) upload the new versions, then the catalog
+tools/emu-gate <id>...                          # (this Mac) the emulator gate for mgu-render / robertn_store
 ```
 
 ## Components
@@ -53,6 +54,25 @@ The store shows the app under the en_GB text of its first entry point.
 `native/mgu-updater/component.json`), and optionally `internet` with
 `uids` (deploy/README.md, "Internet for selected components") and the
 catalog fields `requires`, `optional`, `uninstallable`, `mguHmi`, `mguProvides`.
+
+## The emulator gate
+
+A new version of `mgu-render` or `robertn_store` is published to GitHub only
+after it passed in the head-unit emulator, which runs on the owner's Mac:
+
+```sh
+tools/emu-gate mgu-render          # 4 to 8 min a component
+git add release/gate/mgu-render.json && git commit -m "mgu-render x.y.z: emulator gate"
+```
+
+It installs this commit's build on its own over the published release and
+checks that the Store's picture stays on the screen when other programs
+change the screen's layers and when the renderer and head unit restart
+(the cases: `tools/emu-gate`). Passing, it writes `release/gate/<id>.json`
+for that version and build; `release.js publish` refuses a new version
+without one, so any later change to what the component ships needs the gate
+again. It needs Docker, `gh` signed in and the mgu-emulator checkout
+(`MGU_EMULATOR`, default `~/workspaces/personal/mgu-emulator`).
 
 ## Versions
 

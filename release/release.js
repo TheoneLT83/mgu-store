@@ -14,6 +14,10 @@
  *   node release/release.js publish [<id>...] [--dry-run]
  *                                                     upload new versions, then the catalog
  *
+ * A component in GATED publishes a new version to GitHub only with a passing
+ * emulator gate record for its exact build, release/gate/<id>.json
+ * (tools/emu-gate).
+ *
  * Builds run on a clean `git archive HEAD` export, never on the working tree,
  * with SOURCE_DATE_EPOCH set to the last commit that touched what the
  * component ships (an app's staged tree, a tool's folder): the same tree
@@ -27,6 +31,8 @@ const crypto = require('crypto');
 
 const REPO = path.resolve(__dirname, '..');
 const OUT = path.join(__dirname, 'out');
+// what draws an app's picture: published only after tools/emu-gate passed on its source
+const GATED = ['mgu-render', 'robertn_store'];
 const DEPLOY = path.join('deploy', 'hu');
 const publishTarget = require('./publish');
 const { compareVersions, hmiList, SEMVER } = require('../native/mgu-updater/js/catalog.js');
@@ -217,6 +223,48 @@ function select(all, ids) {
  * publishing then asks for a new version. */
 function sourceEpoch(c) {
     return git(['log', '-1', '--format=%ct', 'HEAD', '--'].concat(c.shipped));
+}
+
+/* The last commit that touched what the component ships, and for a tool its
+ * packer: its source, as the emulator gate tested it. A merge commit that
+ * brings the change in unaltered keeps it (history simplification follows the
+ * parent it came from). An app's build also copies files in from elsewhere;
+ * its artifact builds to the same bytes on the Mac and in CI (Reproducible
+ * builds), so its record names those. */
+function sourceCommit(c) {
+    const packer = c.kind === 'tool' ? ['deploy/hu', 'tools/oap_pack.js'] : [];
+    return git(['log', '-1', '--format=%H', 'HEAD', '--'].concat(c.shipped, packer));
+}
+
+/* Why a gated component's version may not be published: no gate record, or
+ * one for another version, source or (an app) artifact, or one that did not
+ * pass. null: it may. */
+function gateProblem(c, record, source, sha256) {
+    if (!GATED.includes(c.id)) {
+        return null;
+    }
+    const run = `run tools/emu-gate ${c.id} and commit release/gate/${c.id}.json`;
+    if (!record) {
+        return `${c.id}@${c.version} has no emulator gate record: ${run}`;
+    }
+    if (record.id !== c.id || record.version !== c.version || record.source !== source) {
+        return `${c.id}@${c.version}: the gate record is for ${record.id}@${record.version} at ${String(record.source).slice(0, 12)}, ` +
+            `not this source (${source.slice(0, 12)}): ${run}`;
+    }
+    if (c.kind === 'app' && record.artifactSha256 !== sha256) {
+        return `${c.id}@${c.version}: the gate tested the artifact ${String(record.artifactSha256).slice(0, 12)}, ` +
+            `this build is ${sha256.slice(0, 12)}: ${run}`;
+    }
+    if (record.result !== 'pass') {
+        return `${c.id}@${c.version}: the emulator gate did not pass: ${run}`;
+    }
+    return null;
+}
+
+/* the record committed at HEAD: publish builds HEAD, so a record only on disk does not count */
+function gateRecord(id) {
+    const r = cp.spawnSync('git', ['show', `HEAD:release/gate/${id}.json`], { cwd: REPO, encoding: 'utf8' });
+    return r.status === 0 ? JSON.parse(r.stdout) : null;
 }
 
 function exportHead() {
@@ -529,9 +577,16 @@ function cmdPublish(ids, dryRun) {
     const skipped = [];
     const built = build(ids, staging, skipped);
     const uploads = [];
+    const all = components();
     built.forEach((e) => {
         const p = current.get(e.id);
-        if (p && p.version === e.version && p.artifact.sha256 !== e.artifact.sha256) {
+        const c = all.find((x) => x.id === e.id);
+        // the gate binds what reaches cars; a folder (a test stick) takes any build
+        const gate = publishTarget.describe().startsWith('github:') && (!p || p.version !== e.version) &&
+            gateProblem(c, gateRecord(c.id), sourceCommit(c), e.artifact.sha256);
+        if (gate) {
+            skipped.push(gate);
+        } else if (p && p.version === e.version && p.artifact.sha256 !== e.artifact.sha256) {
             skipped.push(`${e.id}@${e.version} is published with other content: bump its version to publish it`);
         } else if (p && compareVersions(e.version, p.version) < 0) {
             skipped.push(`${e.id}@${e.version} is older than the published ${p.version}`);
@@ -592,4 +647,4 @@ if (require.main === module) {
     }
 }
 
-module.exports = { components, compareVersions, unmetRequires };
+module.exports = { components, compareVersions, unmetRequires, sourceCommit, gateProblem, GATED };
