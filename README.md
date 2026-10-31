@@ -43,8 +43,9 @@ Adding a GitHub repository: pick its releases, tags or a branch.
 
 - A computer (Windows 10/11, macOS or Linux) with
   [Node.js](https://nodejs.org) 18 or newer and the OpenSSH client.
-- Root SSH access to the head unit and root's private key. Getting root
-  access is not covered here.
+- Root SSH access to the head unit and root's private key. Tools such as
+  [idrive7-8-ssh-root](https://github.com/cauliflowermossgrape/idrive7-8-ssh-root)
+  set it up over an ENET cable.
 - A way to reach the head unit's SSH: the car's Wi-Fi hotspot (default
   address `172.16.222.97`), ENET, or any other SSH route.
 - The car parked and on stable power until the install finishes.
