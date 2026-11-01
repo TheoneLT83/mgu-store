@@ -749,6 +749,107 @@ function readJsonOrNull(p) {
     }
 }
 
+/* ---- the bind over main.js ------------------------------------------------------------ */
+
+/* A fake root whose mount and umount keep a table of binds, which the
+ * deploy tool reads as /proc would show them. */
+function bindRoot(bundle) {
+    // bundle: MainApp 6.5.5's shape, main.js a stub that runs main.bundle.js, the target of the bind
+    const root = fakeRoot(bundle ? { main: '// bytecode-loader stub\n' } : {});
+    if (bundle) {
+        write(root.p('usr/lib/oap-mainapp/src/main.bundle.js'), stockMain());
+    }
+    const table = root.p('binds.tsv');
+    Object.assign(root.env, { MGU_DEPLOY_FAKE_BINDS: table, MGU_DEPLOY_MOUNT: path.join(HERE, 'fake_mount.sh'),
+        MGU_DEPLOY_UMOUNT: path.join(HERE, 'fake_umount.sh') });
+    const stub = root.p('usr/lib/oap-mainapp/src/main.js');
+    const main = bundle ? root.p('usr/lib/oap-mainapp/src/main.bundle.js') : stub;
+    const copy = root.p('var/opt/mgu-deploy/main.js');
+    root.binds = () => (fs.existsSync(table) ? fs.readFileSync(table, 'utf8') : '').split('\n').filter(Boolean)
+        .map((l) => l.split('\t')).filter((f) => f[0] === main);
+    // nothing bound over main.js, or one bind of the fallback copy as it is now
+    root.bindSound = () => {
+        const b = root.binds();
+        if (bundle && fs.readFileSync(table, 'utf8').split('\n').some((l) => l.split('\t')[0] === stub)) {
+            return false;
+        }
+        return b.length === 0 || (b.length === 1 && b[0][1] === copy && fs.existsSync(copy) &&
+            Number(b[0][2]) === fs.statSync(copy).ino);
+    };
+    root.copy = copy;
+    root.main = main;
+    return root;
+}
+
+function testMainBind() {
+    [false, true].forEach((bundle) => mainBindCases(bundle));
+}
+
+function mainBindCases(bundle) {
+    const c = (name, cond, detail) => check(bundle ? name.replace('main.js bind:', 'main.bundle.js bind:') : name, cond, detail);
+    // a first install the manager stops after the uid, before its registry entry, rolled back
+    let root = bindRoot(bundle);
+    const uids = root.p(`var/opt/public/oap/oap_${MGR}/security/uids.txt`);
+    root.run(['install', '--artifact', privacyArtifact(), '--yes']);
+    const r = root.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes'], { FAKE_MGR_UID_ONLY: '1' });
+    c('main.js bind: a rolled-back first install leaves main.js stock or bound to the fallback copy there is',
+        r.status !== 0 && r.out.includes('rolling back fixture_app') && root.bindSound(),
+        `${r.out}\nbinds: ${JSON.stringify(root.binds())} copy ${fs.existsSync(root.copy)}`);
+    c('main.js bind: the rolled-back first install leaves no uids.txt line for the app',
+        fs.readFileSync(uids, 'utf8') === '13000=stock_app\n', fs.readFileSync(uids, 'utf8'));
+    // a first install the manager rejects, rolled back, then restore stock, with a line an earlier attempt left
+    root = bindRoot(bundle);
+    const uids2 = root.p(`var/opt/public/oap/oap_${MGR}/security/uids.txt`);
+    root.run(['install', '--artifact', privacyArtifact(), '--yes']);
+    fs.appendFileSync(uids2, '13007=fixture_app\n');
+    const rj = root.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes'], { FAKE_MGR_REJECT: '1' });
+    c('main.js bind: a rejected first install, rolled back, leaves main.js stock or bound to the copy there is',
+        rj.status !== 0 && root.managerLog().includes('rejected install fixture_app 1.0.0') && root.bindSound(),
+        `${rj.out}\nbinds: ${JSON.stringify(root.binds())}`);
+    c('main.js bind: the rejected first install takes out the uids.txt line an earlier attempt left',
+        fs.readFileSync(uids2, 'utf8') === '13000=stock_app\n' && rj.out.includes('removed 13007=fixture_app'), `${fs.readFileSync(uids2, 'utf8')}\n${rj.out}`);
+    const rs = root.run(['restore', 'stock', '--yes']);
+    c('main.js bind: restore stock after the rejected install succeeds in one run, main.js stock',
+        rs.status === 0 && rs.out.includes('restored from stock') && root.binds().length === 0, rs.out);
+    // a failed first install of a second app with the fallback on: the copy it changed is bound again
+    root = bindRoot(bundle);
+    root.run(['install', '--artifact', privacyArtifact(), '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
+    const second = root.run(['install', '--artifact', appArtifact('second_app', '1.0.0', true), '--yes'], { FAKE_MGR_REJECT: '1' });
+    c('main.js bind: with the fallback on, a rolled-back install leaves the copy there bound',
+        second.status !== 0 && root.binds().length === 1 && root.bindSound(), `${second.out}\nbinds: ${JSON.stringify(root.binds())}`);
+    // restore stock in one run from a bind over a fallback copy deleted since
+    root = bindRoot(bundle);
+    root.run(['install', '--artifact', privacyArtifact(), '--yes']);
+    write(root.copy, 'stale copy\n');
+    write(root.p('binds.tsv'), `${root.main}\t${root.copy}\t${fs.statSync(root.copy).ino}\n`);
+    fs.unlinkSync(root.copy);
+    let res = root.run(['restore', 'stock', '--yes']);
+    c('main.js bind: restore stock from a bind of a deleted copy succeeds in one run, main.js stock',
+        res.status === 0 && res.out.includes('restored from stock') && root.binds().length === 0 &&
+        !fs.existsSync(root.tool('app-privacy')), `${res.out}\nbinds: ${JSON.stringify(root.binds())}`);
+    // and from a bind of a copy replaced since, with the fallback on
+    root = bindRoot(bundle);
+    root.run(['install', '--artifact', privacyArtifact(), '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
+    const on = root.binds().length === 1 && root.bindSound();
+    fs.writeFileSync(`${root.copy}.new`, fs.readFileSync(root.copy));
+    fs.renameSync(`${root.copy}.new`, root.copy);
+    res = root.run(['restore', 'stock', '--yes']);
+    c('main.js bind: restore stock from a bind of a replaced copy succeeds in one run, main.js stock',
+        on && res.status === 0 && res.out.includes('restored from stock') && root.binds().length === 0,
+        `${on}\n${res.out}\nbinds: ${JSON.stringify(root.binds())}`);
+    // uninstalling app-privacy (its revert under the bind) with the copy gone binds nothing missing
+    root = bindRoot(bundle);
+    root.run(['install', '--artifact', privacyArtifact(), '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
+    root.run(['uninstall', 'fixture_app', '--yes']);
+    write(root.copy, 'stale copy\n');
+    write(root.p('binds.tsv'), `${root.main}\t${root.copy}\t${fs.statSync(root.copy).ino}\n`);
+    fs.unlinkSync(root.copy);
+    const un = root.run(['uninstall', 'app-privacy', '--yes']);
+    c('main.js bind: app-privacy\'s revert with the bound copy deleted binds no missing copy',
+        un.status === 0 && !un.out.includes('does not exist') && root.bindSound(),
+        `${un.out}\nbinds: ${JSON.stringify(root.binds())}`);
+}
+
 /* ---- backups and restore --------------------------------------------------------------- */
 
 function testRestore() {
@@ -935,6 +1036,30 @@ function testFallback() {
     b = bootRun();
     check('boot unit: a copy that does not parse is not bound, the unit succeeds', b.status === 0 && !fs.existsSync(mounts) &&
         b.stderr.includes('SyntaxError'), `${b.stdout}${b.stderr}`);
+
+    // MainApp 6.5.5 shape: main.js is a bytecode-loader stub, main.bundle.js holds the bundle
+    const boot655 = fakeRoot({ main: '// bytecode-loader stub\n' });
+    write(boot655.p('usr/lib/oap-mainapp/src/main.bundle.js'), stockMain());
+    const fb655 = boot655.run(['fallback', 'on', '--yes']);
+    check('MainApp 6.5.5 (.bundle.js): fallback on builds from main.bundle.js when main.js is a stub',
+        fb655.status === 0 && fs.existsSync(boot655.p('var/opt/mgu-deploy/main.js')), fb655.out);
+    const hookStub = (input) => {
+        const out = path.join(fs.mkdtempSync(path.join(T, 'hook-')), 'main.js');
+        cp.execFileSync(UNIT_NODE, [path.join(HERE, '..', 'unit', 'fallback_build.js'), input, out, path.join(T, 'none.json')]);
+        return (/const stub=([^,]*),ops=/.exec(fs.readFileSync(out, 'utf8')) || [])[1];
+    };
+    check('in-place hook: the controller\'s appManager is the installer, without a controller (6.5.5) appManager itself',
+        hookStub(path.join(HERE, 'fixtures', 'main_queue.js')) === 'mgr&&mgr.appManager' &&
+        hookStub(path.join(HERE, 'fixtures', 'main.js')) === 'mgr&&(mgr.appManager||mgr)');
+    const mounts655 = boot655.p('mounts.log');
+    const cmd655 = fs.readFileSync(path.join(HERE, '..', 'unit', 'mgu-app-fallback.service'), 'utf8')
+        .match(/^ExecStart=\/bin\/sh -c '(.*)'$/m)[1]
+        .split('/usr/bin/node').join(UNIT_NODE).split('/var/opt/').join(boot655.p('var/opt/'))
+        .split('/usr/lib/').join(boot655.p('usr/lib/'));
+    const b655 = cp.spawnSync('sh', ['-c', `mount() { echo "$*" >> '${mounts655}'; }; ${cmd655}`], { encoding: 'utf8' });
+    check('MainApp 6.5.5 (.bundle.js): boot unit builds from and binds over main.bundle.js', b655.status === 0 &&
+        fs.readFileSync(mounts655, 'utf8').trim() ===
+        `--bind ${boot655.p('var/opt/mgu-deploy/main.js')} ${boot655.p('usr/lib/oap-mainapp/src/main.bundle.js')}`, `${b655.stdout}${b655.stderr}`);
 }
 
 /* The fallback built from the fixture main.js, run: its handle() is
@@ -1364,6 +1489,23 @@ function testMainApp811() {
         fr.status !== 0 && fr.out.includes('the app manager could not update fixture_app 1.1.0 after its restart') &&
         f.kills().length >= fk + 1, fr.out);
     stopHooked(f);
+}
+
+/* MainApp 6.5.5: main.js is a bytecode-loader stub that runs main.bundle.js,
+ * and its restarted manager installs no app at its start. */
+function testMainApp655() {
+    const root = fakeRoot({ mainapp811: true, main: '// bytecode-loader stub\n' });
+    write(root.p('usr/lib/oap-mainapp/src/main.bundle.js'), stockMain());
+    const r = root.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes'],
+        { FAKE_MGR_HOOK: '1', FAKE_MGR_NO_START_INSTALL: '1' });
+    const log = root.managerLog();
+    let killAt = -1;
+    log.forEach((l, i) => { if (l.startsWith('kill ')) killAt = i; });
+    check('MainApp 6.5.5: a fresh install through a bounce is made in place by the restarted manager',
+        r.status === 0 && root.kills().length === 1 && r.out.includes('through a bounce') &&
+        r.out.includes('installed in place by the app manager') && killAt >= 0 &&
+        log.indexOf('install fixture_app 1.0.0 uid 13001 in place') > killAt, `${r.out}\n${log.join('\n')}`);
+    stopHooked(root);
 }
 
 /* The certification service in the app's SOME/IP manifest: MainApp's install gets its keychain through it. */
@@ -5844,6 +5986,7 @@ const SUITES = [
     testApps,
     testBounceGuard,
     testNoManagerInstall,
+    testMainBind,
     testRestore,
     testPrivacyRevert,
     testPrivacySkipped,
@@ -5852,6 +5995,7 @@ const SUITES = [
     testInplace,
     testCertCopy,
     testMainApp811,
+    testMainApp655,
     testCertificationProxy,
     testUnknownInterfaces,
     testInterrupted,
