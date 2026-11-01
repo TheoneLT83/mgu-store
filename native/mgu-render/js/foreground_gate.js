@@ -10,7 +10,12 @@
  * The HMI serves every app's RHMI as an instance of
  * de.bmw.infotainment.hmi.remote.RemoteHmiApplication (iDrive 7) or
  * remote2.RemoteHmiApplication2 (iDrive 8), described where the unit's app
- * manager keeps it (INTERFACES, the first there). The instance's uuid
+ * manager keeps it (INTERFACES, the first there; some iDrive 7 firmware has
+ * none of them, and then the copy of the iDrive 7 one MainApp's installer
+ * writes into <apps>/oap_<uid>/someipInterfaces/ for each app whose manifest
+ * names the interface, the one with the most instances; before those, any in the src-gen folders of
+ * the packages under /usr/lib). Without any, it
+ * prints one line, "unavailable", and exits. The instance's uuid
  * field is the app's RHMI uuid, and its applicationStack field has a ROOT_APP
  * entry while the app's screen is in front. Installed apps live in
  * <apps>/oap_<uid>/, which only the app manager creates, with the RHMI uuid in
@@ -32,83 +37,115 @@ const fs = require('fs');
 const path = require('path');
 
 const MAX_APP_JSON = 65536;
+const MAX_INTERFACE_JSON = 4 << 20;
 
+const ID7_INTERFACE = 'de_bmw_infotainment_hmi_remote_RemoteHmiApplication.json';
 const INTERFACES = [
-    '/usr/lib/oap-mainapp/src-gen/de_bmw_infotainment_hmi_remote_RemoteHmiApplication.json',
-    '/usr/lib/oap-mainapp21/src-gen/someip/de_bmw_infotainment_hmi_remote2_RemoteHmiApplication2.json'
+    `/usr/lib/oap-mainapp/src-gen/${ID7_INTERFACE}`,
+    '/usr/lib/oap-mainapp21/src-gen/someip/de_bmw_infotainment_hmi_remote2_RemoteHmiApplication2.json',
+    `/usr/lib/oap-mainapp/src-gen/someip/${ID7_INTERFACE}`
 ];
 const DEFAULTS = {
     someip: '/usr/lib/someip.node',
-    interface: null,
     apps: '/var/opt/public/oap'
 };
 
-/* The interface description: where the app manager keeps it, else (another app manager build, MainApp
- * 6.5.5's single bundle has no src-gen of its own) the first such file in a src-gen folder of a package
- * under /usr/lib, two levels deep at most; null without one. */
-function findInterface(root) {
-    const known = INTERFACES.find((f) => fs.existsSync(f));
-    if (known) {
-        return known;
+/* The parsed JSON of a regular file of at most max bytes; undefined otherwise. */
+function readJson(file, max) {
+    let fd = -1;
+    try {
+        fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NONBLOCK);
+        const st = fs.fstatSync(fd);
+        if (st.isFile() && st.size <= max) {
+            const buf = Buffer.alloc(st.size);
+            fs.readSync(fd, buf, 0, st.size, 0);
+            return JSON.parse(buf.toString('utf8'));
+        }
+    } catch (e) {
+        // missing or not JSON
+    } finally {
+        if (fd >= 0) {
+            fs.closeSync(fd);
+        }
     }
+    return undefined;
+}
+
+function instanceCount(config) {
+    return config && config.instances && typeof config.instances === 'object'
+        ? Object.keys(config.instances).length : 0;
+}
+
+/* Interface descriptions in the src-gen folders of the packages under lib, two levels deep at most
+ * (another app manager build, as MainApp 6.5.5's single bundle). */
+function srcGenInterfaces(lib) {
     const want = /^de_bmw_infotainment_hmi_remote2?_RemoteHmiApplication2?\.json$/;
+    const out = [];
     const look = (dir, depth) => {
         let names = [];
         try {
-            names = fs.readdirSync(dir);
+            names = fs.readdirSync(dir).sort();
         } catch (e) {
-            return null;
+            return;
         }
-        const hit = names.find((n) => want.test(n));
-        if (hit) {
-            return path.join(dir, hit);
-        }
-        if (depth === 0) {
-            return null;
-        }
-        for (const n of names) {
-            const found = look(path.join(dir, n), depth - 1);
-            if (found) {
-                return found;
+        names.forEach((n) => {
+            if (want.test(n)) {
+                out.push(path.join(dir, n));
+            } else if (depth > 0) {
+                look(path.join(dir, n), depth - 1);
             }
-        }
-        return null;
+        });
     };
     let pkgs = [];
     try {
-        pkgs = fs.readdirSync(root || '/usr/lib');
+        pkgs = fs.readdirSync(lib).sort();
     } catch (e) {
-        return null;
+        // no packages
     }
-    for (const p of pkgs) {
-        const found = look(path.join(root || '/usr/lib', p, 'src-gen'), 2);
-        if (found) {
-            return found;
+    pkgs.forEach((p) => look(path.join(lib, p, 'src-gen'), 2));
+    return out;
+}
+
+/* The interface description: { file, config }, or null when there is none. */
+function findInterface(files, appsDir, libDir) {
+    for (const file of files.concat(srcGenInterfaces(libDir || '/usr/lib'))) {
+        const config = readJson(file, MAX_INTERFACE_JSON);
+        if (instanceCount(config)) {
+            return { file, config };
         }
     }
-    return null;
+    let best = null;
+    let names = [];
+    try {
+        names = fs.readdirSync(appsDir).filter((n) => /^oap_\d+$/.test(n)).sort();
+    } catch (e) {
+        // no apps
+    }
+    names.forEach((name) => {
+        const file = path.join(appsDir, name, 'someipInterfaces', ID7_INTERFACE);
+        const config = readJson(file, MAX_INTERFACE_JSON);
+        if (instanceCount(config) > (best ? instanceCount(best.config) : 0)) {
+            best = { file, config };
+        }
+    });
+    return best;
 }
 
 /* The uids the app manager has registered: its registry, <apps>/oap_12201/data/apps/<appId>.json
  * (its own folder: an app cannot write there), each with the app's userId. */
 function registeredUids(dir) {
     const out = new Set();
-    const reg = path.join(dir, 'oap_12201', 'data', 'apps');
     let names = [];
     try {
-        names = fs.readdirSync(reg);
+        names = fs.readdirSync(path.join(dir, 'oap_12201', 'data', 'apps'));
     } catch (e) {
         return out;
     }
     names.filter((n) => /\.json$/.test(n)).forEach((n) => {
-        try {
-            const st = fs.statSync(path.join(reg, n));
-            const uid = st.isFile() && st.size <= MAX_APP_JSON ? JSON.parse(fs.readFileSync(path.join(reg, n), 'utf8')).userId : null;
-            if (typeof uid === 'number' && uid % 1 === 0) {
-                out.add(uid);
-            }
-        } catch (e) {
-            // not a registry entry
+        const entry = readJson(path.join(dir, 'oap_12201', 'data', 'apps', n), MAX_APP_JSON);
+        const uid = entry && entry.userId;
+        if (typeof uid === 'number' && uid % 1 === 0) {
+            out.add(uid);
         }
     });
     return out;
@@ -130,23 +167,8 @@ function readApps(dir, log) {
         if (!m) {
             return;
         }
-        let uuid;
-        let fd = -1;
-        try {
-            fd = fs.openSync(path.join(dir, name, 'rhmiData', 'application.json'),
-                fs.constants.O_RDONLY | fs.constants.O_NONBLOCK);
-            const st = fs.fstatSync(fd);
-            if (st.isFile() && st.size <= MAX_APP_JSON) {
-                const buf = Buffer.alloc(st.size);
-                fs.readSync(fd, buf, 0, st.size, 0);
-                uuid = JSON.parse(buf.toString('utf8')).application.uuid;
-            }
-        } catch (e) {
-            // not a readable app description: no claim
-        }
-        if (fd >= 0) {
-            fs.closeSync(fd);
-        }
+        const desc = readJson(path.join(dir, name, 'rhmiData', 'application.json'), MAX_APP_JSON);
+        const uuid = desc && desc.application && desc.application.uuid;
         if (typeof uuid === 'string') {
             claims.set(uuid, (claims.get(uuid) || []).concat(Number(m[1])));
         }
@@ -154,12 +176,8 @@ function readApps(dir, log) {
     const apps = new Map();
     let registered = null;
     claims.forEach((uids, uuid) => {
-        if (uids.length === 1) {
-            apps.set(uuid, uids[0]);
-            return;
-        }
-        registered = registered || registeredUids(dir);
-        const live = uids.filter((uid) => registered.has(uid));
+        registered = uids.length > 1 ? registered || registeredUids(dir) : registered;
+        const live = uids.length > 1 ? uids.filter((uid) => registered.has(uid)) : uids;
         if (live.length === 1) {
             apps.set(uuid, live[0]);
         } else {
@@ -240,28 +258,28 @@ if (require.main === module) {
         opt[process.argv[i].replace(/^--/, '')] = process.argv[i + 1];
     }
     const reportFd = Number(process.env.MGU_RENDER_REPORT_FD) || 1;
+    const write = (s) => fs.writeSync(reportFd, s);
+    const log = (s) => process.stderr.write(`foreground gate: ${s}\n`);
+    const found = opt.interface
+        ? { file: opt.interface, config: JSON.parse(fs.readFileSync(opt.interface, 'utf8')) }
+        : findInterface(INTERFACES, opt.apps);
+    if (!found) {
+        log(`no RemoteHmiApplication interface description (${INTERFACES.join(', ')}, ${opt.apps}/oap_*/someipInterfaces/)`);
+        write('unavailable\n');
+        process.exit(0);
+    }
+    if (found.file !== INTERFACES[0]) {
+        log(`interface: ${found.file}`);
+    }
     process.stdin.on('end', () => process.exit(0));
     process.stdin.resume();
-    const log = (s) => process.stderr.write(`foreground gate: ${s}\n`);
-    const iface = opt.interface || findInterface();
-    let interfaceConfig = null;
-    try {
-        interfaceConfig = JSON.parse(fs.readFileSync(iface, 'utf8'));
-    } catch (e) {
-        // this unit's app manager has no description of the RHMI interface: the gate cannot tell which
-        // app is in front, and says so once (the renderer then shows the apps as without a gate)
-        log(`no RemoteHmiApplication interface description (${iface || 'none found'}): ${e.message}`);
-        fs.writeSync(reportFd, 'foreground unavailable\n');
-    }
-    if (interfaceConfig) {
-        startGate({
-            someip: require(opt.someip),
-            interfaceConfig,
-            appsDir: opt.apps,
-            write: (s) => fs.writeSync(reportFd, s),
-            log
-        });
-    }
+    startGate({
+        someip: require(opt.someip),
+        interfaceConfig: found.config,
+        appsDir: opt.apps,
+        write,
+        log
+    });
 }
 
-module.exports = { startGate, readApps, hasRootApp, findInterface };
+module.exports = { startGate, readApps, hasRootApp, findInterface, INTERFACES };

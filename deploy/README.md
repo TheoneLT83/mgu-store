@@ -7,6 +7,7 @@ snapshots every change first, and restores a snapshot on request.
 | Part | Runs on | What it does |
 |---|---|---|
 | `deploy/mgu-install.js` | the owner's computer (Node 18+; Windows, macOS, Linux) | the first install over SSH from the published release, the updater's tokens, USB sticks as local repos |
+| `deploy/install.sh`, `deploy/install.ps1`, `deploy/installer/` | the owner's computer, without Node | run `mgu-install.js` as a standalone executable from the `installer` release |
 | `deploy/hu` | the Mac (system Node) | packs tool artifacts, installs components built from this checkout over SSH (development) |
 | `deploy/sources.json` | | the updater's sources the installers seed: the Store's own, idrive7-apps, idrive-apps and car-apps |
 | `deploy/transport/` | the Mac (system `python3`) | finds the unit's sshd over ENET or the hotspot, relays ENET, and the `--arm-debug` bootstrap |
@@ -272,6 +273,34 @@ node mgu-install.js usb-repo <stick folder> [<input>...]
 node .\mgu-install.js first-install --identity $HOME\.ssh\mgu_root_key --token
 node .\mgu-install.js token --host 192.168.1.50 --identity $HOME\.ssh\mgu_root_key --list
 node .\mgu-install.js usb-repo E:\ github:robertnisipeanu/mgu-store
+```
+
+**Without Node.** The `installer` release of `TheoneLT83/mgu-store`
+holds `mgu-install.js` built into standalone executables (Node single
+executable applications, Node 24 built in): `mgu-install-<os>-<cpu>.gz` for
+`windows-x64.exe`, `windows-arm64.exe`, `macos-arm64`, `macos-x64`,
+`linux-x64` and `linux-arm64`, and their `SHA256SUMS`.
+`.github/workflows/installer.yml` builds them on each system
+(`deploy/installer/build.sh`), tests them, and replaces the assets when
+`mgu-install.js` changes on main. `deploy/install.sh` (POSIX sh) and
+`deploy/install.ps1` (Windows PowerShell 5.1 and PowerShell 7) pick the
+one for the computer, download it and `SHA256SUMS` to a temporary folder,
+refuse it when its sha256 differs, unpack it, run it with their own
+arguments, delete it, and return its exit status (1 when it could not be
+fetched); `MGU_INSTALL_DOWNLOAD` names another folder of the same files.
+Through `curl | sh` the executable's stdin is the terminal, for the token
+prompt; a token on stdin goes to the executable or `mgu-install.js`
+directly. install.ps1 starts the executable with each argument quoted
+for the Windows C runtime, so spaces, quotes and trailing backslashes
+arrive whole in both PowerShells, and leaves its exit status in
+`$LASTEXITCODE`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/TheoneLT83/mgu-store/main/deploy/install.sh | sh -s -- usb-repo /Volumes/STICK
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/TheoneLT83/mgu-store/main/deploy/install.ps1))) token --identity $HOME\.ssh\mgu_root_key --list
 ```
 
 **first-install** reads the `catalog` release of
@@ -944,6 +973,14 @@ The app manager installs our apps itself.
   an app install is refused. The installer runs its `apply --json` and
   bounces the manager when the patch changed or the running manager predates
   it.
+- **Coding.** On iDrive 7, oapcontroller starts MainApp only when the head
+  unit's coding (`/dev/shm/rawcodingdata`) is valid and is not the default
+  values (with the default values, its journal says only `Coding base:
+  Default values flag is set, default values will be used`). With no app
+  manager running and such a coding, an install with an app to install or
+  update is refused before anything changes (exit 2), telling the user to
+  have the head unit coded to the car, restart it and install again. Tools
+  install as usual.
 - **Fresh install.** The manager installs an app it has no registry entry
   for: a full install from `preinstalled_apps` (its someip interfaces and
   their ACLs, its folders, its CertificateManager keychain, and the lowest
@@ -1511,7 +1548,7 @@ stdout, read-only, taking no lock, of this shape:
 ## Tests
 
 ```sh
-node deploy/test/run.js              # MGU_TEST_ONLY=testKit,... runs those test functions only
+node deploy/test/run.js              # MGU_TEST_ONLY=testKit,... runs those test functions only; MGU_TEST_INSTALL_EXE=<file> runs an mgu-install executable in place of the script
 sh deploy/test/run.sh                # in Docker: the unit's code on Node 8.16.2 (MGU_TEST_UNIT_NODE)
 node tools/test/run.js               # the linker and packer; sh tools/test/run.sh: on Node 8.16.2
 ```

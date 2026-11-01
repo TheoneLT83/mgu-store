@@ -29,3 +29,14 @@ assert.strictEqual(apps.has('u-three'), false, 'two folders, none registered: le
 assert.ok(logs.some((l) => /u-three/.test(l)) && !logs.some((l) => /u-two/.test(l)), logs.join('\n'));
 fs.rmSync ? fs.rmSync(root, { recursive: true, force: true }) : null;
 console.log('test_gate_apps: 3 checks pass');
+
+/* findInterface: a description in a package's src-gen folder under /usr/lib, when none of the known files is there */
+const { findInterface } = require('../js/foreground_gate.js');
+const lib = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-lib-'));
+fs.mkdirSync(path.join(lib, 'oap-mainapp-655', 'src-gen', 'someip'), { recursive: true });
+const desc = path.join(lib, 'oap-mainapp-655', 'src-gen', 'someip', 'de_bmw_infotainment_hmi_remote_RemoteHmiApplication.json');
+fs.writeFileSync(desc, JSON.stringify({ instances: { a: {} } }));
+const found = findInterface([path.join(lib, 'missing.json')], path.join(lib, 'no-apps'), lib);
+assert.strictEqual(found && found.file, desc, 'src-gen description found');
+assert.strictEqual(findInterface([], path.join(lib, 'no-apps'), path.join(lib, 'none')), null, 'none: null');
+fs.rmSync ? fs.rmSync(lib, { recursive: true, force: true }) : null;

@@ -76,12 +76,12 @@ int gate_front(uint32_t uid)
 static void report(const char *l)
 {
     nfront = 0;
-    reported = 1;
-    unavailable = !strcmp(l, "foreground unavailable");
-    if (unavailable) {
-        log_warn("foreground gate: it cannot tell which app is in front on this unit; apps show as without it");
+    if (!strcmp(l, "unavailable")) {
+        unavailable = 1;
+        log_warn("foreground gate: it cannot tell which app is in front on this unit; it is not started again");
         return;
     }
+    reported = 1;
     if (strncmp(l, "foreground", 10)) {
         log_warn("foreground gate: unexpected line '%s': no app in front", l);
         return;
@@ -108,7 +108,6 @@ int gate_read(void)
             gate_stop();
             nfront = 0;
             reported = 0;
-            unavailable = 0;
             len = 0;
             return -1;
         }

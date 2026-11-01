@@ -1,5 +1,11 @@
 # mgu-render changelog
 
+## 0.6.14
+
+- robertnisipeanu/mgu-store's 0.6.9 with this repository's renderer: its foreground gate replaces 0.6.12's. The description is looked for in the known files, then in the `src-gen` folders of the packages under `/usr/lib` (0.6.12's search), then in the apps' `someipInterfaces` copies; a uuid two folders claim still goes to the registered one (0.6.11). With no description the renderer offers gated apps no mode (they keep their own screens) instead of showing them without a gate. Its notes:
+  - The foreground gate finds the HMI's `RemoteHmiApplication` description on iDrive 7 firmware that keeps it elsewhere: after `/usr/lib/oap-mainapp/src-gen/` and the iDrive 8 one, `/usr/lib/oap-mainapp/src-gen/someip/`, then the copy MainApp's installer writes for each app whose manifest names the interface (`/var/opt/public/oap/oap_<uid>/someipInterfaces/`, the one with the most instances).
+  - With no description anywhere, the gate says so (`unavailable`) and is not started again. mgu-render/1 apps it gates are offered no mode, so they keep their own screens (the Store its widget screens); those connected before are disconnected once and get that on their next connection.
+
 ## 0.6.13
 
 - Touch: the divert rule goes to nft in a file (`/tmp/mgu-render-nft-*`), and a load counts only when the table is then there. The nft of MainApp 6.5.5 cars cannot read a script from `-`: the rule never went in while the log said `touch: diverted`, and touches never reached the Store or the apps.

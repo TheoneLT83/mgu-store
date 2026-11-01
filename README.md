@@ -41,8 +41,8 @@ Adding a GitHub repository: pick its releases, tags or a branch.
 
 ## Requirements
 
-- A computer (Windows 10/11, macOS or Linux) with
-  [Node.js](https://nodejs.org) 18 or newer and the OpenSSH client.
+- A computer (Windows 10/11, macOS or Linux, x64 or arm64) with the
+  OpenSSH client, which all three have built in.
 - Root SSH access to the head unit and root's private key. Tools such as
   [idrive7-8-ssh-root](https://github.com/cauliflowermossgrape/idrive7-8-ssh-root)
   set it up over an ENET cable.
@@ -57,18 +57,20 @@ cable), then run the installer with root's SSH key:
 
 ```sh
 # macOS, Linux
-curl -fsSL https://raw.githubusercontent.com/TheoneLT83/mgu-store/main/deploy/mgu-install.js | node - first-install --identity ~/.ssh/mgu_root_key
+curl -fsSL https://raw.githubusercontent.com/TheoneLT83/mgu-store/main/deploy/install.sh | sh -s -- first-install --identity ~/.ssh/mgu_root_key
 ```
 
 ```powershell
 # Windows PowerShell
-irm https://raw.githubusercontent.com/TheoneLT83/mgu-store/main/deploy/mgu-install.js -OutFile mgu-install.js; if ($?) { node mgu-install.js first-install --identity $HOME\.ssh\mgu_root_key }
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/TheoneLT83/mgu-store/main/deploy/install.ps1))) first-install --identity $HOME\.ssh\mgu_root_key
 ```
 
-It needs Node 18 or newer, finds the head unit by itself and says which
-connection it used. Restart the head unit when the installer asks. The
-Store's tile then appears among the car's apps, and every later update
-comes through the Store.
+It finds the head unit by itself and says which connection it used.
+The other commands below (`token`, `usb-repo`, `first-install --from`) run
+the same way, in place of `first-install …` in the one-liner.
+Restart the head unit when the installer asks. The Store's tile then
+appears among the car's apps, and every later update comes through the
+Store.
 
 | Option | What it does |
 |---|---|
@@ -79,6 +81,17 @@ comes through the Store.
 | `--token` | asks for a GitHub token, for private repositories |
 | `--no-uplink` | leaves out the internet uplink |
 | `--no-renderer` | leaves out the renderer |
+
+With [Node.js](https://nodejs.org) 18 or newer, the installer also runs as
+a script:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/TheoneLT83/mgu-store/main/deploy/mgu-install.js | node - first-install --identity ~/.ssh/mgu_root_key
+```
+
+```powershell
+irm https://raw.githubusercontent.com/TheoneLT83/mgu-store/main/deploy/mgu-install.js -OutFile mgu-install.js; if ($?) { node mgu-install.js first-install --identity $HOME\.ssh\mgu_root_key }
+```
 
 ## Using the Store
 
@@ -97,10 +110,13 @@ restart (Settings → **Restart head unit**).
 
 ### Sources
 
-The Store comes with three sources: this repository,
-[idrive7-apps](https://github.com/TheoneLT83/idrive7-apps) and
-[idrive-apps](https://github.com/robertnisipeanu/idrive-apps) (Waze on cluster, with the
-Waze tool and the cluster renderer).
+The Store comes with these sources: this repository,
+[idrive7-apps](https://github.com/cauliflowermossgrape/idrive7-apps),
+[idrive-apps](https://github.com/robertnisipeanu/idrive-apps) (with the
+renderer that draws on the instrument cluster and the HUD, and the CarPlay
+map on the instrument cluster) and
+[car-apps](https://github.com/IterioDev/car-apps) (IterioDev's apps and
+tools, most of them for iDrive 8 only, at its newest x.y.z tag).
 
 To add one: Settings → **Add source**, then type `owner/repo`, a GitHub
 link, or the `https://` address of a `catalog.json`. For a GitHub
@@ -172,6 +188,13 @@ node mgu-install.js usb-repo <stick> [github:owner/repo | <catalog URL> | <folde
 
 Without inputs it copies this repository's newest release. Plug the stick
 into the car and use the **USB** page.
+
+A car without the Store yet installs it from the same folder, with no
+internet at the car:
+
+```sh
+node mgu-install.js first-install --from <stick>/mgu-repo/mgu-store --identity <key>
+```
 
 ## Publishing your apps
 
