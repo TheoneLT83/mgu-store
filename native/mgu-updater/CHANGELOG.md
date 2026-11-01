@@ -1,5 +1,16 @@
 # Updater changelog
 
+## 0.8.12
+
+From robertnisipeanu/mgu-store's 0.8.10 and 0.8.12 (its 0.8.11's car-apps default source is not taken: this fork keeps its own sources). Its way of reading a public repo without a token replaces this fork's 0.8.10.
+
+- A build whose `output` names its package installs when the build also leaves a file of that name in `MGU_OUT`: the declared output replaces it.
+- A public GitHub repo read without a token makes no GitHub API request in a check or an install (README.md, "GitHub without a token"): a catalog release's `catalog.json` comes from `github.com`'s release download (asked for again with its ETag, which goes along the redirect to the asset storage), a branch's or tag's commit and the default branch from the refs `github.com` advertises to git, files from `raw.githubusercontent.com`, a commit's tarball from `codeload.github.com`, and an artifact from the release download its catalog names. The API remains for an `apps` pattern's folders (once per new commit), a repo without a `catalog` release on the releases channel, adding a source, and a repo those hosts do not reach. New keys `github_raw` and `github_codeload`.
+- A request GitHub's rate limit refuses, in a check or a download, fails with `GitHub limit reached. Try later or sign in.`
+- A token GitHub refuses for a repo (a 401, or a 403 that is no rate limit, as a GitHub App's sign-in gets from a repo the App is not installed on) anywhere in a read leaves the repo to the next token, else none; an artifact, icon or tarball download refused that way is downloaded again without the token.
+- Each check's log line ends with the GitHub API requests it made.
+- The phone page's add form says `GitHub limit reached. Try later or sign in.` for a rate-limited repo.
+
 ## 0.8.11
 
 - robertnisipeanu/mgu-store 0.8.9 merged: a default source is added once, at the first start of the version that brings it (and seeded by the installers, `deploy/sources.json`); like any source it can be removed and is then not added again. This fork's default source stays TheoneLT83/idrive7-apps; upstream's robertnisipeanu/idrive-apps is not added (Waze on the cluster is in this Store already).

@@ -174,8 +174,10 @@ class RenderClient extends EventEmitter {
 let frontCcu = null;
 let displayLanguage = null;
 const hmiContext = [];
+// interfaces the head unit lacks: building their proxy fails
+const absent = new Set();
 const someipBuilders = {
-    buildTypedProxy: (iface, instance) => Promise.resolve({
+    buildTypedProxy: (iface, instance) => absent.has(iface) ? Promise.reject(new Error(`no ${iface}`)) : Promise.resolve({
         iface, instance,
         init: () => Promise.resolve(),
         waitUntilAvailable: () => Promise.resolve(),
@@ -204,6 +206,8 @@ const tick = (ms) => new Promise((r) => setTimeout(r, ms || 15));
 const HIDE_MS = 800;                    // src/store.js HIDE_SETTLE_MS
 const comp = (o) => Object.assign({ id: 'doom', kind: 'app', title: 'DOOM', version: '1.0.1', installed: '1.0.1',
     status: 'installed', queued: false, error: null, uninstallable: true }, o);
+const LONG = 'the build failed (exit 1): no oap-sdk donor among the installed apps carries OnlineApp.js, ' +
+    'so robertn_doom@1.0.1 cannot be linked; install any stock app again, or another app that ships the SDK';
 const base = { type: 'state', online: true, busy: null, rebooting: false, catalog: { checking: false, checkedAt: 1 } };
 const ST = Object.assign({}, base, {
     components: [comp({})],
@@ -275,6 +279,15 @@ function run() {
         return tick();
     }).then(() => {
         eq(last(/storeStatus\.\d*\.?Text/).split('=')[1], 'Updater not running');
+        // an error of any length is written whole: the status line and a source's error wrap over their rows
+        app._sourceId = 'idrive7-apps';
+        app._client.emit('state', Object.assign({}, ST, { components: [comp({ error: LONG })],
+            sources: ST.sources.map((s) => (s.id === 'idrive7-apps' ? Object.assign({}, s, { status: 'error', error: LONG }) : s)) }));
+        return tick();
+    }).then(() => {
+        eq(last(/storeStatus\.\d*\.?Text/).split('=').slice(1).join('='), `DOOM: ${LONG}`);
+        eq(last(/storeSrcError\.\d*\.?Text/).split('=').slice(1).join('='), LONG);
+        app._sourceId = null;
         app._client.emit('state', ST);
         return tick();
     }).then(() => {
@@ -1751,7 +1764,34 @@ function runLanguage() {
     });
 }
 
-run().then(runWidgetsExtra).then(runLanguage).then(runDrawn).then(runTiming).then(() => {
+/* A head unit without one HMI context, or without either: the other's language, else English. */
+function runAbsentContext() {
+    const i18n = require(path.join(SRC, 'i18n.js'));
+    const check = () => (last(/^storeCheck\.0\.(Text|PrimaryText)=/) || '').split('=')[1];
+    hmiContext.length = 0;
+    displayLanguage = null;
+    absent.add('de.bmw.infotainment.hmi.hmicontext2.HMIContext2');
+    app._setupLanguage();
+    return tick().then(() => {
+        eq(hmiContext, ['de.bmw.infotainment.hmi.hmicontext.HMIContext HMI_CID'], 'only the HMI context the unit has');
+        displayLanguage('CHINESISCH_SIMPLE');
+        return tick();
+    }).then(() => {
+        eq(check(), '检查更新', 'the language follows the one HMI context');
+        i18n.setHmiLanguage(null);
+        app._forgetWritten();
+        app._render();
+        hmiContext.length = 0;
+        absent.add('de.bmw.infotainment.hmi.hmicontext.HMIContext');
+        app._setupLanguage();
+        return tick();
+    }).then(() => {
+        eq([hmiContext.length, check()], [0, 'Check for updates'], 'no HMI context: English');
+        absent.clear();
+    });
+}
+
+run().then(runWidgetsExtra).then(runLanguage).then(runAbsentContext).then(runDrawn).then(runTiming).then(() => {
     cleanUp();
     console.log(`store: ${checks} checks pass`);
     process.exit(0);

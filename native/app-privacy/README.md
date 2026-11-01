@@ -6,8 +6,8 @@ on the head unit) enumerates every app in its registry in several off-car
 paths; the patch in this directory makes each of them skip local-only
 apps. It also makes MainApp only restart a local-only app that crashed.
 Genuine backend-delivered apps are reported, updated, diagnosed and
-recovered exactly as before. It covers iDrive 7's MainApp 8.3.2 and
-8.1.1 (`/usr/lib/oap-mainapp`) and iDrive 8's MainApp-21 9.3.4 and
+recovered exactly as before. It covers iDrive 7's MainApp 8.3.2,
+8.2.10 and 8.1.1 (`/usr/lib/oap-mainapp`) and iDrive 8's MainApp-21 9.3.4 and
 9.2.15 (`/usr/lib/oap-mainapp21`).
 
 ## Which apps are local-only
@@ -39,14 +39,14 @@ without the marker. Installers do not maintain it.
 
 All sites are in `/usr/lib/oap-mainapp/src/main.js` and
 `/usr/lib/oap-mainapp/src/AppManagement/AppManagement.js`. MainApp 8.1.1
-has no platform analytics, no `getAvailableUpdatesFromBackend` sweep and no
-`DiagOapProvider`, so those rows apply to 8.3.2 only.
+has no platform analytics, no update-availability sweep and no
+`DiagOapProvider`, so those rows apply to 8.3.2 and 8.2.10 only.
 
 | Path | Site |
 |---|---|
 | Backend app inventory, `AppManagement_ff.getAllInstalledApps` → `AppManagementResult.getAllInstalledAppsResult` (joynr, domain `inf.apr`) | `AppManagementFfProviderImpl.getAllInstalledApps` |
 | Backend-triggered update of every app | `AppManagementFfProviderImpl.updateAllApps` |
-| App-repository version queries (`GET <repo_url>/<appId>` with a `BMW-Vin` header) | `NpmPackageManager.getLatestAppVersion`; the sweeps in `AppManagementController.getAvailableUpdatesFromBackend`, `AppsAutoupdater._performUpdate` and `MainApp._contextUpdateHandler` skip local-only apps as well |
+| App-repository version queries (`GET <repo_url>/<appId>` with a `BMW-Vin` header) | `NpmPackageManager.getLatestAppVersion`; the sweeps in `AppManagementController.getAvailableUpdatesFromBackend` (8.2.10: `AppsAutoupdater._areUpdatesAvailable`), `AppsAutoupdater._performUpdate` and `MainApp._contextUpdateHandler` skip local-only apps as well |
 | App-repository package downloads | `NpmPackageManager.download` (preinstalled folder only) |
 | Platform analytics events carrying an app name (`APP_INSTALL`, `APP_CRASH`), forwarded via the CDC app | `AppManagementController.queuedRecursiveRetry`, `CorruptAppsHandler._tryRecoverApp` (with the crash recovery below); `APP_DOWNLOAD` and `APP_SIGNATURE_CHECK` fire only for app-repository downloads, which local-only apps never make |
 | Corrupt-app reports (`appId`, version, VIN) | `CorruptAppsHandler._handleAsIrrecoverable`, `AppManager._reportCorruptApp` |
@@ -111,30 +111,35 @@ that rewrites all of it removes the unit too, and the component has to be
 installed again.
 
 ```sh
-node patch_mainapp.js --version          # app-privacy 1.4.0
+node patch_mainapp.js --version          # app-privacy 1.7.0
 node patch_mainapp.js check [--json]     # 0 patched, 1 unpatched, 2 mismatch
 node patch_mainapp.js apply [--json]     # 0 patched, 2 refused, 1 write error
 node patch_mainapp.js revert [--json]    # 0 unpatched, 2 refused, 1 write error
 ```
+
+`--record PATH` writes the record (see "Record") to PATH.
 
 The tool patches the MainApp oapcontroller starts: MainApp-21 when the
 kernel command line says `hwgen=21` or later, else iDrive 7's MainApp.
 `--unit ID7|ID8` names it instead. `--main PATH` / `--appmanagement PATH`
 override the bundle paths. `apply`
 and `revert` are idempotent and prepare both files before writing either;
-a bundle whose anchors do not match exactly (other firmware, or another
-patch that changed one of our sites) is refused with nothing written.
-`revert` removes exactly this patch's edits and keeps any other change to
-the files. Bundles that carry an earlier release's edits count as
+which edits they make is set out in "Required and optional edits" below.
+`revert` removes exactly the edits the bundles carry and keeps any other
+change to the files. Bundles that carry an earlier release's edits count as
 unpatched (`patchedBy` names that release): `apply` replaces those edits
 with this release's in the same write, and `revert` removes them. The
 tool keeps every earlier release's edits that differ from its own in
 `EARLIER_PATCH_SETS`. A bundle on the read-only root filesystem is written with `/`
 remounted read-write for the write only; a file bind-mounted over a bundle
 path is written in place. With `--json`, the last stdout line is
-`{"version","command","state","changed","files":[...],"restartNeeded","unit","mainapp"}`;
+`{"version","command","state","changed","files":[...],"edits":[...],"skipped":[...],"restartNeeded","unit","mainapp","mainappVersion","fingerprint"}`;
 `mainapp` names the MainApp release whose edits the bundles take (`8.3.2`,
-`8.1.1`, on iDrive 8 `9.3.4`, `9.2.15`; null on a mismatch). On iDrive 8 `changed` and `restartNeeded` are always false, since
+`8.2.10`, `8.1.1`, on iDrive 8 `9.3.4`, `9.2.15`; null on a mismatch),
+`mainappVersion` the installed MainApp's own version, `fingerprint` its
+stock bundles (the same patched or not). `edits` holds every edit's
+result (see "Record"), `skipped` the ids of the optional ones left out;
+`check --json` adds `record`, the whole record. On iDrive 8 `changed` and `restartNeeded` are always false, since
 MainApp-21 is not to be bounced for this patch, whoever runs the tool;
 `nextStart` is true while the running MainApp-21 has not loaded the
 bundles as they are now.
@@ -156,6 +161,72 @@ list, and stopping it reboots the unit.
 
 [INTEGRATION.md](INTEGRATION.md) is the contract for installers.
 
+## Required and optional edits
+
+Each edit has an id, the same for its counterpart in every MainApp
+release. Required edits are the ones our apps cannot install, run or keep
+their data safely without:
+
+| id | iDrive 7 | iDrive 8 | Without it |
+|---|---|---|---|
+| `crash-gate` | yes | yes | MainApp's crash ladder deletes the app's data at its second crash (iDrive 7) or third (iDrive 8), then reinstalls or disables it |
+| `crash-count` | yes | yes | an app that crashes on every start is restarted for ever instead of being left stopped after 5 restarts in 10 minutes |
+| `package-source` | yes | yes | when our app's package is not in the preinstalled folder, or the app repository lists a newer package under the app's name, MainApp installs the repository's package instead of ours |
+| `keychain-time` | yes | (none) | an install whose keychain takes longer than 35 s fails (`CertificateManager did not create the app's keychain (killed after 35 s)`) |
+
+Every other edit is optional: it keeps our apps out of a backend report or
+query (inventory, update-all, update-availability sweeps, repository version
+queries, release notes, analytics events, corrupt-app reports, diagnostic
+readout). With all of them left out, our apps install from the Store and
+start on both head units. A predicate copy (`helper:<module>`) goes in
+only with an edit that calls it, and is required when a required edit
+calls it.
+
+`apply` and `boot` apply them by these rules, and `check` reports by them:
+
+- every required edit's anchor must occur exactly as often as expected,
+  or the bundles are refused with nothing written (exit 2, `mismatch`);
+- an optional edit whose anchor does not occur at all is left out
+  (`skipped-not-found`), and so is one whose predicate copy's anchor does
+  not occur; the rest is applied and the bundles count as `patched`;
+- any anchor that occurs more often than expected, or less but at least
+  once, refuses everything, also when another release's edit for the same
+  site is the one left out;
+- the bundles take the edits of the known MainApp release that fit them
+  with the fewest left out, the newest on a tie. So does a MainApp release
+  this tool does not know; its required edits must still fit exactly.
+
+## Record
+
+After every `apply`, `check`, `boot` and `revert` of the unit's own
+bundles, the tool writes `/var/opt/app-privacy/edit-record.json`:
+
+```json
+{ "latest": [ { "time": "2026-11-01T10:24:19.000Z", "command": "apply", "appPrivacy": "1.7.0",
+    "unit": "ID7", "mainappVersion": "8.2.10-pr-…", "patchSet": "8.3.2", "fingerprint": "2e27c95456f542e6",
+    "state": "patched",
+    "files": [ { "kind": "main", "path": "/usr/lib/oap-mainapp/src/main.js", "sha256": "…", "stockSha256": "…" } ],
+    "edits": [ { "id": "update-availability-sweep", "title": "update-availability sweep", "file": "main",
+      "required": false, "result": "skipped-not-found", "found": 0, "expected": 1,
+      "anchor": "this.appRegistry.getAll(),app=>{const appId" } ] } ],
+  "history": [ { "time": "…", "command": "apply", "appPrivacy": "1.7.0", "unit": "ID7",
+    "mainappVersion": "…", "fingerprint": "…", "state": "patched", "skipped": ["update-availability-sweep"],
+    "refused": [] } ] }
+```
+
+- `latest`: the last run per MainApp fingerprint, for the last 8
+  fingerprints, newest last. `result` is `applied`, `not-applied` (it fits;
+  the bundles do not carry it), `skipped-not-found`, `refused-not-found`,
+  `refused-ambiguous` or `not-applicable` (a predicate copy no applied edit
+  calls); `found` and `expected` count the anchor in the stock bundle.
+- `history`: the last 20 runs whose outcome differs from the one before.
+- It names versions, paths, sha256s and short excerpts of MainApp's own
+  code, nothing of the car or its owner. It survives MainApp updates, so it
+  shows which edits did not fit which firmware.
+
+`check --json` carries it as `record`, and the deploy tool's
+`status --json` as `app_privacy_record`.
+
 ## Verify
 
 ```sh
@@ -167,4 +238,6 @@ node native/app-privacy/patch_mainapp.js check-apps apps
 
 Set `FIRMWARE_MAINAPP_DIR` to a decoded oap-mainapp folder to also test
 against its bundles; `run.sh` passes it into the container.
-`FIRMWARE_MAINAPP21_DIR` does the same with a decoded MainApp-21 (9.3.4 or 9.2.15).
+`FIRMWARE_MAINAPP21_DIR` does the same with a decoded MainApp-21 (9.3.4 or 9.2.15),
+`FIRMWARE_MAINAPP_8_1_1_DIR` and `FIRMWARE_MAINAPP_8_2_10_DIR` with a decoded
+oap-mainapp 8.1.1 or 8.2.10.

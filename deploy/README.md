@@ -8,7 +8,7 @@ snapshots every change first, and restores a snapshot on request.
 |---|---|---|
 | `deploy/mgu-install.js` | the owner's computer (Node 18+; Windows, macOS, Linux) | the first install over SSH from the published release, the updater's tokens, USB sticks as local repos |
 | `deploy/hu` | the Mac (system Node) | packs tool artifacts, installs components built from this checkout over SSH (development) |
-| `deploy/sources.json` | | the updater's sources the installers seed: the Store's own, idrive7-apps and idrive-apps |
+| `deploy/sources.json` | | the updater's sources the installers seed: the Store's own, idrive7-apps, idrive-apps and car-apps |
 | `deploy/transport/` | the Mac (system `python3`) | finds the unit's sshd over ENET or the hotspot, relays ENET, and the `--arm-debug` bootstrap |
 | `deploy/unit/mgu-deploy.sh` → `mgu-deploy.js` | the unit, as root, under its Node 8 | the installer itself |
 | `tools/oap_link.js`, `tools/oap_pack.js` | the unit (and the build machine) | build source packages and prepare packages built elsewhere |
@@ -154,8 +154,9 @@ The updater reads its sources from `/var/opt/mgu-updater/sources.json`
 (native/mgu-updater/README.md). The installers seed it with
 `deploy/sources.json`, the Store's own source (`mgu-store`, this
 repository's releases), idrive7-apps (`cauliflowermossgrape/idrive7-apps`
-on its default branch) and idrive-apps (`robertnisipeanu/idrive-apps`, from
-its releases), when the updater is installed and has none: `sh
+on its default branch), idrive-apps (`robertnisipeanu/idrive-apps`, from
+its releases) and car-apps (`IterioDev/car-apps`, at its newest x.y.z
+tag), when the updater is installed and has none: `sh
 mgu-deploy.sh updater-sources < sources.json` writes it, root's, mode 0600,
 and keeps an existing one, since the owner adds sources from the Store.
 
@@ -291,7 +292,7 @@ unit. One ssh call sends them as a tar stream to
 install --artifact ... --skip-older --yes` with the release's deploy tool
 (it installs itself as `mgu-deploy`, keeps newer installed tools and apps,
 does not build an installed Store version again) and `updater-sources`
-with the default sources, mgu-store, idrive7-apps and idrive-apps (kept
+with the default sources, mgu-store, idrive7-apps, idrive-apps and car-apps (kept
 when the unit has its own); then removes
 the folder. With `--token` a token is added (below), then `status` is
 printed. Its last line
@@ -299,6 +300,20 @@ is `Restart the head unit to finish setup (a normal ignition cycle does
 it): the updater starts then.` (naming each of `mgu-updater.service`,
 `mgu-render.socket` and `mgu-uplink.service` installed but not active),
 else `Setup is done`. Exit status: 0 done, 1 failed, 2 refused (the deploy tool's own).
+
+**first-install --from <folder>** takes the component list from a folder
+`usb-repo` wrote (`<folder>/mgu-repo/mgu-store`: its `catalog.json` and the
+artifacts beside it) instead of the `catalog` release. Nothing is
+downloaded; each artifact is checked against the catalog's size and sha256
+as it is read, before anything is sent, and the rest is the same. The
+folder's `catalog.json` is read before the head unit is searched for; a
+folder without one is refused (exit 2). For a computer that has internet
+only away from the car:
+
+```sh
+node mgu-install.js usb-repo <folder>                                                   # at home
+node mgu-install.js first-install --from <folder>/mgu-repo/mgu-store --identity <key>   # at the car
+```
 
 Before installing, the car is parked, on stable power (engine running or a
 charger connected), and stays awake until the command finishes.
@@ -880,6 +895,14 @@ nothing and reports app-privacy pending until the next start. When `apply` fails
 the patch is not in effect, so app installs are refused until `apply`
 succeeds.
 
+An `apply` that leaves out optional edits this MainApp has no place for
+(native/app-privacy/README.md, "Required and optional edits") succeeds:
+app installs go ahead, and the output names them in one line, once per run,
+`app-privacy: 11 of 12 privacy edits applied; skipped: update-availability sweep`.
+`status` shows the same for app-privacy's last run, and `status --json`
+carries its record (`/var/opt/app-privacy/edit-record.json`) as
+`app_privacy_record`, null without one.
+
 `uninstall app-privacy` is refused while any app of ours is installed (a
 registry entry whose source `package.json` has `"mguLocalOnly": true`; an
 entry or source that cannot be read counts). Otherwise it runs `revert
@@ -935,7 +958,7 @@ The app manager installs our apps itself.
   it in place (below), or else one bounce and the restarted manager installs
   it because the fallback lists it. The installer then waits (up to 10
   minutes) for the manager's registry entry with an `installationSource`
-  (MainApp 8.1.1 records none), the
+  (MainApp 8.1.1 and 8.2.10 record none), the
   source at the new version and the keychain, and records the uid the manager
   chose. The tool writes no registry entry, app folder or credentials of its
   own.
@@ -947,7 +970,7 @@ The app manager installs our apps itself.
   package, keeping the uid, the data and the keychain: in place (below), or
   else the entry's `installationSource` is re-seeded as null (uid and
   provisioning cache kept) and one bounce lets the restarted manager update
-  it. MainApp 8.1.1 updates no app at its start: after the bounce, the
+  it. MainApp 8.1.1 and 8.2.10 update no app at their start: after the bounce, the
   restarted manager updates it in place. A running manager on older bundles than `main.js` (the copy, when
   bound) and `AppManagement.js` hold is bounced before the new package is
   placed, and the restarted one updates the app in place. The package of
@@ -1078,6 +1101,17 @@ answer comes and the install fails at the keychain. iDrive 8's MainApp-21
 installs the same way, and its packages get the entry too. A package with
 no manifest is left as it is.
 
+**Interfaces the head unit lacks.** MainApp makes those permissions from
+its interface database, the firmware's
+`/etc/oap/someip/someip-interfaces.json`, and refuses an app whose manifest
+names an interface the database does not hold (`IFConfigGenerator::generate()
+Interface … not found`). Older iDrive 7 firmware holds fewer interfaces: no
+iDrive 8 HMI interfaces (`hmi.entrypoint2`, `hmi.remote2`,
+`hmi.resourcemanagement2`, `oap.PrivateEntryPoint2`). On iDrive 7 a package
+whose manifest names such interfaces, as proxies or services, is prepared
+with them taken out, and the output names them; the certification service
+stays. iDrive 8 installs the manifest as it is.
+
 **Interrupted installs.** Each app install is recorded in `state.json`
 until it finishes or is rolled back: `inflight` names the app and the run,
 `placed` the version and checksum of the package placed, kept while what
@@ -1164,6 +1198,8 @@ An OAP package from another repository installs as it is published:
 - its SOME/IP manifest gets `de.bmw.infotainment.certification.Certification`
   (`"*"`) when it lacks it: without it the install fails at the app's
   keychain (the certification service, above);
+- on iDrive 7, the interfaces its SOME/IP manifest names and the head
+  unit's interface database lacks are taken out (above);
 - when its own javascript calls `require('oap-sdk')` (a browserify bundle
   resolves its requires itself) and it has no `node_modules/oap-sdk`, that
   module is generated from the first donor holding the oap-sdk core
@@ -1181,8 +1217,9 @@ An OAP package from another repository installs as it is published:
 
 The prepared package is checked again as an app, then installed. Our own
 flat, marked packages are installed byte for byte when their SOME/IP
-manifest names the certification service or they have none; otherwise
-they are prepared with the entry added. A package that needs
+manifest names the certification service and, on iDrive 7, no interface
+the head unit lacks, or they have none; otherwise they are prepared as
+above. A package that needs
 the oap-sdk on a unit with no donor is refused (exit 2, nothing changed).
 
 `sdk-donor [--json]` copies the bundle module mode takes the oap-sdk from to

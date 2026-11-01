@@ -1,5 +1,13 @@
 # Deploy tool changelog
 
+## 0.7.5
+
+From robertnisipeanu/mgu-store's 0.7.1 and 0.7.5.
+
+- iDrive 7: an app's SOME/IP manifest may name interfaces the head unit's firmware does not have (iDrive 8's, on older iDrive 7 firmware); MainApp refuses such an app (`IFConfigGenerator::generate() Interface … not found`). The app is installed with those interfaces taken out of its manifest, read against the firmware's interface database (`/etc/oap/someip/someip-interfaces.json`), and the output names them: `…, de.bmw.infotainment.hmi.entrypoint2.EntryPoint2 (not on this unit) taken out of manifest.json`. The certification service stays. iDrive 8 installs the manifest as it is.
+- When app-privacy (1.7.0 on) leaves out privacy-only edits this MainApp has no place for, the output says which, once per run: `app-privacy: 11 of 12 privacy edits applied; skipped: update-availability sweep`. `status` shows the same for app-privacy's last run.
+- `status --json` carries app-privacy's record of its runs (`app_privacy_record`, null without one).
+
 ## 0.7.1
 
 - robertnisipeanu/mgu-store's 0.6.10 and 0.7.0 (`activate` / `deactivate` hooks, files removed once unused, iDrive 8 keeps the previous version of a queued update) with this repository's 0.6.10 (below), `preUninstall` included: it runs before a tool's `deactivate`.

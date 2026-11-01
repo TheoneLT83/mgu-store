@@ -187,7 +187,13 @@ function screenOf(v, scroll, layout) {
     });
     // head: the full-screen layout's title strip, filled only as far as the header (am_gpu.js record)
     return { kind: 'gpu', name: def.name, theme: v.look === 'id7' ? 'idrive7' : def.theme, bg: 'theme', head: def.head,
-        components: components.map((c) => {
+        components: components.map((c0) => {
+            let c = c0;
+            // over: an element whose box this one takes over too, down to its bottom (a failure's description over the history)
+            const under = c.opts.over && components.find((o) => o.name === c.opts.over);
+            if (under && under.y + under.h > c.y + c.h) {
+                c = Object.assign({}, c, { h: under.y + under.h - c.y });
+            }
             const a = c.opts.after && components.find((o) => o.name === c.opts.after);
             const end = a && a.opts.text ? a.x + measure.textWidth(a.opts.text, a.opts.size, { font: a.opts.font }) + AFTER_GAP : 0;
             return end > c.x ? Object.assign({}, c, { x: Math.round(end), w: Math.max(0, c.w - Math.round(end - c.x)) }) : c;

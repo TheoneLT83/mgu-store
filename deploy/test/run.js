@@ -288,7 +288,7 @@ function fakeRoot(opts) {
         mainAppSourceFolder: '/usr/lib/oap-mainapp/',
         appManagement: { ignoreSignatureFailure: false }
     }, null, 2) + '\n');
-    // opts.mainapp811: MainApp 8.1.1, whose AppManagement.js names no installationSource
+    // opts.mainapp811: MainApp 8.1.1 or 8.2.10, whose AppManagement.js names no installationSource
     if (opts.mainapp811) write(p('usr/lib/oap-mainapp/src/AppManagement/AppManagement.js'), 'class AppManager{}\n');
     write(p('usr/lib/oap-mainapp/preinstalled_apps/stock_app@2.0.0.tgz'), 'stock package\n');
     write(p(`var/opt/public/oap/oap_${MGR}/data/apps/stock_app.json`), JSON.stringify({ userId: 13000,
@@ -1319,19 +1319,20 @@ function testCertCopy() {
         ltext.includes('let handle=certmgr.useKeychain(keyChainPath,(state,_chain)=>{__mgu.states.length<30&&'), lr.out);
 }
 
-/* MainApp 8.1.1: its AppManagement.js names no installationSource; its
- * installs and updates record none, and its start updates no app. */
+/* MainApp 8.1.1 and 8.2.10: their AppManagement.js names no
+ * installationSource; their installs and updates record none, and their
+ * start updates no app. 8.2.10's main.js has the fixture's anchors. */
 function testMainApp811() {
     const { root, first, mgr } = inplaceRoot(undefined, { mainapp811: true });
-    check('MainApp 8.1.1: a fresh install through a bounce is done without an installationSource', first.status === 0 &&
+    check('MainApp 8.1.1 and 8.2.10: a fresh install through a bounce is done without an installationSource', first.status === 0 &&
         first.out.includes('fixture_app 1.0.0 installed by the app manager as uid 13001 (source not recorded)') &&
         !('installationSource' in readJson(root.entry('fixture_app'))), first.out);
     const fresh = root.run(['install', '--artifact', appArtifact('second_app', '1.0.0', true), '--yes']);
-    check('MainApp 8.1.1: a fresh install in place, no bounce', fresh.status === 0 && root.kills().length === 1 &&
+    check('MainApp 8.1.1 and 8.2.10: a fresh install in place, no bounce', fresh.status === 0 && root.kills().length === 1 &&
         fresh.out.includes(`installed in place by the app manager (pid ${mgr.pid}) as uid 13002 (source not recorded)`),
     `${fresh.out}\n${root.managerLog().join('\n')}`);
     const up = root.run(['install', '--artifact', appArtifact('fixture_app', '1.1.0', true), '--yes']);
-    check('MainApp 8.1.1: an update in place, uid kept, no re-seed, no bounce', up.status === 0 && root.kills().length === 1 &&
+    check('MainApp 8.1.1 and 8.2.10: an update in place, uid kept, no re-seed, no bounce', up.status === 0 && root.kills().length === 1 &&
         up.out.includes('updated in place') && !up.out.includes('re-seeded') &&
         readJson(path.join(root.home(13001), 'source/package.json')).version === '1.1.0', `${up.out}\n${root.managerLog().join('\n')}`);
 
@@ -1348,7 +1349,7 @@ function testMainApp811() {
     const log = b.managerLog();
     let killAt = -1;
     log.forEach((l, i) => { if (l.startsWith('kill ')) killAt = i; });
-    check('MainApp 8.1.1: an update through a bounce is made in place by the restarted manager, no re-seed',
+    check('MainApp 8.1.1 and 8.2.10: an update through a bounce is made in place by the restarted manager, no re-seed',
         r.status === 0 && b.kills().length === k0 + 1 && r.out.includes('through a bounce') && r.out.includes('updated in place') &&
         !r.out.includes('re-seeded') && killAt >= 0 && log.indexOf('update fixture_app 1.1.0 uid 13001 in place') > killAt &&
         !('installationSource' in readJson(b.entry('fixture_app'))), `${r.out}\n${log.join('\n')}`);
@@ -1359,7 +1360,7 @@ function testMainApp811() {
     const fk = f.kills().length;
     const fr = f.run(['install', '--artifact', appArtifact('fixture_app', '1.1.0', true), '--yes'],
         { FAKE_MGR_HOOK: '1', FAKE_INPLACE: 'fail' });
-    check('MainApp 8.1.1: an update the restarted manager fails is reported, one bounce',
+    check('MainApp 8.1.1 and 8.2.10: an update the restarted manager fails is reported, one bounce',
         fr.status !== 0 && fr.out.includes('the app manager could not update fixture_app 1.1.0 after its restart') &&
         f.kills().length >= fk + 1, fr.out);
     stopHooked(f);
@@ -1424,6 +1425,73 @@ function testCertificationProxy() {
     const h8 = flat8.run(['install', '--artifact', has8, '--yes']);
     check('certification: a published package whose manifest names it is queued as published (iDrive 8)', h8.status === 0 &&
         fs.readFileSync(flat8.p('var/opt/mgu-deploy/id8/queue/has8@1.0.0.tgz')).equals(fs.readFileSync(has8)), h8.out);
+}
+
+/* Interfaces the app's SOME/IP manifest names and the unit's interface database lacks (older iDrive 7
+ * firmware): taken out, so MainApp installs the app. */
+function testUnknownInterfaces() {
+    const EP = 'de.bmw.infotainment.hmi.entrypoint.EntryPoint', EP2 = 'de.bmw.infotainment.hmi.entrypoint2.EntryPoint2';
+    const CERT = 'de.bmw.infotainment.certification.Certification', STATUS = 'de.bmw.infotainment.telematic.oap.AppStatus';
+    const CTX2 = 'de.bmw.infotainment.hmi.hmicontext2.HMIContext2';
+    const manifest = { proxies: { [CERT]: '*', [EP]: '*', [EP2]: '*', [CTX2]: { instances: ['1'] } },
+        services: { [STATUS]: { instances: ['${userId}'] } } };
+    const withDb = (root, ids) => write(root.p('etc/oap/someip/someip-interfaces.json'),
+        JSON.stringify({ version: 1, interfaces: ids.reduce((o, id) => Object.assign(o, { [id]: { serviceId: 1 } }), {}) }));
+    const flat = (name) => {
+        const file = path.join(fs.mkdtempSync(path.join(T, 'app-')), `${name}@1.0.0.tgz`);
+        fs.writeFileSync(file, tgz([
+            { name: 'javascript/app.js', data: Buffer.from('console.log(1);\n'), mode: 0o644 },
+            { name: 'manifest.json', data: Buffer.from(JSON.stringify(manifest)), mode: 0o644 },
+            { name: 'package.json', data: Buffer.from(JSON.stringify({ name, version: '1.0.0', description: 'deploy test app',
+                mguLocalOnly: true })), mode: 0o644 }], 1700000000));
+        return file;
+    };
+    const installed = (root, id) => readJson(path.join(root.home(readJson(root.entry(id)).userId), 'source', 'manifest.json'));
+    const old = fakeRoot();
+    withDb(old, [EP, CTX2]);
+    const r = old.run(['install', '--artifact', flat('old_fw'), '--yes']);
+    const m = r.status === 0 ? installed(old, 'old_fw') : { proxies: {}, services: {} };
+    check('interfaces: those the unit lacks are taken out of a published package\'s manifest, the rest kept',
+        r.status === 0 && r.out.includes(`${EP2}, ${STATUS} (not on this unit) taken out of manifest.json`) &&
+        JSON.stringify(Object.keys(m.proxies)) === JSON.stringify([CERT, EP, CTX2]) &&
+        JSON.stringify(m.services) === '{}', r.out);
+    const cur = fakeRoot();
+    withDb(cur, [EP, EP2, CTX2, STATUS]);
+    const c = cur.run(['install', '--artifact', flat('cur_fw'), '--yes']);
+    check('interfaces: a package whose interfaces the unit all has installs as published',
+        c.status === 0 && !c.out.includes('prepared cur_fw') &&
+        JSON.stringify(installed(cur, 'cur_fw')) === JSON.stringify(manifest), c.out);
+    const none = fakeRoot();
+    const n = none.run(['install', '--artifact', flat('no_db'), '--yes']);
+    check('interfaces: without an interface database the manifest is kept', n.status === 0 && !n.out.includes('prepared no_db') &&
+        JSON.stringify(installed(none, 'no_db')) === JSON.stringify(manifest), n.out);
+    const src = donorRoot();
+    withDb(src, [EP]);
+    const s = src.run(['install', '--artifact', sourceArtifact('1.0.0', {}, { 'manifest.json': JSON.stringify(manifest) }), '--yes']);
+    const sm = s.status === 0 ? JSON.parse(untarBuf(fs.readFileSync(src.preinstalled('robertn_demo', '1.0.0')))['manifest.json']) :
+        { proxies: {} };
+    check('interfaces: a source package is built without those the unit lacks', s.status === 0 &&
+        s.out.includes(`${EP2}, ${CTX2}, ${STATUS} (not on this unit) taken out of manifest.json`) &&
+        JSON.stringify(Object.keys(sm.proxies)) === JSON.stringify([CERT, EP]), s.out);
+    const id8 = id8Root();
+    donor.tgz(id8.pre21('donor_app', '1.0.0'));
+    withDb(id8, [EP]);
+    const e = id8.run(['install', '--artifact', sourceArtifact('1.0.0', {}, { 'manifest.json': JSON.stringify(manifest) }), '--yes']);
+    const em = e.status === 0 ? JSON.parse(untarBuf(fs.readFileSync(id8.p('var/opt/mgu-deploy/id8/queue/robertn_demo@1.0.0.tgz')))[
+        'package/manifest.json']) : { proxies: {} };
+    const odd = fakeRoot();
+    withDb(odd, [EP]);
+    const oddFile = path.join(fs.mkdtempSync(path.join(T, 'app-')), 'odd_services@1.0.0.tgz');
+    fs.writeFileSync(oddFile, tgz([
+        { name: 'javascript/app.js', data: Buffer.from('console.log(1);\n'), mode: 0o644 },
+        { name: 'manifest.json', data: Buffer.from(JSON.stringify({ proxies: { [EP]: '*' }, services: [] })), mode: 0o644 },
+        { name: 'package.json', data: Buffer.from(JSON.stringify({ name: 'odd_services', version: '1.0.0', description: 'deploy test app',
+            mguLocalOnly: true })), mode: 0o644 }], 1700000000));
+    const o = odd.run(['install', '--artifact', oddFile, '--yes']);
+    check('interfaces: a manifest whose services are not an object still gets the certification service', o.status === 0 &&
+        installed(odd, 'odd_services').proxies[CERT] === '*' && !o.out.includes('not on this unit'), o.out);
+    check('interfaces: iDrive 8 keeps the manifest\'s interfaces', e.status === 0 && !e.out.includes('not on this unit') &&
+        em.proxies[EP2] === '*', e.out);
 }
 
 /* What an interrupted install left: removed only when this tool provably put it there. */
@@ -2319,6 +2387,66 @@ function testPrivacyTool() {
     r = root.run(['uninstall', 'app-privacy', '--yes']);
     check('privacy tool: a failed revert refuses the uninstall, the tool stays', r.status === 2 &&
         fs.existsSync(path.join(root.tool('app-privacy'), 'current')), r.out);
+}
+
+/* app-privacy that leaves out privacy-only edits this MainApp lacks still
+ * lets apps install, and says which in one line; one that refuses a
+ * required edit refuses the install. Its record is in status --json. */
+function testPrivacySkipped() {
+    let root = fakeRoot();
+    root.env.FAKE_PRIVACY_SKIPPED = 'update-availability-sweep';
+    let r = root.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
+    check('privacy skipped: an app installs with an optional edit skipped, named in one line',
+        r.status === 0 && r.out.split('\n').filter((l) => l.indexOf('privacy edits applied') >= 0).length === 1 &&
+        r.out.includes('app-privacy: 2 of 3 privacy edits applied; skipped: update availability sweep') &&
+        root.entry('fixture_app') && fs.existsSync(root.entry('fixture_app')), r.out);
+    root = fakeRoot();
+    root.env.FAKE_PRIVACY_SKIPPED = 'update-availability-sweep';
+    r = root.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true),
+        '--artifact', appArtifact('fixture_two', '1.0.0', true), '--yes']);
+    check('privacy skipped: two apps in one run name the skipped edits once',
+        r.status === 0 && r.out.split('\n').filter((l) => l.indexOf('privacy edits applied') >= 0).length === 1 &&
+        fs.existsSync(root.entry('fixture_two')), r.out);
+    root = fakeRoot();
+    r = root.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
+    check('privacy skipped: with every edit applied there is no skipped line',
+        r.status === 0 && !r.out.includes('privacy edits applied'), r.out);
+    root = fakeRoot();
+    root.env.FAKE_PRIVACY_REFUSED = 'crash-count';
+    r = root.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
+    check('privacy skipped: a required edit refused refuses the app install',
+        r.status === 2 && r.out.includes('refusing the app install') && r.out.includes('(required crash-count)') &&
+        !fs.existsSync(root.entry('fixture_app')), r.out);
+
+    root = id8Root();
+    root.env.FAKE_PRIVACY_SKIPPED = 'release-notes,analytics-start';
+    r = root.run(['install', '--artifact', rhmiApp('robertn_x8', '1.0.0', ['ID8'], { marked: true, npm: true }), '--yes']);
+    check('privacy skipped id8: an app queues with optional edits skipped, named in one line',
+        r.status === 0 && r.out.includes('app-privacy: 2 of 4 privacy edits applied; skipped: release notes, analytics start') &&
+        fs.existsSync(root.p('var/opt/mgu-deploy/id8/queue/robertn_x8@1.0.0.tgz')), r.out);
+    root = id8Root();
+    root.env.FAKE_PRIVACY_REFUSED = 'package-source';
+    r = root.run(['install', '--artifact', rhmiApp('robertn_x8', '1.0.0', ['ID8'], { marked: true, npm: true }), '--yes']);
+    check('privacy skipped id8: a required edit refused refuses the app install',
+        r.status === 2 && r.out.includes('refusing the app install') &&
+        !fs.existsSync(root.p('var/opt/mgu-deploy/id8/queue/robertn_x8@1.0.0.tgz')), r.out);
+
+    root = fakeRoot();
+    check('privacy record: status --json has none before app-privacy wrote one', root.status().app_privacy_record === null,
+        JSON.stringify(root.status().app_privacy_record));
+    const record = { latest: [{ time: '2026-11-01T10:00:00.000Z', command: 'apply', appPrivacy: '1.7.0', unit: 'ID7',
+        mainappVersion: '8.2.10', patchSet: '8.3.2', fingerprint: '0123456789abcdef', state: 'patched', files: [],
+        edits: [{ id: 'crash-gate', title: 'crash recovery', required: true, result: 'applied' },
+            { id: 'backend-inventory', title: 'backend app inventory', required: false, result: 'applied' },
+            { id: 'update-availability-sweep', title: 'update-availability sweep', required: false,
+                result: 'skipped-not-found' }] }], history: [] };
+    write(root.p('var/opt/app-privacy/edit-record.json'), JSON.stringify(record));
+    check('privacy record: status --json carries app-privacy\'s record as it is',
+        JSON.stringify(root.status().app_privacy_record) === JSON.stringify(record), JSON.stringify(root.status()));
+    r = root.run(['status']);
+    check('privacy record: status names the last run and the skipped edits in one line', r.status === 0 &&
+        r.out.includes('app-privacy: patched on MainApp 8.2.10 (apply 2026-11-01T10:00:00.000Z); ' +
+            '1 of 2 privacy edits applied; skipped: update-availability sweep'), r.out);
 }
 
 /* iDrive 8: MainApp-21 is never bounced for app-privacy; its patch takes
@@ -4300,6 +4428,64 @@ function testMguInstallUsb() {
     }
 }
 
+/* first-install --from a folder usb-repo wrote: the same install, no GitHub request. */
+function testMguInstallFrom() {
+    const gh = fakeGithub({ files: [], repos: {} });
+    try {
+        const rel = fakeRelease(gh.api);
+        gh.set({ files: rel.files, repos: { [STORE_REPO]: { token: TOKEN, catalog: rel.catalogIndex } } });
+        const stick = path.join(fs.mkdtempSync(path.join(T, 'from-')), 'MY STICK');
+        fs.mkdirSync(stick);
+        let r = mguInstall(['usb-repo', stick], { bin: installBin(null), api: gh.api, env: { FAKE_GH_TOKEN: TOKEN } });
+        const from = path.join(stick, 'mgu-repo', 'mgu-store');
+        check('mgu-install usb-repo: writes the release as a folder for --from', r.status === 0 &&
+            fs.existsSync(path.join(from, 'catalog.json')), r.out);
+        const root = donorRoot();
+        const opts = { bin: installBin(root), api: gh.api };
+        gh.reset();
+        r = mguInstall(['first-install', '--from', from, '--host', '10.0.0.9', '--no-uplink', '--no-renderer'], opts);
+        const st = r.status === 0 ? root.status() : { components: [] };
+        check('mgu-install first-install --from: the release\'s tools and the Store from the folder, no GitHub request',
+            r.status === 0 && ['app-privacy', 'mgu-updater', 'mgu-deploy', 'robertn_store'].every((id) => st.components.some((x) => x.id === id)) &&
+            !gh.requests().length, `${r.out.slice(-3000)}\n${JSON.stringify(gh.requests())}`);
+        // a tampered artifact: same size, other bytes
+        const bad = fs.mkdtempSync(path.join(T, 'from-bad-'));
+        fs.readdirSync(from).filter((n) => fs.statSync(path.join(from, n)).isFile())
+            .forEach((n) => fs.copyFileSync(path.join(from, n), path.join(bad, n)));
+        const victim = fs.readdirSync(bad).find((n) => n.endsWith('.tgz'));
+        const data = fs.readFileSync(path.join(bad, victim));
+        data[data.length >> 1] ^= 0xff;
+        fs.writeFileSync(path.join(bad, victim), data);
+        r = mguInstall(['first-install', '--from', bad, '--host', '10.0.0.9'], opts);
+        check('mgu-install first-install --from: an artifact that does not match the catalog stops it before connecting',
+            r.status === 1 && r.stderr.includes('sha256 does not match') && !r.calls.length, r.out);
+        r = mguInstall(['first-install', '--from', fs.mkdtempSync(path.join(T, 'from-empty-')), '--host', '10.0.0.9'], opts);
+        check('mgu-install first-install --from: a folder without catalog.json is refused before connecting',
+            r.status === 2 && r.stderr.includes('no catalog.json') && !r.calls.length, r.out);
+        r = mguInstall(['first-install', '--from', stick, '--host', '10.0.0.9'], opts);
+        check('mgu-install first-install --from: the stick root is refused, naming the folder to give',
+            r.status === 2 && r.stderr.includes(from) && !r.calls.length, r.out);
+        // a catalog without mgu-deploy names the folder, not the GitHub repo
+        const nodeploy = fs.mkdtempSync(path.join(T, 'from-nodeploy-'));
+        fs.readdirSync(from).filter((n) => fs.statSync(path.join(from, n)).isFile())
+            .forEach((n) => fs.copyFileSync(path.join(from, n), path.join(nodeploy, n)));
+        const cat = JSON.parse(fs.readFileSync(path.join(nodeploy, 'catalog.json'), 'utf8'));
+        cat.components = (cat.components || []).filter((c) => c.id !== 'mgu-deploy');
+        fs.writeFileSync(path.join(nodeploy, 'catalog.json'), JSON.stringify(cat));
+        r = mguInstall(['first-install', '--from', nodeploy, '--host', '10.0.0.9'], opts);
+        check('mgu-install first-install --from: a catalog without mgu-deploy names the folder',
+            r.status === 1 && r.stderr.includes(`${path.resolve(nodeploy)}: the catalog has no mgu-deploy`) &&
+            !r.stderr.includes(`${STORE_REPO}: the catalog`) && !r.calls.length, r.out);
+        r = mguInstall(['token', '--from', from, '--host', '10.0.0.9'], opts);
+        check('mgu-install: --from goes with first-install only', r.status === 2 &&
+            r.stderr.includes('unknown option --from') && !r.calls.length, r.out);
+        r = mguInstall(['help'], opts);
+        check('mgu-install help: names --from', r.status === 0 && r.stdout.includes('--from <folder>'), r.out);
+    } finally {
+        gh.stop();
+    }
+}
+
 /* What mgu-install does with paths on Windows (path.win32): local paths stay
  * one argument, the unit gets POSIX ones, names on the stick are valid there. */
 function testMguInstallPaths() {
@@ -5660,12 +5846,14 @@ const SUITES = [
     testNoManagerInstall,
     testRestore,
     testPrivacyRevert,
+    testPrivacySkipped,
     testStatusJson,
     testFallback,
     testInplace,
     testCertCopy,
     testMainApp811,
     testCertificationProxy,
+    testUnknownInterfaces,
     testInterrupted,
     testInplaceKeepCopy,
     testInplaceHook,
@@ -5700,6 +5888,7 @@ const SUITES = [
     testMguInstall,
     testMguInstallFrom,
     testMguInstallUsb,
+    testMguInstallFrom,
     testConnect,
     testMguInstallPaths,
     testUpdaterStateRestore,

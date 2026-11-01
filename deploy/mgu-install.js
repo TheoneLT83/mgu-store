@@ -828,16 +828,33 @@ async function download(o) {
     return 0;
 }
 
+/* first-install --from: a folder usb-repo wrote (<folder>/mgu-repo/mgu-store). */
+function fromFolder(dir) {
+    const d = path.resolve(dir);
+    if (!fs.existsSync(path.join(d, 'catalog.json'))) {
+        const inner = path.join(d, 'mgu-repo', 'mgu-store');
+        throw new Usage(fs.existsSync(path.join(inner, 'catalog.json')) ? `--from: no catalog.json in ${d}; use --from ${inner}` :
+            `--from: no catalog.json in ${d}; give the folder usb-repo wrote, <folder>/mgu-repo/mgu-store`);
+    }
+    return d;
+}
+
 async function firstInstall(o) {
+    // --from: a release `download` wrote (its release.json), else a folder usb-repo wrote (its catalog.json); read
+    // first, so a missing or bad one stops before the token prompt and the unit search
+    const release = o.from && fs.existsSync(path.join(o.from, RELEASE_FILE));
+    const from = o.from && !release ? fromFolder(o.from) : null;
+    const local = release ? folderComponents(o.from) : from ? dirComponents(from) : null;
+    const label = from || o.from || STORE_REPO;
     const token = o.token ? await readToken('GitHub token for the updater (input hidden): ') : null;
     await reach(o);
-    const { components } = o.from ? folderComponents(o.from) : await githubComponents(await githubRepo(STORE_REPO, token));
+    const { components } = local || await githubComponents(await githubRepo(STORE_REPO, token));
     const wanted = WITH.filter((w) => !o[w.skip]);
     const chosen = components.filter((c) => !c.entry.optional || wanted.some((w) => w.id === c.entry.id));
     const withs = wanted.filter((w) => chosen.some((c) => c.entry.id === w.id));
-    wanted.filter((w) => withs.indexOf(w) < 0).forEach((w) => say(`${STORE_REPO}: the catalog has no ${w.id}; installing without it`));
+    wanted.filter((w) => withs.indexOf(w) < 0).forEach((w) => say(`${label}: the catalog has no ${w.id}; installing without it`));
     if (!chosen.some((c) => c.entry.id === 'mgu-deploy')) {
-        throw new Error(`${STORE_REPO}: the catalog has no mgu-deploy`);
+        throw new Error(`${label}: the catalog has no mgu-deploy`);
     }
     const artifacts = [];
     for (const c of chosen) {

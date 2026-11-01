@@ -608,15 +608,21 @@ function cmdPublish(ids, dryRun) {
     if (unmet.length) {
         throw new Error(`nothing published: ${unmet.join('; ')}`);
     }
-    // the URL each entry's artifact is downloaded from, as the target gives it (publish.js downloadUrl)
-    const link = (e) => (publishTarget.downloadUrl && e.artifact.url ? publishTarget.downloadUrl(e) : e.artifact.url);
-    const relinked = [...current.values()].filter((e) => !uploads.some((u) => u.id === e.id) && link(e) !== e.artifact.url);
-    if (!uploads.length && !removed.length && !relinked.length) {
+    // the entries carried over list their artifact as the target does (publish.js listedUrl)
+    const relisted = [...current.values()].filter((e) => !uploads.some((x) => x.id === e.id)).filter((e) => {
+        const url = publishTarget.listedUrl(e);
+        if (url === e.artifact.url) {
+            return false;
+        }
+        e.artifact.url = url;
+        return true;
+    });
+    if (!uploads.length && !removed.length && !relisted.length) {
         console.log('nothing new to publish');
         return;
     }
-    relinked.forEach((e) => console.log(`${dryRun ? 'would relink' : 'relinking'} ${e.id}@${e.version}: ${link(e)}`));
     removed.forEach((id) => console.log(`${dryRun ? 'would remove' : 'removing'} ${id}: not in the repository`));
+    relisted.forEach((e) => console.log(`${dryRun ? 'would list' : 'listing'} ${e.id}@${e.version} at ${e.artifact.url}`));
     uploads.forEach((e) => console.log(`${dryRun ? 'would publish' : 'publishing'} ${e.id}@${e.version}`));
     if (dryRun) {
         return;
@@ -625,7 +631,6 @@ function cmdPublish(ids, dryRun) {
         e.artifact.url = publishTarget.uploadArtifact(e, path.join(staging, e.artifact.name));
         current.set(e.id, e);
     });
-    current.forEach((e) => { e.artifact.url = link(e); });
     const catalogFile = writeCatalog([...current.values()], staging);
     publishTarget.uploadCatalog(catalogFile);
     console.log(`catalog published to ${publishTarget.describe()}`);

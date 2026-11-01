@@ -45,7 +45,7 @@ var cp = require('child_process');
 
 /* deploy/component.json's version; bumped when a file under deploy/unit/
  * changes. */
-var VERSION = '0.7.1';
+var VERSION = '0.7.5';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -1321,7 +1321,7 @@ function validateApp(file, dir, pkgDir) {
     checkPkg(file, pkg);
     var a = { kind: 'app', file: file, dir: dir, pkgDir: pkgDir, pkg: pkg, id: pkg.name, version: pkg.version };
     a.prepare = pkgDir !== dir || pkg.mguLocalOnly !== true || linker().needsSdk(pkgDir) ||
-        linker().needsCertification(pkgDir) ? 'package' : null;
+        linker().needsCertification(pkgDir) || linker().unknownInterfaces(pkgDir, unitInterfaces()).length ? 'package' : null;
     appHmi(a, file, pkg.mguHmi, [path.join(pkgDir, 'rhmiData'), path.join(dir, 'rhmiData')]);
     return a;
 }
@@ -1551,6 +1551,17 @@ function validateSource(file, dir) {
     appHmi(a, file, raw.mguHmi !== undefined ? raw.mguHmi : pkg.mguHmi, [path.join(dir, m.tree, 'rhmiData')]);
     return a;
 }
+/* The interface ids of iDrive 7's interface database, which MainApp
+ * installs an app's SOME/IP manifest against (oap_link.js
+ * unknownInterfaces); null on iDrive 8 and without one to read. */
+var UNIT_INTERFACES;
+function unitInterfaces() {
+    if (UNIT_INTERFACES !== undefined) return UNIT_INTERFACES;
+    var db = isId8() ? null : readJsonOrNull(path.join(CFG.etc, 'oap', 'someip', 'someip-interfaces.json'));
+    UNIT_INTERFACES = db && db.interfaces && typeof db.interfaces === 'object' && !Array.isArray(db.interfaces) ?
+        Object.keys(db.interfaces) : null;
+    return UNIT_INTERFACES;
+}
 /* The donor bundles on this unit, in search order (oap_link.js). */
 function unitDonors() {
     return linker().unitDonors(mainappRoot(), CFG.oap,
@@ -1563,22 +1574,25 @@ function unitDonors() {
  * compile) is refused. */
 /* System errors that are the unit's (space, I/O, limits), not a package's. */
 var ENV_ERRORS = ['ENOSPC', 'EDQUOT', 'EIO', 'EROFS', 'EMFILE', 'ENFILE', 'ENOMEM', 'EACCES', 'EPERM', 'EBUSY'];
+function unknownSaid(u) {
+    return u ? ', ' + u.dropped.join(', ') + ' (not on this unit) taken out of ' + u.manifest : '';
+}
 function prepareApp(a, stage) {
     if (!a.prepare) return a;
     var out = path.join(stage, 'built-' + a.id + '@' + a.version + '.tgz'), r, link = linker();
     try {
         if (a.prepare === 'build') {
-            r = link.build(a.dir, out, { donors: unitDonors(), workDir: stage });
+            r = link.build(a.dir, out, { donors: unitDonors(), workDir: stage, interfaces: unitInterfaces() });
             say('built ' + a.id + ' ' + a.version + ' from its source package (' + r.moduleCount +
                 ' modules, oap-sdk from ' + r.donor + (r.entry ? ', main from ' + r.entry : '') +
-                (r.certification ? ', the certification service added to ' + r.certification : '') + ')');
+                (r.certification ? ', the certification service added to ' + r.certification : '') + unknownSaid(r.unknown) + ')');
         } else {
-            r = link.preparePackage(a.pkgDir, out, { donors: unitDonors() });
+            r = link.preparePackage(a.pkgDir, out, { donors: unitDonors(), interfaces: unitInterfaces() });
             say('prepared ' + a.id + ' ' + a.version + ': marked local-only' +
                 (r.sdk ? ', node_modules/oap-sdk generated from ' + r.sdk.donor + ' (' + r.sdk.api.join(', ') + ')' : '') +
                 (r.shrinkwrap ? ', npm-shrinkwrap.json added' : '') +
                 (r.permissions.length ? ', ' + r.permissions.join(' and ') + ' added to permissions.json' : '') +
-                (r.certification ? ', the certification service added to ' + r.certification : ''));
+                (r.certification ? ', the certification service added to ' + r.certification : '') + unknownSaid(r.unknown));
         }
     } catch (e) {
         if (ENV_ERRORS.indexOf(e.code) >= 0) throw e;
@@ -1809,6 +1823,8 @@ function privacyApplyAndBounce(state) {
         return { ok: false, why: 'apply exited ' + r.status + (result ? privacyMismatch(result) : ' with no result') };
     }
     say('app-privacy: ' + (result.state || 'applied') + (result.changed ? ' (applied now)' : ''));
+    var skipped = privacySkipped(result.edits);
+    if (skipped && skipped !== privacySkippedSaid) say('app-privacy: ' + (privacySkippedSaid = skipped));
     /* MainApp-21 is never bounced: it loads the bundles at its next start,
      * as it takes app changes (app-privacy reports nextStart) */
     if (isId8()) {
@@ -1818,6 +1834,25 @@ function privacyApplyAndBounce(state) {
         }
     } else if ((result.changed || result.restartNeeded) && managerPid()) bounceManager();
     return { ok: true };
+}
+/* The skipped line this run printed last: a run that applies app-privacy
+ * once per app names the same skipped edits once. */
+var privacySkippedSaid = '';
+/* app-privacy's per-edit results (1.7.0 on) in one line, when it left out
+ * privacy-only edits whose anchors this MainApp lacks: "11 of 12 privacy
+ * edits applied; skipped: <title>, ..."; '' otherwise. */
+function privacySkipped(edits) {
+    if (!Array.isArray(edits)) return '';
+    var privacy = edits.filter(function (e) { return e && !e.required && String(e.id).indexOf('helper:') !== 0; });
+    var skipped = privacy.filter(function (e) { return e.result === 'skipped-not-found'; });
+    if (!skipped.length) return '';
+    return privacy.filter(function (e) { return e.result === 'applied'; }).length + ' of ' + privacy.length +
+        ' privacy edits applied; skipped: ' + skipped.map(function (e) { return e.title || e.id; }).join(', ');
+}
+/* app-privacy's record of its runs (native/app-privacy/README.md,
+ * "Record"), null without one. */
+function privacyRecord() {
+    return readJsonOrNull(path.join(CFG.varOpt, 'app-privacy', 'edit-record.json'));
 }
 /* app-privacy's JSON result of a refusal: the MainApp bundles do not
  * match its edits (a MainApp version it was not made for, or bundles
@@ -4745,6 +4780,7 @@ function cmdStatus(args, crashList, live) {
     var s = collectStatus(loadState());
     s.crash_list = crashList;
     if (live) s.live_installs = live;
+    s.app_privacy_record = privacyRecord();
     if (args.json) { say(JSON.stringify(s)); return 0; }
     say('crash handler whitelist: ' + crashList.state + ' (' + crashList.reason + ')');
     if (live) say('live app installs: ' + live.state + ' (' + live.reason + ')');
@@ -4766,6 +4802,13 @@ function cmdStatus(args, crashList, live) {
         }
     });
     if (!s.components.length) say('  (none)');
+    var runs = s.app_privacy_record && Array.isArray(s.app_privacy_record.latest) ? s.app_privacy_record.latest : [];
+    var lastRun = runs[runs.length - 1];
+    if (lastRun) {
+        var skippedNow = privacySkipped(lastRun.edits);
+        say('app-privacy: ' + lastRun.state + ' on MainApp ' + (lastRun.mainappVersion || 'unknown') + ' (' + lastRun.command +
+            ' ' + lastRun.time + ')' + (skippedNow ? '; ' + skippedNow : ''));
+    }
     say('display-bridge socket: ' + (s.display_bridge_socket ? 'present' : 'absent'));
     s.display_bridge_todo_on_car.forEach(function (l) { say('  ' + l); });
     say('fallback: ' + (s.fallback.active ? 'active' : 'inactive') +
@@ -4846,8 +4889,9 @@ function cmdCheck(args) {
     var tool = privacyTool();
     if (fs.existsSync(tool)) {
         var r = run(CFG.node, [tool, 'check', '--json'], { allowFail: true });
-        var lines = (r.stdout || '').split('\n').filter(function (l) { return l.trim(); });
-        say('app-privacy: ' + (lines[lines.length - 1] || ('exit ' + r.status)));
+        var res = lastJsonLine(r.stdout), sk = res ? privacySkipped(res.edits) : '';
+        say('app-privacy: ' + (res ? res.state + (res.mainapp ? ' (MainApp ' + res.mainapp + ' edits)' : '') +
+            (sk ? '; ' + sk : '') : 'exit ' + r.status));
     } else say('app-privacy: not installed (' + tool + ')');
     var stockCopies = 0;
     retiredBackups().forEach(function (b) {
