@@ -1,5 +1,9 @@
 # Updater changelog
 
+## 0.8.13
+
+- Default source: robertnisipeanu/idrive-apps on its releases (Waze on cluster, the Waze tool and the cluster renderer, as robertnisipeanu/mgu-store has it), added once at the first start of this version. A Waze installed from TheoneLT83/idrive7-apps, which lists it no more, is updated from it (the same title).
+
 ## 0.8.12
 
 From robertnisipeanu/mgu-store's 0.8.10 and 0.8.12 (its 0.8.11's car-apps default source is not taken: this fork keeps its own sources). Its way of reading a public repo without a token replaces this fork's 0.8.10.

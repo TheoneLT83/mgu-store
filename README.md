@@ -97,8 +97,10 @@ restart (Settings → **Restart head unit**).
 
 ### Sources
 
-The Store comes with two sources: this repository and
-[idrive7-apps](https://github.com/TheoneLT83/idrive7-apps).
+The Store comes with three sources: this repository,
+[idrive7-apps](https://github.com/TheoneLT83/idrive7-apps) and
+[idrive-apps](https://github.com/robertnisipeanu/idrive-apps) (Waze on cluster, with the
+Waze tool and the cluster renderer).
 
 To add one: Settings → **Add source**, then type `owner/repo`, a GitHub
 link, or the `https://` address of a `catalog.json`. For a GitHub
