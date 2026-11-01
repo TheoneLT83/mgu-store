@@ -1,5 +1,9 @@
 # mgu-render changelog
 
+## 0.6.13
+
+- Touch: the divert rule goes to nft in a file (`/tmp/mgu-render-nft-*`), and a load counts only when the table is then there. The nft of MainApp 6.5.5 cars cannot read a script from `-`: the rule never went in while the log said `touch: diverted`, and touches never reached the Store or the apps.
+
 ## 0.6.12
 
 - Foreground gate on an app manager without `src-gen/de_bmw_infotainment_hmi_remote_RemoteHmiApplication.json` (MainApp 6.5.5's single bundle): the description is looked for in the `src-gen` folders of the packages under `/usr/lib`; without one the gate says `foreground unavailable` once and stays, and the renderer shows the apps as without a gate. Before, the gate exited at start every 5 s and no native app (the Store, the idrive7-apps kit's apps) was ever shown.
