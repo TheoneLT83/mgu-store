@@ -1,5 +1,9 @@
 # mgu-render changelog
 
+## 0.6.11
+
+- Foreground gate: an app whose RHMI uuid another folder claims too (an earlier install's `oap_<uid>` left behind) is the one the app manager has registered (`oap_12201/data/apps/<appId>.json`), when exactly one of them is. Before, such an app was never in front, and the idrive7-apps kit drew it in the HMI's own picture instead of the renderer. `test/test_gate_apps.js`.
+
 ## 0.6.10
 
 - An HMI surface makes the layer apps yield the screen only while it is visible and has a size (its configuration). The camera / driver-assistance video (dasvideo, surface 0x198) can stay visible at 0x0 on no layer from boot, showing nothing: every app and the Store were then hidden until the next reboot (seen on the car: "surface 0x198 visible: layer apps yield the screen" at start, never hidden again).

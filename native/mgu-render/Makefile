@@ -70,6 +70,7 @@ in-test: build/$(OUT)/mgu-render
 	build/$(OUT)/test_share
 	$(CC) $(CFLAGS) -o build/$(OUT)/test_video test/test_video.c src/gfx.c src/log.c -lEGL -lGLESv2 -lm
 	LIBGL_ALWAYS_SOFTWARE=1 EGL_PLATFORM=surfaceless build/$(OUT)/test_video
+	if command -v node >/dev/null; then node test/test_gate_apps.js; fi
 	sh test/test_hmi.sh
 	wayland-scanner server-header protocol/ivi-controller.xml $(GEN_DIR)/ivi-controller-server-protocol.h
 	$(CC) $(CFLAGS) -o build/$(OUT)/mock_winston test/mock_winston.c $(GEN_DIR)/ivi-controller-protocol.c -lwayland-server
