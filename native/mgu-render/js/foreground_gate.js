@@ -39,9 +39,55 @@ const INTERFACES = [
 ];
 const DEFAULTS = {
     someip: '/usr/lib/someip.node',
-    interface: INTERFACES.find((f) => fs.existsSync(f)) || INTERFACES[0],
+    interface: null,
     apps: '/var/opt/public/oap'
 };
+
+/* The interface description: where the app manager keeps it, else (another app manager build, MainApp
+ * 6.5.5's single bundle has no src-gen of its own) the first such file in a src-gen folder of a package
+ * under /usr/lib, two levels deep at most; null without one. */
+function findInterface(root) {
+    const known = INTERFACES.find((f) => fs.existsSync(f));
+    if (known) {
+        return known;
+    }
+    const want = /^de_bmw_infotainment_hmi_remote2?_RemoteHmiApplication2?\.json$/;
+    const look = (dir, depth) => {
+        let names = [];
+        try {
+            names = fs.readdirSync(dir);
+        } catch (e) {
+            return null;
+        }
+        const hit = names.find((n) => want.test(n));
+        if (hit) {
+            return path.join(dir, hit);
+        }
+        if (depth === 0) {
+            return null;
+        }
+        for (const n of names) {
+            const found = look(path.join(dir, n), depth - 1);
+            if (found) {
+                return found;
+            }
+        }
+        return null;
+    };
+    let pkgs = [];
+    try {
+        pkgs = fs.readdirSync(root || '/usr/lib');
+    } catch (e) {
+        return null;
+    }
+    for (const p of pkgs) {
+        const found = look(path.join(root || '/usr/lib', p, 'src-gen'), 2);
+        if (found) {
+            return found;
+        }
+    }
+    return null;
+}
 
 /* The uids the app manager has registered: its registry, <apps>/oap_12201/data/apps/<appId>.json
  * (its own folder: an app cannot write there), each with the app's userId. */
@@ -196,13 +242,26 @@ if (require.main === module) {
     const reportFd = Number(process.env.MGU_RENDER_REPORT_FD) || 1;
     process.stdin.on('end', () => process.exit(0));
     process.stdin.resume();
-    startGate({
-        someip: require(opt.someip),
-        interfaceConfig: JSON.parse(fs.readFileSync(opt.interface, 'utf8')),
-        appsDir: opt.apps,
-        write: (s) => fs.writeSync(reportFd, s),
-        log: (s) => process.stderr.write(`foreground gate: ${s}\n`)
-    });
+    const log = (s) => process.stderr.write(`foreground gate: ${s}\n`);
+    const iface = opt.interface || findInterface();
+    let interfaceConfig = null;
+    try {
+        interfaceConfig = JSON.parse(fs.readFileSync(iface, 'utf8'));
+    } catch (e) {
+        // this unit's app manager has no description of the RHMI interface: the gate cannot tell which
+        // app is in front, and says so once (the renderer then shows the apps as without a gate)
+        log(`no RemoteHmiApplication interface description (${iface || 'none found'}): ${e.message}`);
+        fs.writeSync(reportFd, 'foreground unavailable\n');
+    }
+    if (interfaceConfig) {
+        startGate({
+            someip: require(opt.someip),
+            interfaceConfig,
+            appsDir: opt.apps,
+            write: (s) => fs.writeSync(reportFd, s),
+            log
+        });
+    }
 }
 
-module.exports = { startGate, readApps, hasRootApp };
+module.exports = { startGate, readApps, hasRootApp, findInterface };

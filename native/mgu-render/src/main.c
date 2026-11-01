@@ -327,7 +327,7 @@ static int gate_applies(const client *c) {
  * when their screen goes; for them the gate only hides while it names another app in front, so a gate that reads
  * nothing (on a unit it cannot read) leaves them as they were without it. */
 static int in_front(const client *c) {
-    if (!gate_applies(c)) return 1;
+    if (!gate_applies(c) || gate_unavailable()) return 1;
     if (legacy(c) && c->mode == MODE_LAYER) return !gate_any_front() || gate_front(c->uid);
     return gate_reported() && gate_front(c->uid);
 }

@@ -1,5 +1,9 @@
 # mgu-render changelog
 
+## 0.6.12
+
+- Foreground gate on an app manager without `src-gen/de_bmw_infotainment_hmi_remote_RemoteHmiApplication.json` (MainApp 6.5.5's single bundle): the description is looked for in the `src-gen` folders of the packages under `/usr/lib`; without one the gate says `foreground unavailable` once and stays, and the renderer shows the apps as without a gate. Before, the gate exited at start every 5 s and no native app (the Store, the idrive7-apps kit's apps) was ever shown.
+
 ## 0.6.11
 
 - Foreground gate: an app whose RHMI uuid another folder claims too (an earlier install's `oap_<uid>` left behind) is the one the app manager has registered (`oap_12201/data/apps/<appId>.json`), when exactly one of them is. Before, such an app was never in front, and the idrive7-apps kit drew it in the HMI's own picture instead of the renderer. `test/test_gate_apps.js`.
