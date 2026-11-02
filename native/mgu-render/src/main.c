@@ -184,7 +184,7 @@ static void update_all(void);
 static void bridge_tick(void);
 /* visible alone is not a picture: the HMI can keep a camera / video surface (0x198: dasvideo, cameraplayer's
  * SID_VIDEO_DIGITAL_HU on a G82) visible from boot with no buffer (configuration 0x0), which hid every layer app
- * for good. This repository requires the size on iDrive 7 too (0.6.10). */
+ * for good. The size counts on iDrive 7 too (dasvideo there). */
 static void y_update(int i) {
     int any = 0;
     for (int k = 0; k < nyield; k++) any |= yield[k].visible && yield[k].w > 0 && yield[k].h > 0;
