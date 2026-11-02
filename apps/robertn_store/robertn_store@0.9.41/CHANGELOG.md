@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.41
+
+From robertnisipeanu/mgu-store's 0.9.16. Restart head unit carries the updater's secret, which
+mgu-updater 0.8.15 asks for once this Store is installed. A restart the updater refuses shows why and when
+one is possible.
+
 ## 0.9.40
 
 From robertnisipeanu/mgu-store's 0.9.15. An error shows in full. A component's page has its failure above the

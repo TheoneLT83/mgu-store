@@ -9,13 +9,13 @@
  *   c.on('probe', (answer) => ...);           // what a GitHub repo offers (sourceProbe)
  *   c.on('history', (answer) => ...);         // a component's update history ({ op: 'history', id })
  *   c.connect();
- *   c.check();  c.install('doom');  c.reboot();
+ *   c.check();  c.install('doom');
  *
  * The privileged requests carry the secret (opts.secret, or setSecret()):
  * the Store reads it from its data folder (`updater-secret`), the phone page
  * from /run/mgu-updater/web-secret; without the right one the updater
  * answers "forbidden" (README.md, "The socket").
- *   c.uninstall(id);  c.sourceAdd({ type: 'github', repo, channel });  c.sourceAdd({ type: 'https', url });
+ *   c.reboot();  c.uninstall(id);  c.sourceAdd({ type: 'github', repo, channel });  c.sourceAdd({ type: 'https', url });
  *   c.sourceProbe(repo);
  *   c.sourceRemove(id);  c.loginStart();  c.loginCancel();
  *   c.tokenAdd(token, label?);  c.tokenRemove(tokenId);  c.web(true | false);
@@ -107,16 +107,16 @@ class UpdaterClient extends EventEmitter {
         return this.send({ op: 'install', id });
     }
 
-    reboot() {
-        return this.send({ op: 'reboot' });
-    }
-
     setSecret(secret) {
         this.secret = secret || null;
     }
 
     privileged(req) {
         return this.send(Object.assign({}, req, { secret: this.secret }));
+    }
+
+    reboot() {
+        return this.privileged({ op: 'reboot' });
     }
 
     uninstall(id) {

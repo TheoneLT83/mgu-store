@@ -303,7 +303,16 @@ curl -fsSL https://raw.githubusercontent.com/TheoneLT83/mgu-store/main/deploy/in
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/TheoneLT83/mgu-store/main/deploy/install.ps1))) token --identity $HOME\.ssh\mgu_root_key --list
 ```
 
-**first-install** reads the `catalog` release of
+**first-install** first reads, without changing anything, whether the
+head unit's coding (`/dev/shm/rawcodingdata`) is missing (not valid, or the
+default values) while no app manager runs: oapcontroller then never starts
+MainApp, so the Store cannot install. It stops there (exit 2), before any
+download, saying to restore the head unit's coding from a backup
+(BimmerCode, E-Sys or ISTA) or have HU_MGU coded to the car, restart the
+head unit and run the install again. A unit where that cannot be read
+installs as usual.
+
+It reads the `catalog` release of
 `robertnisipeanu/mgu-store` (release/README.md), takes every entry but the
 optional ones, and of those the renderer `mgu-render` (the Store draws its
 screens with it), the internet uplink `mgu-uplink` and CarPlay multitouch
@@ -313,7 +322,7 @@ and leaves any other car unchanged) (`--no-renderer`, `--no-uplink`,
 saying so, and one the deploy tool refuses is left out after the rest
 installs), downloads each
 artifact and checks its size and sha256 against the catalog; a mismatch
-stops it before it connects. The deploy tool's own files come from the
+stops it before anything is sent. The deploy tool's own files come from the
 published `mgu-deploy` artifact, each checked against its manifest; nothing
 is built on the computer, and the Store's source package is built on the
 unit. One ssh call sends them as a tar stream to
@@ -328,7 +337,7 @@ printed. Its last line
 is `Restart the head unit to finish setup (a normal ignition cycle does
 it): the updater starts then.` (naming each of `mgu-updater.service`,
 `mgu-render.socket` and `mgu-uplink.service` installed but not active),
-else `Setup is done`. Exit status: 0 done, 1 failed, 2 refused (the deploy tool's own).
+else `Setup is done`. Exit status: 0 done, 1 failed, 2 refused (the coding, or the deploy tool's own).
 
 **first-install --from <folder>** takes the component list from a folder
 `usb-repo` wrote (`<folder>/mgu-repo/mgu-store`: its `catalog.json` and the
@@ -607,8 +616,8 @@ update (`keepRunning`, as his App Manager does). The tool provides its kind
 kind, a version that is not x.y.z, or a program that is not a 64-bit x86-64
 ELF of at most 16 MiB is refused.
 
-A unit without `/etc/recmgr-restartlist.conf` (none is known on iDrive 8)
-has no recmgr to restart it: nothing is written there, and units start,
+iDrive 7 and iDrive 8 both have `/etc/recmgr-restartlist.conf` and the same
+recmgr. A unit without the list has no recmgr to restart it: nothing is written there, and units start,
 restart and stop at once.
 
 ### IterioDev's App Manager
@@ -755,13 +764,34 @@ unaffected; a long-running process started from an older version keeps its
 open files but cannot load new ones from that folder.
 
 recmgr reads its restart list only at boot. A tool's `recmgr` names go into
-both `[Whitelist]` and `[WhitelistExitSuccess]`; other lines and sections are
-kept as they are. A stopped service that recmgr does not list reboots the
-unit, which is why nothing is stopped, started or restarted before recmgr has
-loaded its entry: its name in both sections now and in the list as it stood
-at boot (the file while it is older than the boot; once the tool writes it
-in a boot, the copy it saved first, `recmgr-at-boot.json`). For each unit in
-`restart`:
+both `[Whitelist]` and `[WhitelistExitSuccess]`, and so does the name of each
+service and socket unit it installs (without `.service` or `.socket`; a
+template's as `name@`) unless the firmware has that name: in
+`[ForceRestartList]`, or a unit in `/lib/systemd/system` or
+`/usr/lib/systemd/system`. A `recmgr` name is letters, digits and `:._+@-`
+(an install with another is refused). Other lines and sections are kept as
+they are. An uninstall takes out the names no other installed tool has.
+`status`, run as root, adds the installed tools' names missing from the
+list, as for the crash handler's list below.
+
+Both lists are read as recmgr and the crash handler read them: from `#` on a
+line is a comment, the rest is trimmed, `[name]` starts a section and any
+other text is an entry; the file's line ending is kept. An edit that changes
+nothing is not checked. A list with neither `[Whitelist]` nor
+`[WhitelistExitSuccess]` (an empty or torn file) is never edited: the
+install is refused (exit 2) and the file left as it is; a list with one of
+them gets the other at the end. An install writes, each on disk before the
+next: the tool's files under `/var/opt`, its list entries, then its units,
+enablement links and drop-ins. An uninstall takes the units out before the
+entries. A rollback or restore puts the snapshot's entries back first,
+added to the list, then the units, links and drop-ins, and only then the
+list as the snapshot has it.
+
+A stopped service that recmgr does not list reboots the unit, which is why
+nothing is stopped, started or restarted before recmgr has loaded its entry:
+its name in both sections now and in the list as it stood at boot (the file
+while it is older than the boot; once the tool writes it in a boot, the copy
+it saved first, `recmgr-at-boot.json`). For each unit in `restart`:
 
 - running: restarted when recmgr has loaded its entry; otherwise it keeps
   running the previous version and `status` reports the tool under
@@ -973,14 +1003,16 @@ The app manager installs our apps itself.
   an app install is refused. The installer runs its `apply --json` and
   bounces the manager when the patch changed or the running manager predates
   it.
-- **Coding.** On iDrive 7, oapcontroller starts MainApp only when the head
-  unit's coding (`/dev/shm/rawcodingdata`) is valid and is not the default
-  values (with the default values, its journal says only `Coding base:
-  Default values flag is set, default values will be used`). With no app
-  manager running and such a coding, an install with an app to install or
-  update is refused before anything changes (exit 2), telling the user to
-  have the head unit coded to the car, restart it and install again. Tools
-  install as usual.
+- **Coding.** On iDrive 7 and 8, oapcontroller starts MainApp only when the
+  head unit's coding (`/dev/shm/rawcodingdata`) is valid and is not the
+  default values (with the default values, its journal says only `Coding
+  base: Default values flag is set, default values will be used`). With no
+  app manager running and such a coding, an install with an app to install
+  or update is refused (exit 2) once its artifacts are read and checked,
+  before app-privacy's check and any change, telling the user to restore
+  the head unit's coding from a backup or have HU_MGU coded, restart it and
+  install again.
+  Tools install as usual.
 - **Fresh install.** The manager installs an app it has no registry entry
   for: a full install from `preinstalled_apps` (its someip interfaces and
   their ACLs, its folders, its CertificateManager keychain, and the lowest
@@ -1284,10 +1316,12 @@ conf. The files are in the component's snapshot.
 ### The crash handler's whitelist
 
 A crashing process's core dump goes to the crash handler, which reboots the
-head unit unless the program's file name is a line of `[Whitelist]` in
+head unit unless the file name of the process's executable
+(`/proc/<pid>/exe`) is a line of `[Whitelist]` in
 `/etc/crashhandler-restartlist.conf` (exact and case-sensitive; `node` is
-there). A tool lists the file names of the programs it runs in
-`component.json`:
+there). A script runs as its interpreter. Every ELF file a tool ships
+executable is one of its programs, listed by its file name. A tool can name
+more programs in `component.json`:
 
 ```json
 "crashNames": ["mgu-uplink", "mgu-wpa"]
@@ -1297,7 +1331,10 @@ each a file name of letters, digits or `._+-` (other names are refused). A name 
 car's own programs use (`sh`, `wpa_supplicant`, `dbus-send`) does not belong
 there: give the program a name of its own instead. A tool without
 `crashNames` gets the names this tool knows for it: `mgu-uplink`,
-`mgu-render`, and `python3` for `mgu-python`.
+`mgu-render`, and `python3` for `mgu-python`. Both kinds of name go into the
+list; a shipped ELF file's only when the firmware has no such name (in
+`[ForceRestartList]`, or a program in `/bin`, `/sbin`, `/usr/bin` or
+`/usr/sbin`, such as `sh` or `node`).
 
 Every tool install and uninstall puts the names of the installed tools into
 `[Whitelist]`, after its last entry, and takes out the ones it added that no
@@ -1313,7 +1350,50 @@ another run holds the lock, and tries again at the next `status`. `status
 --json` reports it as `crash_list: {state, reason}`, `state` being `ok`,
 `changed`, `pending` or `error`; a change is also one line on stderr. The
 crash handler reads the list when it starts: a change counts from the next
-boot. A unit without the file is left alone.
+boot. A unit without the file is left alone. A list without `[Whitelist]`
+is never edited: an install is refused (exit 2), `status` reports an error
+and still adds recmgr's missing names, and the file stays as it is.
+
+### Limits for the services tools install
+
+Every service unit (`.service`) an installed tool lists, whatever its source
+(our tools, mgu-apps', other repositories' and service packages), gets the
+drop-in `/etc/systemd/system/<unit>.d/zz-mgu-deploy-limits.conf`:
+
+```ini
+[Unit]
+StartLimitIntervalSec=600
+StartLimitBurst=20
+
+[Service]
+LimitCORE=1
+```
+
+- `LimitCORE=1`: the kernel pipes core dumps to the crash handler, which
+  restarts the head unit for a program its list does not name, and it writes
+  no piped core dump for a process whose core limit is 1. A crash of the
+  service, or of a program it starts (they inherit the limit), stays the
+  service's own; with its recmgr entry, a crash restarts the service, never
+  the head unit.
+- The start limit: a service that has started 20 times within 10 minutes is
+  left failed instead of restarting for ever, also when
+  its unit sets `StartLimitIntervalSec=0`. A service that restarts every 5 s
+  gives up after about 100 s, one that restarts every 3 s after about 60 s,
+  which leaves room for a service waiting at boot for what it needs. It
+  starts again at the next boot, or when an install or rollback of its tool
+  starts it.
+
+A tool install writes the drop-ins of its services and an uninstall removes
+them, with the folder when nothing else is in it; they are in the
+snapshot. `status`, run as root, gives every installed tool's services the
+drop-in and removes it from units no installed tool lists, under the crash
+list's rules (lock, read-only `/`, a snapshot of its own): a deploy tool
+update brings it to the tools installed before it at the updater's check
+after it, and a restore leaves the drop-ins as the restored tools want them.
+A change is followed by `daemon-reload`; a running service takes the limits at
+its next start (the unit has no `prlimit` to change a running process).
+`status --json` reports the step as `service_limits: {state, reason}`. Units of other components and the car's
+own are never given one.
 
 ### One transaction per artifact
 

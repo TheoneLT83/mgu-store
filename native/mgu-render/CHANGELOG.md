@@ -1,5 +1,9 @@
 # mgu-render changelog
 
+## 0.6.15
+
+- robertnisipeanu/mgu-store's 0.6.10 with this repository's renderer: each yield surface's visibility and buffer is logged as it changes, and overlays (`overlay_apps`, empty by default, iDrive 8 only): a root client with a listed app id stays shown over the yield surfaces, gets touch first and its layer is put back on top; while one claims, the touch rule goes in again every 10 s. A yield surface still needs a size on iDrive 7 too (this repository's 0.6.10), and the touch table and ports stay configurable (`touch_table`, `touch_port`).
+
 ## 0.6.14
 
 - robertnisipeanu/mgu-store's 0.6.9 with this repository's renderer: its foreground gate replaces 0.6.12's. The description is looked for in the known files, then in the `src-gen` folders of the packages under `/usr/lib` (0.6.12's search), then in the apps' `someipInterfaces` copies; a uuid two folders claim still goes to the registered one (0.6.11). With no description the renderer offers gated apps no mode (they keep their own screens) instead of showing them without a gate. Its notes:

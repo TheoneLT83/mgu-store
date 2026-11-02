@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "id": "robertn_store",
-  "version": "0.9.40",
-  "tree": "robertn_store@0.9.40",
+  "version": "0.9.41",
+  "tree": "robertn_store@0.9.41",
   "modules": [
     "src/store.js",
     "src/store_view.js",

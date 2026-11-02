@@ -279,6 +279,11 @@ function run() {
         return tick();
     }).then(() => {
         eq(last(/storeStatus\.\d*\.?Text/).split('=')[1], 'Updater not running');
+        // Restart head unit carries the secret
+        reset();
+        app._restart();
+        eq(sent.map(secretless), [{ op: 'reboot' }]);
+        eq(sent[0].secret, 'deadbeef');
         // an error of any length is written whole: the status line and a source's error wrap over their rows
         app._sourceId = 'idrive7-apps';
         app._client.emit('state', Object.assign({}, ST, { components: [comp({ error: LONG })],

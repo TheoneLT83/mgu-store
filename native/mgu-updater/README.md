@@ -15,7 +15,7 @@ second one. On the Store's request it also restarts the head unit.
         │
  updater.js (root): read it (no links, regular file, bounded), check its size + sha256,
         │            pack a repo-tree component, or run the repo's build script as the build uid (build.js)
-        │            write the checked bytes to state/verified/ (root only)
+        │            write the checked bytes to state/verified/ (root only; emptied after the install and at each start)
         ▼
  /var/opt/mgu-deploy/mgu-deploy.sh install --artifact <file> --yes   (runs current/)
         ├─ app:  MainApp's own install (a source package or a third-party package built on the unit first)
@@ -106,7 +106,7 @@ API requests it made.
 | catalog | a `catalog` release's `catalog.json` asset (`release/README.md`), the https URL, `catalog.json` in a folder | schema 1 or 2 entries; artifact URLs absolute or relative to the catalog |
 | releases | a GitHub repo's releases (newest first, drafts and prereleases left out): assets named `<id>@<x.y.z>.tgz` or `.mgu` | each id's newest version, the `.tgz` over the `.mgu` of one version; titles from an optional `mgu-store.json` asset (`{"apps":{"<id>":{"title","description"}}}`), else the installed app's en_GB entry-point text, else the id; always apps, each `uninstallable` |
 | repo tree | `mgu-repo.json` at a repo's or folder's root, at one commit | see below |
-| index | an https URL answering IterioDev's App Manager index: version 2, `{"version": 2, "packages": [{"url", "sha256", "size", "id", "kind", "version", "title", "author", "description", "icon", "iconSha256", …}]}`, or version 1, `{"packages": [{"url", "sha256"}]}` | version 2: each entry as it stands, no package downloaded (50 at most, 32 MiB each); `kind` `app`, or `renderer` / `tether`: a tool providing that kind, as a stick's service package (below); an app without `mguHmi` is for iDrive 8, the App Manager's head unit; an entry of another kind or without an https `url`, a sha256 and a size is left out, named in the source's `error`. An install downloads the package, checks its sha256 and that its `package.json` is the id, version and service its entry names, and keeps it in `state/index/<source id>/<sha256>.tgz` (root, 0600) while the index lists it. Version 1: each package (https, absolute or relative to the index) downloaded once, checked against its sha256, kept the same way, then read like a stick's `oap/` package; a package that is missing or does not match is left out, named in the source's `error` |
+| index | an https URL answering IterioDev's App Manager index: version 2, `{"version": 2, "packages": [{"url", "sha256", "size", "id", "kind", "version", "title", "author", "description", "icon", "iconSha256", …}]}`, or version 1, `{"packages": [{"url", "sha256"}]}` | version 2: each entry as it stands, no package downloaded (50 at most, 32 MiB each); `kind` `app`, or `renderer` / `tether`: a tool providing that kind, as a stick's service package (below); an app without `mguHmi` is for iDrive 8, the App Manager's head unit; an entry of another kind or without an https `url`, a sha256 and a size is left out, named in the source's `error`. An install downloads the package, checks its sha256 and that its `package.json` is the id, version and service its entry names, and keeps it in `state/index/<source id>/<sha256>.tgz` (root, 0600) while it is the newest of its id the index lists. Version 1: each package (https, absolute or relative to the index) downloaded once, checked against its sha256 and read like a stick's `oap/` package; `state/index/<source id>/index.json` keeps what each listed package is (one that does not read: until the updater's next version), and only the newest of each id is kept, as for version 2; a package that is missing or does not match is left out, named in the source's `error`. The packages kept come to at most 128 MiB, every source's together; one past that, or no longer kept, is downloaded again for its install or icon |
 
 **Icons.** A catalog entry's `icon` (absolute https, or relative to the
 catalog; in a GitHub `catalog` release one of its assets), the asset an
@@ -244,8 +244,12 @@ uplink's lease, such a build fails: *needs internet to build*. It is
 stopped past `build_timeout_s` (600) or once its folder holds more than
 `build_max_bytes` (200 MB); every process of the build uid is killed
 before a build and after it, so nothing a script leaves running reaches
-the next one; its output goes to the log as `build <id>:` lines; the
-folder is emptied as the build uid afterwards.
+the next one; its output goes to the log as `build <id>:` lines, at most
+2000 lines and 256 KiB a build with the proxy's, then one line saying the
+rest is left out. The folder is removed afterwards, each part as the uid
+that owns it: the build uid's as that uid, one root never handed over (a
+build that failed before) as root; at start, so are the build folders an
+earlier run left.
 
 **Ids.** Component ids are global on the unit, and sources are listed
 apart: each origin's component of an id is a row of its own, and an
@@ -616,7 +620,10 @@ pointed to before), so the way back never needs a download.
 
 ## Restarting the head unit
 
-The Store's Restart head unit sends `{"op":"reboot"}`, and the daemon runs
+The Store's Restart head unit sends `{"op":"reboot"}` with the secret
+(only the Store asks for a restart; the phone page offers none; while a
+Store older than 0.9.41 is installed, which sends none, it is taken without
+it), and the daemon runs
 the `reboot` command: `/usr/bin/nsm_control --requestRestart 7 --normal`,
 which asks the Node State Manager (NSM) for a restart
 (`LifecycleControl.RequestNodeRestart`) with reason 7 (Application) and a
@@ -639,6 +646,20 @@ which no BMW unit hooks, and it stops the services by their `KillSignal`
   restart with that reason. Any other restart that does not happen shows
   as a unit still up 3 minutes later: `rebootError` is `the head unit did
   not restart`. `rebootError` stays until the next catalog check.
+- Limited, so that nothing can restart the unit in a loop (on a car,
+  recmgr answers repeated failed starts with a data wipe). A request is
+  refused, with `rebootError` saying why and when a restart is possible
+  (`too soon after start-up, possible in 3 min`) until then:
+  - before the unit has been up 4 minutes (`/proc/uptime`, so a restart of
+    any cause counts). The unit and its apps are up within about 2
+    minutes of a start, so a request made at every start is always
+    refused, and a restart never follows one that has not settled;
+  - within 10 minutes of the last restart the updater asked for, and after
+    3 in the last hour. Each request is recorded in `state/reboots.json`
+    (written to a temporary file, synced, renamed, and the folder synced)
+    before the command runs, so the record outlives the restart; one
+    whose command fails is taken out again. A request that cannot be
+    recorded is refused.
 
 ## Phone page
 
@@ -838,13 +859,14 @@ each request, and whenever it changes (at most every 250 ms):
   `rebootError`: "Restarting the head unit".
 
 Requests: `{"op":"status"}`, `{"op":"check"}`, `{"op":"install","id"}`
-(with its missing requirements first), `{"op":"reboot"}`, from any app.
+(with its missing requirements first), from any app.
 `{"op":"hello","id","version"}` (no answer): a client says what it is; the
 Store says it at each connection (below, "The Store's update").
 **Privileged** ones carry `"secret"`:
 
 | Request | Does |
 |---|---|
+| `{"op":"reboot"}` | restarts the head unit ("Restarting the head unit"); without the secret while a Store older than 0.9.16 is installed |
 | `{"op":"uninstall","id"}` | removes an `uninstallable` component (every app but the Store) |
 | `{"op":"rollback","id"}` | Undo update: a component whose row has `previous` back to that version, through `mgu-deploy.sh rollback <id> --yes` |
 | `{"op":"source-add","type":"github","repo":"o/r","channel"?}`, `{"op":"source-add","type":"https","url"}` | adds a source (id: the repo's name, else `s-<hex>`) and reads it |

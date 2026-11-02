@@ -39,6 +39,7 @@ struct cfg {
     int touch_port;             /* the divert's port (and +1 to the HMI): two renderers side by side need their own */
     char touch_table[33];       /* its nftables table (ip <name>) */
     int touch_area[4];          /* where apps may claim; w 0: by screen size */
+    char overlay_apps[256];     /* root clients with one of these app ids are overlays (always shown, first for touch) */
     char controller_gate[128];  /* the HMI controller gate's file (upstream inputgate) */
     char controller_lib[64];    /* its library name, looked for in the HMI's maps */
     char record_dir[128];       /* debug: each connection's incoming bytes to <dir>/<app>-<pid>-<n>.bin */

@@ -3,12 +3,17 @@
  * Offline tests of mgu-updater on the head unit's Node 8.16.2, as root
  * (test/run.sh runs them in Docker):
  *  - catalog: parsing (schema 1 and 2), rejection of malformed entries, the plan;
+ *  - a version 1 App Manager index read again and again: only the newest
+ *    package of each id kept, what each one is remembered, the cap;
+ *  - build folders removed as the uid that owns each part (root's too, after
+ *    a build and at a start), and a build's output in the log bounded;
  *  - fetch.js: HTTPS through a given DNS server, redirects that drop the
  *    token, size limits, running as the fetch uid;
  *  - the daemon under its supervisor, against an HTTPS catalog and a stand-in
  *    deploy tool: install an app, update itself, return to the previous
  *    version when a new one crashes or never comes up, refuse a download
  *    that does not match the catalog, report a failed install, offline;
+ *    what an install and a build cut short left removed at start;
  *  - the reboot request: refused while an install runs or waits, the
  *    command run once, its failure and a unit that stays up reported;
  *  - the uplink's requests relayed to a fake ctl.sock (the secret, only
@@ -739,6 +744,192 @@ function testTar() {
         .then((msg) => ok('build: a Python that cannot start says so and names mgu-python', /^Python \(.*python3\) cannot start \(ENOENT\): update mgu-python$/.test(msg), msg));
 }
 
+/* A version 1 index read again and again (a reader with a stand-in network
+ * that counts downloads): only the newest package of each id is kept, what
+ * each listed package is is remembered, and the kept packages stay within
+ * their cap. */
+function testIndexV1Cache() {
+    const tar = require('../js/tar');
+    const sourcesLib = require('../js/sources');
+    const cacheDir = path.join(T, 'v1cache');
+    const files = {};
+    const pkg = (name, version, extra) => {
+        const b = tar.tgz([{ name: 'package/package.json', data: Buffer.from(JSON.stringify({ name, version, mguHmi: ['ID7'] })), mode: 0o644 }]
+            .concat(extra || []), 1);
+        files[`${name}@${version}.tgz`] = b;
+        return { url: `${name}@${version}.tgz`, sha256: sha256(b) };
+    };
+    const many = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.4.0', '1.5.0'].map((v) => pkg('v1many', v));
+    const other = pkg('v1other', '2.0.0');
+    const bad = pkg('v1bad', 'latest');
+    const gets = [];
+    const net = {
+        get: (url) => {
+            const name = url.split('/').pop();
+            gets.push(name);
+            return files[name] ? Promise.resolve(files[name]) : Promise.reject(new Error(`${name}: 404`));
+        }
+    };
+    const index = (list) => {
+        files['index.json'] = Buffer.from(JSON.stringify({ packages: list }));
+    };
+    const read = (version) => {
+        gets.length = 0;
+        return sourcesLib.reader({ id: 'v1', type: 'https', url: 'https://updates.test/index.json' },
+            { net, version: version || '0.7.2', cacheDir, maxBuildBytes: 8 << 20 }).catalog();
+    };
+    const kept = () => fs.readdirSync(path.join(cacheDir, 'v1')).sort();
+    const tgz = (p) => `${p.sha256}.tgz`;
+    const listed = (cat) => cat.components.map((c) => `${c.id}@${c.version}`).join(' ');
+    let first;
+    index(many.concat([other, bad]));
+    return read()
+        .then((cat) => {
+            first = cat;
+            ok('index v1: the newest of each id is listed, a package that does not read is said why',
+                listed(cat) === 'v1many@1.5.0 v1other@2.0.0' && /v1bad@latest\.tgz: package\.json needs/.test(cat.skipped.join()), JSON.stringify(cat.skipped));
+            ok('index v1: each package downloaded once; only the newest of each id kept, with what each one is',
+                gets.filter((n) => n !== 'index.json').length === 8 &&
+                JSON.stringify(kept()) === JSON.stringify([tgz(many[5]), tgz(other), 'index.json'].sort()), JSON.stringify([gets, kept()]));
+            return read();
+        })
+        .then((cat) => {
+            ok('index v1: read again, no package is downloaded, the one that does not read included', JSON.stringify(gets) === '["index.json"]', JSON.stringify(gets));
+            ok('index v1: read again, the listing is the same', JSON.stringify(cat) === JSON.stringify(first));
+            index(many.slice(0, 5).concat([other]));
+            return read();
+        })
+        .then((cat) => {
+            const top = cat.components[0];
+            ok('index v1: with the newest gone from the index, the one before it is listed without a download, and none of v1many is kept',
+                listed(cat) === 'v1many@1.4.0 v1other@2.0.0' && JSON.stringify(gets) === '["index.json"]' &&
+                JSON.stringify(kept()) === JSON.stringify([tgz(other), 'index.json'].sort()) &&
+                top.artifact.sha256 === many[4].sha256 && /v1many@1\.4\.0\.tgz$/.test(top.artifact.url), JSON.stringify([gets, kept(), top.artifact]));
+            gets.length = 0;
+            return sourcesLib.reader({ id: 'v1', type: 'https', url: 'https://updates.test/index.json' },
+                { net, version: '0.7.2', cacheDir, maxBuildBytes: 8 << 20 }).artifact(top).then((b) => ({ b, top }));
+        })
+        .then(({ b, top }) => {
+            ok('index v1: its install downloads it, checked, and keeps it', sha256(b) === top.artifact.sha256 && JSON.stringify(gets) === '["v1many@1.4.0.tgz"]' &&
+                kept().indexOf(tgz(many[4])) >= 0, JSON.stringify([gets, kept()]));
+            index(many.concat([other, bad]));
+            return read('0.7.3');
+        })
+        .then((cat) => {
+            ok('index v1: another updater version downloads again what did not read and what the index lists again; what it knows, kept or not, it does not',
+                listed(cat) === 'v1many@1.5.0 v1other@2.0.0' && JSON.stringify(gets) === '["index.json","v1many@1.5.0.tgz","v1bad@latest.tgz"]' &&
+                JSON.stringify(kept()) === JSON.stringify([tgz(many[5]), tgz(other), 'index.json'].sort()), JSON.stringify([gets, kept()]));
+            // other sources' kept packages fill the cap (a sparse file)
+            mkdirp(path.join(cacheDir, 'full'));
+            fs.writeFileSync(path.join(cacheDir, 'full', 'x.tgz'), '');
+            fs.truncateSync(path.join(cacheDir, 'full', 'x.tgz'), 128 << 20);
+            index(many.concat([other, pkg('v1many', '1.6.0')]));
+            return read('0.7.3');
+        })
+        .then((cat) => {
+            ok('index v1: past the cap a new package is listed, not kept', listed(cat) === 'v1many@1.6.0 v1other@2.0.0' &&
+                JSON.stringify(kept()) === JSON.stringify([tgz(other), 'index.json'].sort()), JSON.stringify(kept()));
+            // room for 100 KiB under the cap; four older versions of 30 KiB come before the newest
+            const capDir = path.join(T, 'v1cap');
+            mkdirp(path.join(capDir, 'full'));
+            fs.writeFileSync(path.join(capDir, 'full', 'x.tgz'), '');
+            fs.truncateSync(path.join(capDir, 'full', 'x.tgz'), (128 << 20) - (100 << 10));
+            const big = ['1.0.0', '1.1.0', '1.2.0', '1.3.0', '1.4.0'].map((v) => pkg('v1big', v,
+                [{ name: 'package/blob', data: crypto.randomBytes(30 << 10), mode: 0o644 }]));
+            index(big.concat([other]));
+            const capRead = () => {
+                gets.length = 0;
+                return sourcesLib.reader({ id: 'cap', type: 'https', url: 'https://updates.test/index.json' },
+                    { net, version: '0.7.3', cacheDir: capDir, maxBuildBytes: 8 << 20 }).catalog();
+            };
+            const capKept = () => fs.readdirSync(path.join(capDir, 'cap')).sort();
+            return capRead().then((c) => ({ c, capDir, capRead, capKept, big }));
+        })
+        .then(({ c, capDir, capRead, capKept, big }) => {
+            ok('index v1: older versions take no room under the cap: the newest of each id is kept',
+                listed(c) === 'v1big@1.4.0 v1other@2.0.0' &&
+                JSON.stringify(capKept()) === JSON.stringify([tgz(big[4]), tgz(other), 'index.json'].sort()), JSON.stringify(capKept()));
+            // index.json cannot be written (a folder at its name)
+            fs.unlinkSync(path.join(capDir, 'cap', 'index.json'));
+            fs.mkdirSync(path.join(capDir, 'cap', 'index.json'));
+            return capRead().then((again) => again, (e) => ({ failed: e.message }));
+        })
+        .then((cat) => {
+            ok('index v1: an index.json that cannot be written still lists the components', !cat.failed &&
+                listed(cat) === 'v1big@1.4.0 v1other@2.0.0', JSON.stringify(cat.failed || cat.skipped));
+            const big = ['1.2.0', '1.3.0', '1.4.0'].map((v) => ({ url: `v1big@${v}.tgz`, sha256: sha256(files[`v1big@${v}.tgz`]) }));
+            const at = (id) => {
+                const dir = path.join(T, `v1${id}`);
+                const r = () => {
+                    gets.length = 0;
+                    return sourcesLib.reader({ id, type: 'https', url: 'https://updates.test/index.json' },
+                        { net, version: '0.7.3', cacheDir: dir, maxBuildBytes: 8 << 20 }).catalog();
+                };
+                return { r, kept: () => fs.readdirSync(path.join(dir, id)).sort() };
+            };
+            const dup = at('dup');
+            const ooo = at('ooo');
+            const want = JSON.stringify([tgz(big[2]), tgz(other), 'index.json'].sort());
+            const twice = (s) => s.r().then(() => s.kept()).then((first) => s.r().then(() => [first, s.kept(), gets.slice()]));
+            // one package under two URLs
+            index([big[2], { url: 'copy/v1big@1.4.0.tgz', sha256: big[2].sha256 }, other]);
+            return twice(dup)
+                .then(([first, second]) => {
+                    ok('index v1: a package the index lists twice stays kept, read after read',
+                        JSON.stringify(first) === want && JSON.stringify(second) === want, JSON.stringify([first, second]));
+                    index([big[2], big[1], big[0], other]);
+                    return twice(ooo);
+                })
+                .then(([first, second, again]) => {
+                    ok('index v1: the newest listed first is kept, the older ones after it are not, read after read',
+                        JSON.stringify(first) === want && JSON.stringify(second) === want && JSON.stringify(again) === '["index.json"]',
+                        JSON.stringify([first, second, again]));
+                });
+        });
+}
+
+/* Build folders and their log: a folder root never handed to the build uid
+ * removed by root, after the build and at a start; a build's output in the
+ * log bounded by bytes. */
+function testBuildDisk() {
+    const { runBuild, cleanBuilds } = require('../js/build');
+    const state = path.join(T, 'buildstate');
+    const conf = { build_uid: '12995', build_gid: '12995', fetch_uid: '12990', web_uid: '12996', state_dir: state,
+        build_max_bytes: String(1 << 20), build_timeout_s: '30' };
+    const builds = () => (fs.existsSync(state) ? fs.readdirSync(state).filter((n) => /^build-/.test(n)) : []);
+    const entry = { id: 'chatty', version: '1.0.0', script: { node: 'b.js', args: [] } };
+    // 400 lines of 1 KiB, then the package
+    const script = "for (let i = 0; i < 400; i++) console.log(String(i).padStart(1024, 'x'));\n" +
+        "require('fs').writeFileSync(process.env.MGU_OUT + '/chatty@1.0.0.tgz', 'pkg');\n";
+    const logged = [];
+    return runBuild({ conf, entry, donor: '', log: () => {},
+        files: [{ name: 'b.js', data: Buffer.from('x'), mode: 0o644 }, { name: 'big', data: Buffer.alloc(2 << 20), mode: 0o644 }] })
+        .then(() => false, (e) => /more than/.test(e.message))
+        .then((refused) => {
+            ok('build: a build that fails before root hands it the repo leaves no folder', refused && builds().length === 0, builds().join(' '));
+            const left = path.join(state, 'build-0123456789ab');
+            mkdirp(path.join(left, 'repo', 'src'));
+            fs.writeFileSync(path.join(left, 'repo', 'src', 'a.js'), 'x');
+            fs.chmodSync(path.join(left, 'repo'), 0o700);
+            mkdirp(path.join(left, 'tmp'));
+            fs.writeFileSync(path.join(left, 'tmp', 'b'), 'x');
+            sh(`chown -R 12995:12995 ${path.join(left, 'tmp')}`);
+            return cleanBuilds(conf);
+        })
+        .then(() => {
+            ok('build: a start removes build folders an earlier run left, root\'s and the build uid\'s', builds().length === 0, builds().join(' '));
+            return runBuild({ conf, entry, donor: '', log: (l) => logged.push(l), files: [{ name: 'b.js', data: Buffer.from(script), mode: 0o644 }] });
+        })
+        .then((b) => sleep(300).then(() => {
+            const own = logged.filter((l) => /^build chatty: /.test(l));
+            const cut = own.filter((l) => /^build chatty: the rest of its output is left out of the log$/.test(l));
+            const bytes = own.filter((l) => cut.indexOf(l) < 0).reduce((n, l) => n + Buffer.byteLength(l), 0);
+            ok('build: at most 256 KiB of its output goes to the log, then one line says the rest is left out',
+                b.toString() === 'pkg' && bytes <= 256 << 10 && bytes > 200 << 10 && cut.length === 1 && own[own.length - 1] === cut[0],
+                `${bytes} ${own.length}`);
+        }));
+}
+
 /* ---- fetch.js ----------------------------------------------------------------- */
 
 function runFetch(job, uid) {
@@ -958,8 +1149,14 @@ function testReboot() {
     const { Updater } = require('../js/updater');
     const dir = path.join(T, 'reboot');
     const script = rebootScript(dir);
-    const make = (reboot) => new Updater({ catalog: `file://${path.join(dir, 'catalog.json')}`,
-        state_dir: path.join(dir, 'state'), reboot });
+    // the unit's uptime (proc/uptime): up 10 min unless a test says otherwise
+    const proc = path.join(dir, 'proc');
+    mkdirp(proc);
+    const upFor = (s) => fs.writeFileSync(path.join(proc, 'uptime'), `${s} 1.00\n`);
+    upFor(600);
+    const record = path.join(dir, 'state', 'reboots.json');
+    const make = (reboot, stateDir) => new Updater({ catalog: `file://${path.join(dir, 'catalog.json')}`,
+        state_dir: stateDir || path.join(dir, 'state'), reboot, proc, store_app: 'robertn_store' });
     let u = make(`${script} --requestRestart 7`);
     u.busy = { id: 'demo_app', phase: 'download' };
     ok('reboot: refused while an install runs', u.reboot() === 'an install is running' && !u.rebooting);
@@ -998,8 +1195,77 @@ function testReboot() {
             ok('reboot: a command that succeeds leaves the restart running', u.rebooting && !u.rebootError);
             return sleep(2500);
         })
-        .then(() => ok('reboot: a unit still up after the wait ends the restart as failed',
-            !u.rebooting && u.rebootError === 'the head unit did not restart', u.rebootError));
+        .then(() => {
+            ok('reboot: a unit still up after the wait ends the restart as failed',
+                !u.rebooting && u.rebootError === 'the head unit did not restart', u.rebootError);
+            const at = JSON.parse(fs.readFileSync(record, 'utf8')).at;
+            ok('reboot: the record holds the restart that ran, not the two whose command failed', at.length === 1, JSON.stringify(at));
+            ok('reboot: the record is written whole (no temporary file left)', !fs.existsSync(`${record}.tmp`));
+
+            // the unit restarted: a new updater on the same state, the head unit up 1 min; the
+            // restart that ran is less than 10 min ago, from the record that outlived the restart
+            upFor(60);
+            u = make(`${script} --requestRestart 7`);
+            const why = u.reboot();
+            ok('reboot: refused within 10 min of the last restart, across a restart of the unit, saying when the longest limit ends',
+                why === 'too soon after the last restart, possible in 10 min' && u.state().rebootError === why && !u.rebooting, why);
+
+            const saved = fs.readFileSync(record);
+            fs.unlinkSync(record);
+            ok('reboot: refused too soon after start-up, saying when it is possible',
+                u.reboot() === 'too soon after start-up, possible in 3 min', u.rebootError);
+            fs.writeFileSync(record, saved);
+
+            upFor(300);
+            const now = Date.now();
+            fs.writeFileSync(record, JSON.stringify({ at: [now - 50 * 60000, now - 35 * 60000, now - 20 * 60000] }));
+            ok('reboot: refused after 3 restarts in the last hour',
+                u.reboot() === '3 restarts in the last hour, possible in 10 min', u.rebootError);
+
+            // restarts over an hour ago and ones ahead of the clock (set back since) do not count
+            fs.writeFileSync(record, JSON.stringify({ at: [now - 90 * 60000, now - 70 * 60000, now - 11 * 60000, now + 3600000] }));
+            const before = rebootRuns(dir).length;
+            ok('reboot: accepted 10 min after the last restart, with fewer than 3 in the hour', u.reboot() === null && u.rebooting);
+            const kept = JSON.parse(fs.readFileSync(record, 'utf8')).at;
+            ok('reboot: the record keeps the last hour and the new restart, written before the command runs',
+                kept.length === 2 && kept[0] === now - 11 * 60000 && kept[1] >= now, JSON.stringify(kept));
+
+            return sleep(500).then(() => ok('reboot: and the command runs', rebootRuns(dir).length === before + 1, rebootRuns(dir).length));
+        })
+        .then(() => {
+            // a record that cannot be written refuses the restart
+            const blocked = path.join(dir, 'blocked');
+            fs.writeFileSync(blocked, '');
+            u = make(`${script} --requestRestart 7`, path.join(blocked, 'state'));
+            ok('reboot: refused when the restart cannot be recorded',
+                /^cannot record the restart: /.test(u.reboot()) && !u.rebooting, u.rebootError);
+
+            // the refusal goes once a restart is possible
+            fs.unlinkSync(record);
+            upFor(239.7);
+            u = make(`${script} --requestRestart 7`);
+            ok('reboot: refused just short of 4 min up', u.reboot() === 'too soon after start-up, possible in 1 min');
+            return sleep(600);
+        })
+        .then(() => {
+            ok('reboot: the refusal clears once a restart is possible', u.rebootError === null, u.rebootError);
+            upFor(600);
+            ok('reboot: the socket refuses a restart without the secret', u.handle({ op: 'reboot' }) === 'forbidden' && !u.rebooting);
+            ok('reboot: and accepts the Store\'s, with the secret', u.handle({ op: 'reboot', secret: u.secret }) === null && u.rebooting);
+            // a Store before 0.9.41 (upstream's 0.9.16) sends no secret: while one is installed, its restart is taken without it, within the limits
+            fs.unlinkSync(record);
+            const storeAt = (v) => {
+                const s = make(`${script} --requestRestart 7`);
+                s.installedVersion = (id, kind) => (id === 'robertn_store' && kind === 'app' ? v : null);
+                return s;
+            };
+            ok('reboot: a Store 0.9.41 or newer installed: no restart without the secret', storeAt('0.9.41').handle({ op: 'reboot' }) === 'forbidden');
+            u = storeAt('0.9.40');
+            ok('reboot: a Store before 0.9.41 installed: its restart without the secret is taken', u.handle({ op: 'reboot' }) === null && u.rebooting);
+            u = storeAt('0.9.40');
+            ok('reboot: and limited like any other', u.handle({ op: 'reboot' }) === 'too soon after the last restart, possible in 10 min', u.rebootError);
+            return sleep(1000);
+        });
 }
 
 /* ---- the daemon --------------------------------------------------------------------- */
@@ -1095,6 +1361,7 @@ function testDaemon(certs, pubDir) {
         `tool_root = ${opt}`, `oap_root = ${oap}`, `socket = ${sock}`, 'socket_group = staff',
         'first_check_s = 0', 'check_interval_s = 3600', `privacy_tool = ${privacyTool}`, 'default_sources =',
         `log_file = ${path.join(T, 'tmp', 'mgu-updater.log')}`, `reboot = ${rebootScript(path.join(T, 'daemon-reboot'))} reboot`,
+        `web_secret = ${path.join(T, 'run', 'web-secret')}`,
         // the unit's uids as overrides (picking them: testUidsDaemon)
         `fetch_uid = ${FETCH_UID}`, 'build_uid = 12995', 'web_uid = 12996',
         extra || ''].join('\n');
@@ -1128,10 +1395,20 @@ function testDaemon(certs, pubDir) {
     // root's own folder inside: only a remover running as root could empty it
     mkdirp(path.join(planted, 'rootdir'));
     fs.writeFileSync(path.join(planted, 'rootdir', 'rootfile'), 'x');
+    // what an install and a build cut short left: a checked artifact, and a
+    // build folder root made and never handed to the build uid
+    mkdirp(path.join(T, 'state', 'verified'));
+    fs.writeFileSync(path.join(T, 'state', 'verified', 'cut_app@1.0.0.tgz'), 'x');
+    const rootBuild = path.join(T, 'state', 'build-0123456789ab');
+    mkdirp(path.join(rootBuild, 'repo', 'src'));
+    fs.writeFileSync(path.join(rootBuild, 'repo', 'src', 'a.js'), 'x');
+    fs.chmodSync(path.join(rootBuild, 'repo'), 0o700);
     const supLog = path.join(T, 'supervisor.log');
     const env = Object.assign({}, process.env, {
         MGU_UPDATER_DIR: path.join(opt, 'mgu-updater'), MGU_UPDATER_CONF: conf, NODE: process.execPath, TRIAL_S: '12',
         MGU_UPDATER_TRIAL_WAIT_MS: '6000',
+        // its restart whatever the test machine's uptime (testReboot covers the limits)
+        MGU_UPDATER_REBOOT_MIN_UPTIME_S: '0',
         TOOL_ROOT: opt, OAP_ROOT: oap, FAKE_DEPLOY_LOG: log, FAKE_LEASE: path.join(T, 'lease.json')
     });
     const sup = cp.spawn('sh', [path.join(opt, 'mgu-updater', 'current', 'mgu-updater')],
@@ -1169,6 +1446,9 @@ function testDaemon(certs, pubDir) {
             ok('daemon: clearing them follows no link out', fs.existsSync(path.join(precious, 'keep')));
             ok('daemon: clearing them runs as the fetch uid (root\'s own files stay)',
                 fs.existsSync(path.join(planted, 'rootdir', 'rootfile')));
+            ok('daemon: a start removes the checked artifacts an install cut short left',
+                !fs.existsSync(path.join(T, 'state', 'verified', 'cut_app@1.0.0.tgz')));
+            ok('daemon: a start removes a build folder still root\'s', !fs.existsSync(rootBuild));
             ok('daemon: online while the uplink lease exists', st.online === true);
             ok('daemon: an installed tool\'s problem from its status.json, none for an app',
                 row(st, 'mgu-updater').problem === 'In-page drawing unavailable: x' && row(st, 'demo_app').problem === null,
@@ -1588,7 +1868,15 @@ function testDaemon(certs, pubDir) {
                 client.install('nope');
             });
         })
+        .then(() => new Promise((resolve) => {
+            client.once('reply-error', (msg) => {
+                ok('reboot: the socket refuses a restart without the secret', msg === 'forbidden', msg);
+                resolve();
+            });
+            client.reboot();
+        }))
         .then(() => {
+            client.setSecret(fs.readFileSync(path.join(T, 'run', 'web-secret'), 'utf8'));
             client.reboot();
             return waitFor(client, (s) => s.rebooting === true, 5000, 'restarting');
         })
@@ -5362,6 +5650,8 @@ function main() {
     testFileLog();
     return testTar()
         .then(() => testDeployTimeout())
+        .then(() => testIndexV1Cache().catch((e) => ok('index v1 cache scenario', false, e.stack)))
+        .then(() => testBuildDisk().catch((e) => ok('build folders scenario', false, e.stack)))
         .then(() => testReboot())
         .then(() => testUidsDaemon())
         .then(() => testUplink())

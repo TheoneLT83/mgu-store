@@ -376,6 +376,8 @@ eq(info.slice(0, 3).map((i) => [i.title, i.right]), [['iDrive 7', ''], ['Store',
 ok(info.some((i) => i.id === 'mgu-renderd' && i.right === 'chip:1.1.0'), 'Information: an installed renderer and its version');
 const idle = { busy: null, components: fixture.state().components.map((c) => Object.assign({}, c, { queued: false })) };
 ok(screen('settings', {}, idle).labels.indexOf('Restart head unit') >= 0, 'Restart head unit with nothing installing');
+const refused = Object.assign({}, idle, { rebootError: 'too soon after start-up, possible in 3 min' });
+eq(text(screen('settings', {}, refused), 'note'), 'Restart failed: too soon after start-up, possible in 3 min', 'a refused restart beside Restart head unit');
 
 // a source: Remove; the GitHub App's install page while a sign-in does not reach it
 f = screen('source');

@@ -89,6 +89,7 @@ int cfg_set(struct cfg *c, const char *key, const char *value)
     STR("touch_iface", touch_iface);
     STR("touch_saddr", touch_saddr);
     STR("touch_table", touch_table);
+    STR("overlay_apps", overlay_apps);
     STR("controller_gate", controller_gate);
     STR("controller_lib", controller_lib);
     STR("record_dir", record_dir);

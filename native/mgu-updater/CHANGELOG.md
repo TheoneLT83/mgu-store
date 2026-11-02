@@ -1,5 +1,15 @@
 # Updater changelog
 
+## 0.8.15
+
+robertnisipeanu/mgu-store's 0.8.13 and 0.8.14 with this repository's sources.
+
+- A restart of the head unit is the Store's request only: it carries the secret, once Store 0.9.41 or newer is installed (it sends it); with an older Store, a restart is asked for without it, within the same limits.
+- Restarts are limited, so nothing can restart the unit in a loop: none before the unit has been up 4 minutes, none within 10 minutes of the last one, and at most 3 an hour. Each is recorded on disk (`state/reboots.json`) before the unit restarts, so the limits hold across restarts. A refused request says why and when a restart is possible (`rebootError`).
+- A version 1 App Manager index keeps only the newest package of each id, as version 2 does, and remembers what each listed package is (`state/index/<source id>/index.json`), so a check downloads only packages it has not read; the packages kept, every source's together, come to at most 128 MiB, and one not kept is downloaded again for its install or icon.
+- Each start removes the checked artifacts an install cut short left in `state/verified/`, and every build folder an earlier run left, root's included (a build that failed before root handed the repo copy over); a build that fails that way leaves no folder.
+- A build's output in the log is at most 256 KiB (and 2000 lines), its proxy's lines included, then one line says the rest is left out.
+
 ## 0.8.13
 
 - Default source: robertnisipeanu/idrive-apps on its releases (Waze on cluster, the Waze tool and the cluster renderer, as robertnisipeanu/mgu-store has it), added once at the first start of this version. A Waze installed from TheoneLT83/idrive7-apps, which lists it no more, is updated from it (the same title).
