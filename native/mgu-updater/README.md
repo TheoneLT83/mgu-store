@@ -220,7 +220,11 @@ commit). Without one: `releases` when the repo has a release, else
 
 **Building on the unit.** `build.node` runs under this Node, and
 `build.python` under `python` (`/var/opt/mgu-python/current/bin/python3`,
-with `SSL_CERT_FILE` its CA bundle), as the build uid ("Its own uids": no
+with `SSL_CERT_FILE` its CA bundle, and `PYTHONPATH` the updater's `py/`,
+whose `sitecustomize.py` has every SSL context check certificates without
+their validity dates, OpenSSL's `X509_V_FLAG_NO_CHECK_TIME`: the chain to a
+trusted root, its signatures, CA constraints, key usages and the host name
+are still checked), as the build uid ("Its own uids": no
 account, in none of the uplink's lists: no network),
 in a copy of the repo in `state/build-<random>/repo` that only it can
 write, with `MGU_SDK_DONOR` (the donor bundle `mgu-deploy.sh sdk-donor
@@ -524,13 +528,30 @@ fetcher can change nothing it installs.
 - Names resolve through the DNS servers of the uplink's lease
   (`/run/mgu-uplink/lease.json`); without a lease the unit is offline and
   the Store says so.
-- HTTPS only, Node's bundled roots (or `ca_file`). Redirects of a GET are
+- HTTPS only, Node's bundled roots (or `ca_file`). A certificate's
+  validity dates are not held against it, since the unit's clock may be
+  days off; everything else is checked: the chain up to a trusted root,
+  every signature in it, CA constraints and key usages, and the host name.
+  Node checks each connection first. When its only complaint can be
+  `CERT_NOT_YET_VALID` or `CERT_HAS_EXPIRED`, `certs.js` checks the
+  presented chain again without the dates, and nothing is sent until that
+  passes. The log names each host whose dates were let go, once.
+- Redirects of a GET are
   followed, but request headers go to the first host only: a token never
   reaches the storage a download redirects to. `User-Agent`,
-  `If-None-Match` and `If-Modified-Since` go along. The device flow's POSTs are
+  `If-None-Match`, `If-Modified-Since`, `Range` and `If-Range` go along. The device flow's POSTs are
   not redirected.
 - The size the source states is the most that is read; API answers at
   most 4 MiB.
+- A download whose connection breaks (cut mid-transfer, reset, no data for
+  30 s, no connection) or that gets a 500, 502, 503 or 504 is tried again
+  after 1, 2, 4 and 8 s, up to 4 times in a row without getting further, 200
+  tries in all. Where the server takes byte ranges with a strong ETag
+  (GitHub's release downloads do; `codeload.github.com` does not), the next
+  try asks for the rest (`Range`, `If-Range`) and adds it to what came;
+  otherwise the file starts over. The size and sha256 are checked on the
+  whole file. A POST, a refused certificate, an unknown host name and other
+  HTTP answers are not tried again.
 
 ## Its own uids
 
@@ -953,6 +974,8 @@ js/tar.js                .tar.gz in memory: reading a repo tarball, packing a co
 js/build.js              a repo's build script, as the build uid
 js/login.js              GitHub device-flow sign-in
 js/fetch.js              one download, as the fetch uid
+js/certs.js              a server's certificate chain checked without its dates
+js/py/sitecustomize.py   a Python build's TLS: certificates checked without their dates
 js/client.js             socket client (Store app, command line)
 js/web.js                the phone page
 updater.conf             defaults
@@ -963,7 +986,7 @@ test/                    offline tests (test/run.sh: Node 8.16.2 in Docker)
 
 ## Tests
 
-`sh test/run.sh` runs `test/test_updater.js` (and `test/test_web.js`,
+`sh test/run.sh` runs `test/test_certs.js`, `test/test_updater.js` (and `test/test_web.js`,
 and `test/test_page.js`, the page's add form against a fake DOM) on
 the unit's Node 8.16.2, as root, against a local HTTPS server with its own
 CA and a DNS server that also answers for `github.com`,
@@ -976,6 +999,16 @@ files), with
 - catalogs (schema 1 and 2, a signature ignored), tar reading and packing;
 - downloads through the lease's DNS as the fetch uid, a redirect that must not
   carry the token, size limits;
+- certificate dates (`test/test_certs.js`, its own PKI made with openssl): a
+  valid chain at the right clock, not yet valid and expired is taken; a
+  self-signed certificate, a chain to an untrusted root, a bad signature
+  (also under an expired CA), a wrong host name, an issuer that is not a CA,
+  a certificate not for TLS servers (extended key usage or Netscape cert
+  type) and 12 CAs that sign one another (settled within 2 s) are refused
+  before any request, each also through `verifyChain` directly; with
+  `MGU_TEST_PYTHON` naming a Python, the same chains through its TLS with
+  `js/py/` on `PYTHONPATH` (taken and refused alike) and without it (the
+  dates refused too);
 - sources, in an updater in the test process: several sources and an id
   two of them list; tokens: a private repo without one, a token GitHub
   rejects, one that reads two private repos (the second added later, no

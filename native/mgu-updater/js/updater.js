@@ -557,6 +557,15 @@ class Fetcher {
         // url -> { etag, body }: the answers cached() asks for again, oldest first
         this.etags = new Map();
         this.etagBytes = 0;
+        // hosts whose certificate dates fetch.js has ignored, logged once each
+        this.datesLogged = new Set();
+    }
+
+    datesIgnored(host, error) {
+        if (!this.datesLogged.has(host)) {
+            this.datesLogged.add(host);
+            console.log(`fetch: ${host}: ${error} ignored; chain, signatures and host name verified (the clock may be off)`);
+        }
     }
 
     // the conf's: a re-picked fetch uid applies to the next download
@@ -702,6 +711,11 @@ class Fetcher {
                     }
                     if (ev.progress !== undefined && onProgress) {
                         onProgress(ev.progress, ev.total || maxBytes || null);
+                    } else if (ev.certDates) {
+                        this.datesIgnored(ev.certDates, ev.error);
+                    } else if (ev.retry) {
+                        console.log(`fetch: ${name}: ${ev.error}; trying again in ${ev.after / 1000} s` +
+                            `${ev.from ? ` from byte ${ev.from}` : ''}`);
                     } else if (ev.done || ev.error || ev.notModified) {
                         result = ev;
                     }
@@ -2507,7 +2521,12 @@ class Updater {
             .then(() => {
                 Object.keys(entry.requires).forEach((dep) => {
                     if (!this.requirementMet(dep, entry.requires[dep])) {
-                        throw new Error(`needs ${dep} ${entry.requires[dep]} or newer${dep === SELF ? ': update the updater first' : ''}`);
+                        // the row installPlan queued for it, when its install failed: where from and why
+                        const found = dep !== SELF && this.findRequirement(dep, entry.requires[dep], item.source);
+                        const failed = found && this.errors[found.entry.id];
+                        const why = dep === SELF ? ': update the updater first' :
+                            failed ? `, which did not install from ${this.sourceLabel(found.source)}: ${failed}` : '';
+                        throw new Error(`needs ${dep} ${entry.requires[dep]} or newer${why}`);
                     }
                 });
                 // installed (since this was asked for): only the origin that updates it (resolved)

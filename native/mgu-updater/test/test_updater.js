@@ -403,10 +403,10 @@ function ghApi(req, res, auth) {
         const page = Number(u.searchParams.get('page')) || 1;
         send(200, Object.keys(repo.branches).sort().slice((page - 1) * n, page * n).map((name) => ({ name, commit: { sha: repo.branches[name] } })));
     } else if (rest.indexOf('/contents/') === 0) {
-        // a read that fails once (a server error), as a passing outage does
+        // a read that fails once with an answer fetch.js does not try again
         if (repo.failOnce === decodeURIComponent(rest.slice('/contents/'.length))) {
             repo.failOnce = null;
-            send(502, { message: 'Server Error' });
+            send(400, { message: 'Bad Request' });
             return;
         }
         const tree = repo.trees[u.searchParams.get('ref')];
@@ -551,6 +551,7 @@ function updaterKit(dir, version, variant) {
     c.version = version;
     c.files = c.files.filter((f) => fs.existsSync(path.join(ROOT, f.from)));
     c.files.forEach((f) => {
+        mkdirp(path.dirname(path.join(files, f.path)));
         fs.copyFileSync(path.join(ROOT, f.from), path.join(files, f.path));
         f.sha256 = sha256(fs.readFileSync(path.join(files, f.path)));
         delete f.from;
@@ -613,14 +614,16 @@ function testShipped() {
     const component = JSON.parse(fs.readFileSync(path.join(ROOT, 'component.json'), 'utf8'));
     const shipped = component.files.map((f) => f.path);
     const needed = [];
-    fs.readdirSync(path.join(ROOT, 'js')).forEach((f) => {
+    fs.readdirSync(path.join(ROOT, 'js')).filter((f) => /\.js$/.test(f)).forEach((f) => {
         const text = fs.readFileSync(path.join(ROOT, 'js', f), 'utf8');
         (text.match(/require\('\.\/([a-z_]+)'\)/g) || []).forEach((r) => needed.push(`${/'\.\/([a-z_]+)'/.exec(r)[1]}.js`));
         // the scripts it runs as children
         (text.match(/path\.join\((?:HERE|__dirname), '([a-z_]+\.js)'\)/g) || []).forEach((r) => needed.push(/'([a-z_]+\.js)'/.exec(r)[1]));
     });
-    ok('shipped: component.json installs every module the updater loads or runs (the phone page\'s web.js is optional)',
-        needed.filter((n) => n !== 'web.js').every((n) => shipped.indexOf(n) >= 0) && needed.indexOf('proxy.js') >= 0, JSON.stringify(needed));
+    ok('shipped: component.json installs every module the updater loads or runs (the phone page\'s web.js is optional), ' +
+        'and the Python builds\' sitecustomize beside build.js',
+        needed.filter((n) => n !== 'web.js').every((n) => shipped.indexOf(n) >= 0) && needed.indexOf('proxy.js') >= 0 &&
+        shipped.indexOf('py/sitecustomize.py') >= 0, JSON.stringify(needed));
     ok('shipped: component.json installs each file it names (web.js once the phone page is in this tree)',
         component.files.every((f) => f.path === 'web.js' || fs.existsSync(path.join(ROOT, f.from))) && shipped.indexOf('web.js') >= 0);
     ok('shipped: the mgu-store GitHub App\'s client id and page', conf.github_client_id === 'Iv23li9nab1iob4a6eyC' &&
@@ -1327,7 +1330,10 @@ function testDaemon(certs, pubDir) {
     mkdirp(oap);
     // version 0.1.0 installed the deploy tool's way
     const c = JSON.parse(fs.readFileSync(path.join(ROOT, 'component.json'), 'utf8'));
-    c.files.filter((f) => fs.existsSync(path.join(ROOT, f.from))).forEach((f) => fs.copyFileSync(path.join(ROOT, f.from), path.join(v1, f.path)));
+    c.files.filter((f) => fs.existsSync(path.join(ROOT, f.from))).forEach((f) => {
+        mkdirp(path.dirname(path.join(v1, f.path)));
+        fs.copyFileSync(path.join(ROOT, f.from), path.join(v1, f.path));
+    });
     fs.chmodSync(path.join(v1, 'mgu-updater'), 0o755);
     c.version = '0.1.0';
     fs.writeFileSync(path.join(v1, 'component.json'), JSON.stringify(c));
@@ -2384,7 +2390,21 @@ function testSources(certs) {
             return priv({ op: 'source-remove', id: 'private2' });
         })
         .then(() => {
-            // requirements first
+            // a requirement that fails to install: the app does not install, and says why
+            fs.writeFileSync(deployLog, '');
+            fs.writeFileSync(`${deployLog}.fail`, '1');
+            return ask(sock, { op: 'install', id: 'needs_app' });
+        })
+        .then(() => until(st, () => !st().busy && !comp('needs_app').queued && comp('needs_app').error, 20000, 'the failed requirement'))
+        .then(() => {
+            fs.unlinkSync(`${deployLog}.fail`);
+            const lines = deployed();
+            ok('requires: a requirement that fails to install is the app\'s error, with its reason; the app is not installed',
+                comp('needs_app').error === `needs base_tool 1.0.0 or newer, which did not install from ${src('mgu-store').label}: ` +
+                'install failed: test failure 1; ' +
+                'the previous version was kept' && lines.length === 1 && /base_tool@1\.0\.0/.test(lines[0]) &&
+                comp('needs_app').status === 'available', JSON.stringify([comp('needs_app').error, lines]));
+            // Try again: the requirement installs first again
             fs.writeFileSync(deployLog, '');
             return ask(sock, { op: 'install', id: 'needs_app' });
         })
@@ -4188,7 +4208,7 @@ function testPythonRepo() {
         "  const dir = path.join('dist', id); fs.mkdirSync('dist', { recursive: false }); fs.mkdirSync(dir);",
         "  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: id, version: app.version, uid: process.getuid(),",
         "    sdk: fs.readFileSync('oap-sdk/index.js', 'utf8'), proxy: process.env.https_proxy || null, fetched,",
-        "    path: process.env.PATH, cert: process.env.SSL_CERT_FILE }));",
+        "    path: process.env.PATH, cert: process.env.SSL_CERT_FILE, pythonpath: process.env.PYTHONPATH }));",
         "  cp.execFileSync('tar', ['-czf', path.join('dist', `${id}@${app.version}.tgz`), '-C', dir, 'package.json']);",
         "  console.log('built ' + id);",
         '};',
@@ -4318,10 +4338,11 @@ function testPythonRepo() {
             const pkg = comp('a1').status === 'installed' ? pkgOf('a1') : {};
             const order = deployed();
             ok('python build: mgu-python 1.0.1 (whose loader the unit lacks) updated first, then the app built by the build uid, ' +
-                'under Python, with the oap-sdk module',
+                'under Python, with the oap-sdk module, and the updater\'s sitecustomize on PYTHONPATH',
                 order.length === 2 && /mgu-python@1\.0\.2/.test(order[0]) && /a1@1\.2\.0/.test(order[1]) && pkg.uid === 12995 &&
                 pkg.sdk === '// the generated oap-sdk module\n' && pkg.proxy === null &&
                 pkg.cert === path.join(opt, 'mgu-python', 'current', 'ssl', 'cacert.pem') &&
+                pkg.pythonpath === path.join(ROOT, 'js', 'py') && fs.existsSync(path.join(pkg.pythonpath, 'sitecustomize.py')) &&
                 pkg.path.split(':')[0] === path.dirname(process.execPath), JSON.stringify([comp('a1'), order, pkg]));
             fs.unlinkSync(lease);
             return ask(conf.socket, { op: 'install', id: 'netapp' }).then(() => settle('netapp'));
@@ -5159,7 +5180,7 @@ function testRequests(certs) {
         })
         .then(() => {
             ok('requests: a component whose read failed is left out, saying why', version('branch', 'req_a') === '1.2.0' &&
-                !version('branch', 'req_b') && /req_b: .*502/.test(rt('branch').error || ''), rt('branch').error);
+                !version('branch', 'req_b') && /req_b: .*400/.test(rt('branch').error || ''), rt('branch').error);
             return counted('branch');
         })
         .then((n) => {

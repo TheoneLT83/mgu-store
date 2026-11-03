@@ -1,5 +1,15 @@
 # Updater changelog
 
+## 0.8.19
+
+robertnisipeanu/mgu-store's 0.8.15 to 0.8.18 with this repository's sources.
+
+- A download whose connection breaks is tried again: one cut mid-transfer, reset, without data for 30 s or without a connection, or answered with a 500, 502, 503 or 504, after 1, 2, 4 and 8 s, up to 4 times in a row without getting further (200 tries in all). Where the server takes byte ranges, as GitHub's release downloads do, the next try asks for the rest of the file and adds it to what came; otherwise the file starts over. The size and sha256 the source states are still checked on the whole file. The log says each try and why (`fetch: <file>: <reason>; trying again in <n> s from byte <n>`).
+- A download that fails says why: the first error of its last try (`<host>: ECONNRESET`, `<host>: no data for 30 s`, `connection closed mid-download`), with the number of tries, rather than whichever error came last.
+- A Python build's downloads work on a head unit whose clock is off: Python's TLS (urllib, pip, requests) is given `py/sitecustomize.py`, which sets OpenSSL's `X509_V_FLAG_NO_CHECK_TIME` on every SSL context. The chain to a trusted root, every signature in it, CA constraints, key usages and the host name are still checked.
+- An app whose requirement failed to install says where from and why: "needs mgu-inputgate 1.0.0 or newer, which did not install from <source>: <the requirement's own error>".
+- Downloads work on a head unit whose clock is off: a certificate's validity dates are not held against it. The chain up to a trusted root (Node's bundled roots, or `ca_file`), every signature in it, CA constraints, key usages and the host name are still checked, and nothing is sent before they pass. The log names each host whose dates were let go, once.
+
 ## 0.8.15
 
 robertnisipeanu/mgu-store's 0.8.13 and 0.8.14 with this repository's sources.
