@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.42
+
+robertnisipeanu/mgu-store's 0.9.17 with this repository's Store: an installed app or tool that does not work until it is set up again (after a firmware update) shows `Not working`, and its page says why.
+
 ## 0.9.41
 
 From robertnisipeanu/mgu-store's 0.9.16. Restart head unit carries the updater's secret, which
