@@ -234,6 +234,14 @@ eq([f.values.grid.items.map((t) => [t.id, t.sub, t.badge]), f.values.nav.items[1
 f = laterOf({ tab: 'installed' });
 eq([f.values.apps.items.map((i) => [i.id, i.right, i.chipAct]), f.values.updateAll.text], [[['doom', 'chip:Restart pending', null]], 'Check for updates'],
     'a pending restart is no update to install');
+// installed, and the deploy tool says it does not work until it is set up again: Not working, why on its page
+const notWorking = Object.assign(fixture.state(), { busy: null });
+notWorking.components = [Object.assign({}, notWorking.components[1], { status: 'installed', installed: '1.0.1', repair: 'installed under firmware old',
+    problem: 'Not working: installed under firmware old' })];
+f = frame(fixture.model({}, notWorking), { textScale: 1, focus: 0, scroll: {} });
+eq(f.values.grid.items.map((t) => [t.id, t.sub, t.badge]), [['doom', 'Not working', 'installed']], 'a component that does not work');
+f = frame(fixture.model({ stack: [{ name: 'main' }, { name: 'app', id: 'doom' }] }, notWorking), { textScale: 1, focus: 0, scroll: {} });
+eq(text(f, 'problem'), 'Not working: installed under firmware old', 'why it does not work, on its page');
 // with the updater's nextStart: a queued first install has Remove (drops it), a queued removal none; a failed apply shows why
 later.components = [Object.assign({}, later.components[0], { nextStart: 'install' }),
     Object.assign({}, later.components[1], { status: 'installed', installed: '1.0.1', nextStart: 'remove' })];

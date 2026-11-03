@@ -620,7 +620,8 @@ function testApps() {
     let st = root.status();
     const a = st.components.find((c) => c.id === 'fixture_app');
     check('status: the app with version, uid and tile fields', a && a.kind === 'app' && a.version === '1.0.0' &&
-        a.uid === 13001 && a.tile_provisioned === true && a.tile_fallback === false && a.tile_visible === true &&
+        a.uid === 13001 && st.fallback.manager_runs_copy === false && a.tile_provisioned === false && a.tile_fallback === false &&
+        a.tile_visible === false &&
         a.installationSource === 'PREINSTALLED', JSON.stringify(a));
     check('app: a unit without the retired installer\'s leftovers has no migration snapshot and reports none',
         !fs.readdirSync(root.p('var/opt/mgu-deploy/backups')).some((d) => d.endsWith('-migrate')) &&
@@ -3655,6 +3656,9 @@ function testRetiredDetect() {
     check('retired: status --json lists the leftovers', JSON.stringify(st.retired_leftovers) === JSON.stringify(
         [root.src('main.js.capbak'), root.src('main.js.vcbak'), root.src('AppManagement/AppManagement.js.capbak')]),
     JSON.stringify(st.retired_leftovers));
+    const store = st.components.find((x) => x.id === 'store_app') || {};
+    check('retired: with the leftovers, a listed app\'s tile is reported from the registry cache while the manager is not on the copy',
+        st.fallback.manager_runs_copy === false && 'store_app' in root.custom() && store.tile_visible === true, JSON.stringify(st));
     check('retired: check and status change nothing', root.hash().hash === before.hash, treeDiff(before, root.hash()));
 }
 
@@ -3709,7 +3713,6 @@ function testRetiredMigrate() {
         root.managerLog().includes('update old_app 1.1.0 uid 13002'), root.managerLog().join('\n'));
     const st = root.status();
     const tile = (id) => st.components.find((x) => x.id === id) || {};
-    // the fake root binds nothing, so status reports these tiles as provisioned
     check('retired: status lists no leftovers; the fallback lists the old apps, whose tiles stay visible',
         st.retired_leftovers.length === 0 && JSON.stringify(st.fallback.apps) === '["legacy_app","old_app","old_two","store_app"]' &&
         tile('old_app').tile_visible === true && tile('old_two').tile_visible === true, JSON.stringify(st));
@@ -3957,6 +3960,68 @@ function testSourcePackages() {
         Object.assign({}, e, { data: Buffer.from('{"schema":1,"id":"robertn_demo","version":"1.2"}') }) : e)), 1700000000));
     const nr = donorRoot().run(['install', '--artifact', bad, '--yes']);
     check('source: a bad mgu-app.json is refused, exit 2', nr.status === 2 && nr.out.includes('mgu-app.json: version is not x.y.z'), nr.out);
+}
+
+/* iDrive 7: a current app the app manager marked for an update at its
+ * first start after a firmware update ("NO_FORCED_UPDATE_NEEDED": false,
+ * which it starts no app with) is installed afresh, its data carried over. */
+function testSetUpElsewhere() {
+    const file = sourceArtifact('1.2.3');
+    const app = (root) => root.status().components.find((x) => x.id === 'robertn_demo') || {};
+    const entryFile = (root) => root.p(`var/opt/public/oap/oap_${MGR}/data/apps/robertn_demo.json`);
+    const mark = (root) => {
+        const e = JSON.parse(fs.readFileSync(entryFile(root), 'utf8'));
+        e.NO_FORCED_UPDATE_NEEDED = false;
+        fs.writeFileSync(entryFile(root), JSON.stringify(e));
+    };
+    const dataOf = (root) => { try { return fs.readFileSync(path.join(root.home(app(root).uid), 'data/settings.json'), 'utf8'); } catch (e) { return null; } };
+    const WHY = 'the app manager starts it only once it is updated, after a firmware update';
+    let root = donorRoot();
+    let r = root.run(['install', '--artifact', file, '--yes']);
+    write(path.join(root.home(app(root).uid), 'data/settings.json'), '{"theme":"dark"}\n');
+    check('forced update: a current app the manager starts is not touched, nor built', r.status === 0 && app(root).stale === null &&
+        !root.run(['install', '--artifact', file, '--yes']).out.includes('built robertn_demo'), r.out);
+    mark(root);
+    check('forced update: status says the app does not work and why', app(root).stale === WHY &&
+        root.run(['status']).out.includes(`app robertn_demo 1.2.3 uid=${app(root).uid}`) &&
+        root.run(['status']).out.includes(`(not working: ${WHY})`), JSON.stringify(app(root)));
+    fs.unlinkSync(root.preinstalled('donor_app', '1.0.0'));
+    donor.tgz(root.preinstalled('donor_app', '1.1.0'));
+    r = root.run(['install', '--artifact', file, '--yes']);
+    const entry = JSON.parse(fs.readFileSync(entryFile(root), 'utf8'));
+    check('forced update: an install installs it afresh, built for this unit, its data carried over, the mark gone',
+        r.status === 0 && r.out.includes(`robertn_demo 1.2.3 already installed; ${WHY}: installed afresh after the rest`) &&
+        r.out.includes('uninstalling app robertn_demo') && r.out.includes('robertn_demo 1.2.3 installed afresh') &&
+        app(root).version === '1.2.3' && app(root).stale === null && !('NO_FORCED_UPDATE_NEEDED' in entry) &&
+        dataOf(root) === '{"theme":"dark"}\n' &&
+        untarBuf(fs.readFileSync(root.preinstalled('robertn_demo', '1.2.3')))['javascript/build.json'].includes('donor_app@1.1.0.tgz'), r.out);
+    check('forced update: the fresh install keeps its package and leaves no copy behind',
+        fs.existsSync(root.p('var/opt/mgu-deploy/kept/robertn_demo/robertn_demo@1.2.3.tgz')) &&
+        !fs.readdirSync(root.p('var/opt/mgu-deploy')).some((n) => /\.afresh\./.test(n)));
+    r = root.run(['install', '--artifact', file, '--yes']);
+    check('forced update: the next install changes nothing', r.status === 0 && r.out.includes('already installed; nothing to change') &&
+        !r.out.includes('afresh'), r.out);
+
+    // no app manager running: nothing removed, said
+    mark(root);
+    const before = app(root).uid;
+    fs.writeFileSync(`${root.R}.mgr.pid`, '');
+    r = root.run(['install', '--artifact', file, '--yes']);
+    check('forced update: with no app manager running the app stays, and the output says an install then installs it afresh',
+        r.status === 0 && r.out.includes(`robertn_demo 1.2.3: ${WHY}; an install while the app manager runs installs it afresh`) &&
+        app(root).uid === before, r.out);
+
+    // the fresh install fails, and so does the kept package: exit 1, the data folder kept and named
+    root = donorRoot();
+    root.run(['install', '--artifact', file, '--yes']);
+    write(path.join(root.home(app(root).uid), 'data/settings.json'), '{"theme":"dark"}\n');
+    mark(root);
+    r = root.run(['install', '--artifact', file, '--yes'], { FAKE_MGR_REJECT: '1' });
+    const stash = fs.readdirSync(root.p('var/opt/public/oap')).filter((n) => /^\.mgu-deploy-data-robertn_demo-/.test(n));
+    check('forced update: a fresh install that fails tries the kept package, exits 1 and keeps the data folder, naming it',
+        r.status === 1 && r.out.includes('installing robertn_demo 1.2.3 again') && r.out.includes('installing afresh failed: robertn_demo') &&
+        stash.length === 1 && r.out.includes(`robertn_demo's data stays in`) &&
+        fs.readFileSync(root.p(`var/opt/public/oap/${stash[0]}/settings.json`), 'utf8') === '{"theme":"dark"}\n', r.out);
 }
 
 function testThirdParty() {
@@ -5807,6 +5872,89 @@ function providerArtifact(version, edit) {
     return path.join(out, `fixture-tool@${version}.tgz`);
 }
 
+/* After a firmware update (the root put back, /var/opt kept), any install
+ * lays an installed tool again from the copy of its units and drop-ins kept
+ * at its install; status says what a tool lacks until then. */
+function testToolsAfterFirmware() {
+    const FW = 'etc/os-release-id-dlt';
+    const art = (() => {
+        const out = fs.mkdtempSync(path.join(T, 'art-'));
+        const r = hu(['artifact', fixtureCopy('0.2.0', (c) => {
+            c.dropins = [{ unit: 'hmi.service', name: 'zz-fixture-tool.conf', from: 'fixture-tool.conf' }];
+        }), '--out', out]);
+        if (r.status !== 0) {
+            throw new Error(r.stderr);
+        }
+        return path.join(out, 'fixture-tool@0.2.0.tgz');
+    })();
+    const sys = (root, rel) => root.p(`etc/systemd/system/${rel}`);
+    const PIECES = ['fixture-tool.service', 'fixture-tool.socket', 'sockets.target.wants/fixture-tool.socket', 'hmi.service.d/zz-fixture-tool.conf'];
+    const reset = (root, fw) => {
+        PIECES.forEach((rel) => fs.rmSync(sys(root, rel), { force: true }));
+        write(root.p(FW), `${fw}\n`);
+    };
+    const kept = (root, rel) => root.p(`var/opt/mgu-deploy/kept/fixture-tool/0.2.0/${rel}`);
+    const stateOf = (root) => JSON.parse(fs.readFileSync(root.p('var/opt/mgu-deploy/state.json'), 'utf8'));
+    const tool = (root) => root.status().components.find((c) => c.id === 'fixture-tool');
+    const other = () => namedTool('other-tool', '0.1.0');
+
+    let root = fakeRoot({ recmgr: ['fixture-tool'] });
+    write(sys(root, 'hmi.service'), '[Service]\nExecStart=/usr/bin/HmiMain3D\n');
+    write(root.p(FW), 'BMW MGU P18_21w03 mgu-high\n');
+    let r = root.run(['install', '--artifact', art, '--yes']);
+    const bytes = PIECES.slice(0, 2).concat([PIECES[3]]).map((rel) => fs.readFileSync(sys(root, rel), 'utf8'));
+    check('tools after firmware: an install keeps the tool\'s units, drop-ins and component.json, and records the firmware',
+        r.status === 0 && fs.readFileSync(kept(root, 'units/fixture-tool.service'), 'utf8') === bytes[0] &&
+        fs.readFileSync(kept(root, 'dropins/hmi.service.d/zz-fixture-tool.conf'), 'utf8') === bytes[2] &&
+        fs.existsSync(kept(root, 'component.json')) && stateOf(root).tools['fixture-tool'].firmware === 'BMW MGU P18_21w03 mgu-high' &&
+        tool(root).stale === null && tool(root).kept === true, r.out);
+
+    reset(root, 'BMW MGU P18_23w44.2-1-3 mgu-high');
+    const st = root.run(['status']);
+    check('tools after firmware: status says what the tool lacks', tool(root).stale ===
+        'fixture-tool.socket, fixture-tool.service, sockets.target.wants/fixture-tool.socket, hmi.service.d/zz-fixture-tool.conf missing' &&
+        st.out.includes('tool fixture-tool 0.2.0 (not working: fixture-tool.socket, fixture-tool.service, sockets.target.wants/fixture-tool.socket, hmi.service.d/zz-fixture-tool.conf missing)'),
+        `${JSON.stringify(tool(root))}\n${st.out}`);
+    r = root.run(['install', '--artifact', other(), '--yes']);
+    check('tools after firmware: an install of something else lays the tool again from its copy, as it was',
+        r.status === 0 && r.out.includes('fixture-tool 0.2.0: fixture-tool.socket, fixture-tool.service, sockets.target.wants/fixture-tool.socket, hmi.service.d/zz-fixture-tool.conf missing; laid again from the copy kept here') &&
+        PIECES.slice(0, 2).concat([PIECES[3]]).every((rel, i) => fs.readFileSync(sys(root, rel), 'utf8') === bytes[i]) &&
+        fs.readlinkSync(sys(root, PIECES[2])) === '../fixture-tool.socket' && tool(root).stale === null &&
+        stateOf(root).tools['fixture-tool'].firmware === 'BMW MGU P18_23w44.2-1-3 mgu-high', r.out);
+    r = root.run(['install', '--artifact', other(), '--yes']);
+    check('tools after firmware: the next install leaves it alone', r.status === 0 && !r.out.includes('laid again'), r.out);
+
+    write(root.p(FW), 'BMW MGU P18_24w07 mgu-high\n');
+    check('tools after firmware: with its pieces in place, another firmware still counts',
+        tool(root).stale === 'installed under firmware BMW MGU P18_23w44.2-1-3 mgu-high', JSON.stringify(tool(root)));
+    r = root.run(['install', '--artifact', other(), '--yes']);
+    check('tools after firmware: and an install lays it again', r.status === 0 &&
+        r.out.includes('fixture-tool 0.2.0: installed under firmware BMW MGU P18_23w44.2-1-3 mgu-high; laid again from the copy kept here') &&
+        tool(root).stale === null, r.out);
+
+    // installed before copies were kept: said, left for its source
+    fs.rmSync(root.p('var/opt/mgu-deploy/kept/fixture-tool'), { recursive: true });
+    const s = stateOf(root);
+    delete s.tools;
+    fs.writeFileSync(root.p('var/opt/mgu-deploy/state.json'), JSON.stringify(s));
+    r = root.run(['install', '--artifact', other(), '--yes']);
+    check('tools after firmware: a tool with no firmware recorded and its pieces in place gets the firmware recorded',
+        r.status === 0 && stateOf(root).tools['fixture-tool'].firmware === 'BMW MGU P18_24w07 mgu-high' && !r.out.includes('fixture-tool 0.2.0:'), r.out);
+    reset(root, 'BMW MGU P18_24w07 mgu-high');
+    r = root.run(['install', '--artifact', other(), '--yes']);
+    check('tools after firmware: one with no copy kept is left for its source to install again, said, exit 0', r.status === 0 &&
+        r.out.includes('fixture-tool 0.2.0: fixture-tool.socket, fixture-tool.service, sockets.target.wants/fixture-tool.socket, hmi.service.d/zz-fixture-tool.conf missing; no copy of it is kept here, so its source installs it again') &&
+        !fs.existsSync(sys(root, 'fixture-tool.service')) && tool(root).kept === false && tool(root).stale !== null, r.out);
+    r = root.run(['install', '--artifact', art, '--yes']);
+    check('tools after firmware: its own install, the same version, lays it and keeps the copy', r.status === 0 &&
+        fs.existsSync(sys(root, 'fixture-tool.service')) && fs.existsSync(sys(root, PIECES[3])) && tool(root).stale === null &&
+        tool(root).kept === true, r.out);
+
+    r = root.run(['uninstall', 'fixture-tool', '--yes']);
+    check('tools after firmware: an uninstall removes the copy and the record', r.status === 0 &&
+        !fs.existsSync(root.p('var/opt/mgu-deploy/kept/fixture-tool')) && !(stateOf(root).tools || {})['fixture-tool'], r.out);
+}
+
 /* A tool's drop-in for a unit it does not own: installed into a folder it
  * creates, the unit's own files untouched, refused over a foreign one,
  * rolled back with a failed install, and removed (with the folder) on
@@ -6941,6 +7089,15 @@ function testRelist() {
     lose(root);
     check('relist: status --json says the fallback is off and the manager does not run its copy',
         root.status().fallback.unit_present === false && root.status().fallback.manager_runs_copy === false);
+    const app = (st) => st.components.find((c) => c.id === 'fixture_app') || {};
+    const cached = readJson(root.entry('fixture_app')).provisioningCache;
+    let st = root.status();
+    check('relist: with the registry cache still enabled and allowed, status --json reports the tile hidden',
+        cached['-enabled'] === 'true' && cached['-allowed'] === 'true' && app(st).tile_visible === false &&
+        app(st).tile_provisioned === false && app(st).tile_fallback === false, JSON.stringify(app(st)));
+    check('relist: status prints tile=hidden and check tile hidden',
+        root.run(['status']).stdout.includes('app fixture_app 1.0.0 uid=13001 source=PREINSTALLED running=false tile=hidden') &&
+        root.run(['check']).stdout.includes('app fixture_app 1.0.0: tile hidden'), root.run(['status']).out);
     let r = again(root);
     check('relist: the app current and the fallback unit gone, the install turns it on again and restarts the manager once',
         r.status === 0 && r.out.includes('fixture_app 1.0.0 already installed; nothing to change') &&
@@ -6959,6 +7116,15 @@ function testRelist() {
     startInplace(root);
     check('relist: status --json says the manager runs the copy once its hook announced itself',
         root.status().fallback.manager_runs_copy === true);
+    st = root.status();
+    check('relist: with the manager on the copy, status reports the tile from the fallback',
+        app(st).tile_fallback === true && app(st).tile_visible === true && app(st).tile_provisioned === false &&
+        root.run(['status']).stdout.includes('tile=fallback'), JSON.stringify(app(st)));
+    fs.writeFileSync(root.env.FAKE_MGR_PIDFILE, '');
+    st = root.status();
+    check('relist: with no app manager running, status reports the tile hidden',
+        st.fallback.manager_runs_copy === null && app(st).tile_visible === false && app(st).tile_fallback === false,
+        JSON.stringify(app(st)));
 
     // the HMI and the SOME/IP daemon not running: no restart, the boot unit lists the app from the next start
     root = fakeRoot();
@@ -7129,6 +7295,7 @@ const SUITES = [
     testToken,
     testHuToken,
     testSourcePackages,
+    testSetUpElsewhere,
     testThirdParty,
     testInternet,
     testCrashList,
@@ -7161,6 +7328,7 @@ const SUITES = [
     testServices,
     testProvides,
     testDropins,
+    testToolsAfterFirmware,
     testI7Takeover,
     testKeepRunning,
     testPostInstall,

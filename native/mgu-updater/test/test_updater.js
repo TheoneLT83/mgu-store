@@ -1252,10 +1252,32 @@ function testReboot() {
         })
         .then(() => {
             ok('reboot: the refusal clears once a restart is possible', u.rebootError === null, u.rebootError);
-            upFor(600);
             ok('reboot: the socket refuses a restart without the secret', u.handle({ op: 'reboot' }) === 'forbidden' && !u.rebooting);
             ok('reboot: and accepts the Store\'s, with the secret', u.handle({ op: 'reboot', secret: u.secret }) === null && u.rebooting);
             // a Store before 0.9.41 (upstream's 0.9.16) sends no secret: while one is installed, its restart is taken without it, within the limits
+
+            // the Store's, with the secret, is someone's tap: it runs at once, whatever the limits
+            upFor(60);
+            const now = Date.now();
+            const hour = JSON.stringify({ at: [now - 30 * 60000, now - 20 * 60000, now - 60000] });
+            fs.writeFileSync(record, hour);
+            u = make(`${script} --requestRestart 7`);
+            ok('reboot: a limited request 1 min after start-up and the last restart, after 3 in the hour, is refused',
+                u.reboot() === '3 restarts in the last hour, possible in 30 min' && !u.rebooting, u.rebootError);
+            const before = rebootRuns(dir).length;
+            ok('reboot: the Store\'s, with the secret, runs then, clearing the refusal',
+                u.handle({ op: 'reboot', secret: u.secret }) === null && u.rebooting && u.rebootError === null, u.rebootError);
+            ok('reboot: and is not held against later requests', fs.readFileSync(record, 'utf8') === hour);
+            fs.writeFileSync(record, '{');
+            u = make(`${script} --requestRestart 7`);
+            u.conf.proc = path.join(dir, 'no-proc');
+            ok('reboot: the Store\'s runs with the uptime unknown and the record unreadable',
+                u.handle({ op: 'reboot', secret: u.secret }) === null && u.rebooting);
+            return sleep(1000).then(() => ok('reboot: and the command runs for both', rebootRuns(dir).length === before + 2, rebootRuns(dir).length));
+        })
+        .then(() => {
+            upFor(600);
+            // a Store before 0.9.16 sends no secret: while one is installed, its restart is taken without it, within the limits
             fs.unlinkSync(record);
             const storeAt = (v) => {
                 const s = make(`${script} --requestRestart 7`);
@@ -1514,6 +1536,38 @@ function testDaemon(certs, pubDir) {
             ok('install: an app goes through the deploy tool as one artifact',
                 /install --artifact .*demo_app@1\.0\.0\.tgz --yes/.test(fs.readFileSync(log, 'utf8')));
             ok('install: the verified copy is removed afterwards', !fs.existsSync(path.join(T, 'state', 'verified', 'demo_app@1.0.0.tgz')));
+            // the deploy tool says the app does not work (set up under another firmware) and lays nothing itself
+            fs.writeFileSync(`${log}.stale`, JSON.stringify({ demo_app: { why: 'installed under firmware old', kept: false } }));
+            client.check();
+            return waitFor(client, (s) => !s.catalog.checking && !s.busy && !s.components.some((c) => c.queued) &&
+                fs.readFileSync(log, 'utf8').split('\n').filter((l) => /demo_app@1\.0\.0\.tgz/.test(l)).length === 2, 20000, 'demo_app installed again');
+        })
+        .then(() => {
+            ok('repair: a component the deploy tool says does not work is installed again from its source, the same version',
+                fs.readFileSync(log, 'utf8').split('\n').filter((l) => /demo_app@1\.0\.0\.tgz/.test(l)).length === 2 && !fs.existsSync(path.join(T, 'state', 'repairs.json')));
+            // the same reason again: not asked again; shown as the row's state
+            fs.writeFileSync(`${log}.stale`, JSON.stringify({ demo_app: { why: 'installed under firmware old', kept: false },
+                'mgu-updater': { why: 'mgu-updater.service missing', kept: false } }));
+            client.check();
+            return waitFor(client, (s) => !s.catalog.checking && !s.busy && row(s, 'demo_app').repair, 15000, 'the repair shown');
+        })
+        .then((st) => {
+            ok('repair: a reinstall that did not help is not asked again; the row says why it does not work',
+                fs.readFileSync(log, 'utf8').split('\n').filter((l) => /demo_app@1\.0\.0\.tgz/.test(l)).length === 2 &&
+                row(st, 'demo_app').repair === 'installed under firmware old' &&
+                row(st, 'demo_app').problem === 'Not working: installed under firmware old', JSON.stringify(row(st, 'demo_app')));
+            ok('repair: the updater does not ask for its own reinstall',
+                row(st, 'mgu-updater').repair === 'mgu-updater.service missing' && !st.components.some((c) => c.queued) &&
+                row(st, 'mgu-updater').problem === 'Not working: mgu-updater.service missing', JSON.stringify(row(st, 'mgu-updater')));
+            // another reason: asked again
+            fs.writeFileSync(`${log}.stale`, JSON.stringify({ demo_app: { why: 'not startable', kept: false } }));
+            client.check();
+            return waitFor(client, (s) => !s.catalog.checking && !s.busy && !s.components.some((c) => c.queued) &&
+                fs.readFileSync(log, 'utf8').split('\n').filter((l) => /demo_app@1\.0\.0\.tgz/.test(l)).length === 3, 20000, 'demo_app installed again for another reason');
+        })
+        .then(() => {
+            ok('repair: another reason for the same component is asked for again', fs.readFileSync(log, 'utf8').split('\n').filter((l) => /demo_app@1\.0\.0\.tgz/.test(l)).length === 3);
+            fs.unlinkSync(`${log}.stale`);
             restarting();
             client.install('mgu-updater');
             // the commit (trial file gone, current switched) can follow the first answer of the new version

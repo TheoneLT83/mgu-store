@@ -667,8 +667,11 @@ which no BMW unit hooks, and it stops the services by their `KillSignal`
   restart with that reason. Any other restart that does not happen shows
   as a unit still up 3 minutes later: `rebootError` is `the head unit did
   not restart`. `rebootError` stays until the next catalog check.
-- Limited, so that nothing can restart the unit in a loop (on a car,
-  recmgr answers repeated failed starts with a data wipe). A request is
+- The Store's request, with the secret, is someone's tap: it runs at
+  once, whatever the limits below, and is not recorded against them.
+- Any other request (without the secret, from a Store before 0.9.16) is
+  limited, so that nothing can restart the unit in a loop (on a car,
+  recmgr answers repeated failed starts with a data wipe). It is
   refused, with `rebootError` saying why and when a restart is possible
   (`too soon after start-up, possible in 3 min`) until then:
   - before the unit has been up 4 minutes (`/proc/uptime`, so a restart of
@@ -808,7 +811,7 @@ each request, and whenever it changes (at most every 250 ms):
     "build": null, "optional": false, "uninstallable": true, "revision": null,
     "description": "…", "author": "…", "icon": "/var/opt/mgu-updater/state/icons/…png",
     "mguHmi": ["ID7"], "compat": "yes", "provides": null, "service": null,
-    "listedId": null, "installAs": "doom", "blocked": null, "pendingReboot": false, "problem": null, "nextStart": null, "queued": false,
+    "listedId": null, "installAs": "doom", "blocked": null, "pendingReboot": false, "problem": null, "repair": null, "nextStart": null, "queued": false,
     "previous": null, "error": null } ] }
 ```
 
@@ -836,7 +839,13 @@ each request, and whenever it changes (at most every 250 ms):
   `description` and `author` its source's (`''` when it gives none);
   `icon` the kept icon's path, or null (Sources, "Icons"); `problem` what
   an installed tool says is wrong, the string `problem` of its
-  `/var/opt/<id>/status.json` (mgu-render's page template), else null.
+  `/var/opt/<id>/status.json` (mgu-render's page template), else for an
+  installed component that does not work `Not working: <repair>`, else null.
+  `repair`: why an installed component does not work until it is set up
+  again (the deploy tool's `stale`, after a firmware update), else null;
+  one the deploy tool does not set up again itself is installed again from
+  its source (its version there), once for each reason while the updater
+  runs; not the updater itself, nor an app on iDrive 8.
   `previous`: the version Undo update returns to (the deploy tool's
   `rollback`, from the version it keeps), else null: never for the
   updater, the deploy tool, the Store or what the updater requires, nor
@@ -887,7 +896,7 @@ Store says it at each connection (below, "The Store's update").
 
 | Request | Does |
 |---|---|
-| `{"op":"reboot"}` | restarts the head unit ("Restarting the head unit"); without the secret while a Store older than 0.9.16 is installed |
+| `{"op":"reboot"}` | restarts the head unit ("Restarting the head unit"): at once with the secret; without it while a Store older than 0.9.16 is installed, within the restart limits |
 | `{"op":"uninstall","id"}` | removes an `uninstallable` component (every app but the Store) |
 | `{"op":"rollback","id"}` | Undo update: a component whose row has `previous` back to that version, through `mgu-deploy.sh rollback <id> --yes` |
 | `{"op":"source-add","type":"github","repo":"o/r","channel"?}`, `{"op":"source-add","type":"https","url"}` | adds a source (id: the repo's name, else `s-<hex>`) and reads it |
