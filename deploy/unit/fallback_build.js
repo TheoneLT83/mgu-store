@@ -229,7 +229,13 @@ function inplaceSource(requestPath, statusPath, v) {
         'busy=!0,reqOps.length=0,tell(r,"running");' +
         'Promise.resolve().then(()=>' + v.run + ')' +
         '.then(()=>{busy=!1,tell(r,"done")},e=>{busy=!1,tell(r,"failed",String(e&&(e.reason||e.message)||e))})};' +
-        (v.start ? v.start + tracerSource(s) : '') + 'put({state:"ready"}),setInterval(()=>{try{poll(),busy&&cur&&put(Object.assign({trace:trace()},cur))}catch(e){}},1e3)' +
+        (v.start ? v.start + tracerSource(s) : '') +
+        // a request not yet handed to the installer while a network retry delay holds the queue (another app's
+        // failed online update - a bench without BMW's servers): the delay is cleared, as MainApp's own install()
+        // and update() do, so the queue goes on to ours (first in it)
+        'const unhold=()=>{if(!mgr||"function"!=typeof mgr.clearBackOff||reqOps.some(o=>"q"===o.k||"run"===o.k))return;' +
+        'try{mgr.clearBackOff(),cur.cleared||(cur.cleared=!0,log.info(`mgu-deploy in-place ${cur.action} ${cur.app}: a network retry delay cleared`))}catch(e){}};' +
+        'put({state:"ready"}),setInterval(()=>{try{poll(),busy&&cur&&(unhold(),put(Object.assign({trace:trace()},cur)))}catch(e){}},1e3)' +
         '})' + v.args + '}catch(e){}' + INPLACE_MARK + ';';
 }
 

@@ -45,7 +45,7 @@ var cp = require('child_process');
 
 /* deploy/component.json's version; bumped when a file under deploy/unit/
  * changes. */
-var VERSION = '0.7.16';
+var VERSION = '0.7.17';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -93,6 +93,7 @@ var CFG = {
     watchPollMs: Number(env('MGU_DEPLOY_WATCH_POLL_MS', '5000')),
     inplaceAckMs: Number(env('MGU_DEPLOY_INPLACE_ACK_MS', '20000')),
     inplaceReportMs: Number(env('MGU_DEPLOY_INPLACE_REPORT_MS', '15000')),
+    inplaceStartMs: Number(env('MGU_DEPLOY_INPLACE_START_MS', '90000')),
     bounceTimeoutMs: Number(env('MGU_DEPLOY_BOUNCE_TIMEOUT_MS', '30000')),
     healthMs: Number(env('MGU_DEPLOY_HEALTH_MS', '10000')),
     postInstallMs: Number(env('MGU_DEPLOY_POST_INSTALL_MS', '300000')),
@@ -511,8 +512,13 @@ function bounceWait() {
  * it has not taken in place it takes at the next start. */
 function bounceManager() {
     if (isId8()) { say('MainApp-21 is not restarted; it takes this at the next start of the head unit'); return false; }
-    var old = bounceWait(), waited = 0, cur;
+    var old = bounceWait(), waited = 0, cur, left = unstartedInPlace, st;
     if (!old) { warn('app manager node child not found; nothing to bounce'); return false; }
+    unstartedInPlace = null;
+    if (left && old === left.pid && (st = inplaceAnswer(left.id)) && (st.state !== 'running' || inplaceHanded(st, left.app))) {
+        say('the app manager started the in-place change of ' + left.app + ' meanwhile: no bounce, it is watched');
+        return 'started';
+    }
     say('bouncing the app manager node child (pid ' + old + ')');
     recordBounce(Math.ceil(nowS()));
     privacyBounceOwed = false;
@@ -3223,6 +3229,7 @@ function inplaceTrace(st, app) {
                 'started ' + from + ' to ' + s(tr.fork.end))));
     } else if (!tr.child) out.push('no AppManagement child');
     if (tr.backoff) out.push('network retry delay pending (retries ' + tr.retries + ')');
+    if (st.cleared) out.push('a network retry delay was cleared for it');
     if (tr.resuming) out.push('waiting for NSM resume');
     return out.join('; ');
 }
@@ -3290,9 +3297,27 @@ function managerReason(err) {
  * its uid), fails like an install the manager does not finish after a
  * bounce: no bounce, which could cut the manager's install short. A moment
  * with no manager in ps is not a restart. */
-function installInPlace(a, existing) {
+/* Whether the manager has handed the request for app to its installer (queued it or started it) since it took it. */
+function inplaceHanded(st, app) {
+    var ops = st && st.trace && Array.isArray(st.trace.ops) ? st.trace.ops : [];
+    return !!st && typeof st.taken === 'number' && ops.some(function (o) {
+        return (o.k === 'q' || o.k === 'run') && o.app === app && o.t >= st.taken - 1000;
+    });
+}
+/* An in-place request the manager had not started when its install went to a bounce: { id, app }. A bounce
+ * checks it last thing (bounceManager): once the manager has started it after all, there is no bounce, which
+ * could cut that install short, and the install is watched instead (watchInPlace). */
+var unstartedInPlace = null;
+function installInPlace(a, existing, mayLeave) {
     var action = existing ? 'update' : 'install', q = inplaceAsk(a.id, a.version, action);
     if (!q.pid) return { why: q.why };
+    return watchInPlace(a, existing, q, !!mayLeave);
+}
+/* The manager's answers to request q until done, refused or failed. With mayLeave, a request the manager has
+ * not handed to its installer after inplaceStartMs (its queue held up: another app's network retry delay on a
+ * bench without BMW's servers) is left to a bounce: { why, unstarted }. */
+function watchInPlace(a, existing, q, mayLeave) {
+    var action = existing ? 'update' : 'install';
     var m = { pid: q.pid }, id = q.id, st = q.st, poll = Math.min(CFG.watchPollMs, 1000);
     var doneAt = null, t0 = Date.now(), reported = t0, s, cur;
     var secs = function () { return Math.round((Date.now() - t0) / 1000) + 's'; };
@@ -3320,6 +3345,11 @@ function installInPlace(a, existing) {
         if (doneAt !== null && Date.now() - doneAt >= 2 * CFG.watchPollMs) {
             throw fail('the app manager ' + (existing ? 'updated ' : 'installed ') + a.id + ' in place, but not as ' +
                 a.version + ' (' + s.seen + ')');
+        }
+        if (mayLeave && st.state === 'running' && Date.now() - t0 >= CFG.inplaceStartMs && !inplaceHanded(st, a.id)) {
+            unstartedInPlace = { id: id, app: a.id, pid: m.pid };
+            return { why: 'the app manager had not started the in-place ' + action + ' after ' + secs() + ' (' + inplaceTrace(st, a.id) + ')',
+                unstarted: unstartedInPlace };
         }
         if (Date.now() - t0 >= CFG.watchTimeoutMs) {
             throw fail('app manager did not ' + action + ' ' + a.id + ' ' + a.version + ' in place within ' +
@@ -3564,7 +3594,8 @@ function installApp(a, state, decision) {
      * manager installs no app the listing disables. */
     customAppsPut(a.id, Object.assign({}, entry ? entry.provisioningCache : null, { '-enabled': 'true', '-allowed': 'true' }),
         a.pkg.mguAppStartType || 'manually');
-    var r = installInPlace(a, existing), uid = r.uid;
+    unstartedInPlace = null;
+    var r = installInPlace(a, existing, true), uid = r.uid;
     /* MainApp's installer rejected the app's install or update: a restarted
      * manager runs the same install, and restarting it stops every app. */
     if (r.ranFailed) {
@@ -3601,9 +3632,16 @@ function installApp(a, state, decision) {
             fs.writeFileSync(appEntryFile(a.id), JSON.stringify(entry));
             say('registry entry re-seeded for the update (uid ' + entry.userId + ')');
         }
-        bounceManager();
-        uid = existing && !managerRecordsSource() ? updateAfterBounce(a, existing) :
-            !existing && bytecodeStubs() ? installAfterBounce(a) : watchInstall(a);
+        if (bounceManager() === 'started') {
+            var w = watchInPlace(a, existing, { pid: r.unstarted.pid, id: r.unstarted.id, st: inplaceAnswer(r.unstarted.id) }, false);
+            if (!w.uid) throw fail('the app manager could not ' + (existing ? 'update ' : 'install ') + a.id + ' ' + a.version + ': ' +
+                (w.ranFailed ? managerReason(w.error) : w.why));
+            uid = w.uid;
+        } else {
+            uid = existing && !managerRecordsSource() ? updateAfterBounce(a, existing) :
+                !existing && bytecodeStubs() ? installAfterBounce(a) : watchInstall(a);
+        }
+        unstartedInPlace = null;
         if (existing && uid !== existing.uid) warn(a.id + ' runs as uid ' + uid + ' now; its data stays in ' + appHome(existing.uid));
     }
     var tf = tileFlags(readJsonOrNull(appEntryFile(a.id)));
