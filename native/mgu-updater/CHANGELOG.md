@@ -1,5 +1,11 @@
 # Updater changelog
 
+## 0.8.23
+
+robertnisipeanu/mgu-store's 0.8.21 with this repository's sources.
+
+- A download carries on after the uplink moves to another network (a Wi-Fi switch, a new lease): each try resolves names through the servers of the lease it finds then, and a try without a lease fails as having no internet, to be tried again. A connection that gets neither data nor a reset gives up within its bound: 15 s for the name lookup, TCP and TLS together, 30 s for the answer's headers and 30 s for each part of its body (`<host>: no connection in 15 s`, `<host>: no data for 30 s`). A download that fails is reported as soon as its last try ends.
+
 ## 0.8.22
 
 - A branch source's app of the same version is an update only when its own folder or the repo's shared build files changed: mgu-repo.json's `build.shared` (paths in the repo) names them; without it, the build script's top folder as before. idrive7-apps names `kit/runtime`, `kit/platform`, `kit/localization` and its build scripts, so a change to its renderer, tests or tools updates no app.
