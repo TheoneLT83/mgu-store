@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.44
+
+robertnisipeanu/mgu-store's 0.9.19 to 0.9.21 with this repository's Store:
+
+- The Store, its tile name and the catalog's titles and descriptions are in every display language the head unit offers, both looks alike; Arabic, Hebrew and Thai show on the tile and the widget screens, the drawn screens stay English in those three. Each language's letters come from its own font file (fonts/), loaded only while that language is in use.
+- Tiles and rows show who an app or tool comes from: its repo's owner, a catalog's host or a USB stick's label (`owner/repo` where one owner's two repos list the same name); a page shows the full `owner/repo`.
+- Removing an app lists, in its confirm step, the tools only that app uses (mgu-updater 0.8.25 or newer names them), with Remove all, which removes the app and then those tools.
+- An empty USB tab says No USB stick.
+
 ## 0.9.43
 
 robertnisipeanu/mgu-store's 0.9.18 with this repository's Store: while an installed app or tool waits for a restart, Store and Installed show Restart now, which opens the confirm step of Settings' Restart head unit. On Installed it sits right of Install all updates (or Check for updates); on Store, left of the filters. The confirm step's Restart is disabled while the updater cannot restart the unit.
