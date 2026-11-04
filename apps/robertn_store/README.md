@@ -31,7 +31,9 @@ USB, Settings) beside:
   (round for a tool), its name, its source under it (the repo's name,
   `owner/repo` where two sources share a repo name, a catalog's host), its state (`Installed`, `Update 1.0.1`, `Downloading
   42 %`, `Waiting`, `Not for this head unit`, `Failed`, `Restart pending`, `Not working`,
-  version and size) and a badge or progress ring. A component for another
+  version and size) and a badge or progress ring. While a listed app or tool waits
+  for a restart, **Restart now** sits left of the filters: Settings' confirm
+  step, whose Restart is off while an install runs or waits. A component for another
   head unit only (the updater's `compat: "no"`) is listed only while
   installed, so it can be removed (on the widget screens too). A version
   not for this head unit is not counted as an update.
@@ -47,10 +49,11 @@ USB, Settings) beside:
   queued for the next start: its row shows `Restart pending`, as a tool
   pending a restart does.
 - **Installed**: apps and head-unit tools, each with its version and
-  source, its update (a press on Update installs it) or state, and Update all.
-  The ones with something running or waiting (an install, update or removal,
-  a queued one, an update, a failure, a restart pending) come first; while
-  the focus is on a row, the rows stay where they are.
+  source, its update (a press on Update installs it) or state, Update all,
+  and Restart now beside it (as on Store). The ones with something running or
+  waiting (an install, update or removal, a queued one, an update, a failure,
+  a restart pending) come first; while the focus is on a row, the rows and
+  Restart now stay as they are.
 - **USB**: the components of the sticks' sources.
 - **Settings**: the sources (each opens its page: channel, account,
   components, error, Remove with a confirm step, and while a sign-in does

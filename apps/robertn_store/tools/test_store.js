@@ -1613,14 +1613,17 @@ function runDrawn() {
         drawn.focus = 0;
         app._client.emit('state', inst({}));
         eq(rows(), ['DOOM', 'Alpha', 'Beta'], 'a restart pending first');
+        eq(drawn.items.map((i) => i.label).slice(4, 6), ['Check for updates', 'Restart now'], 'a restart pending: Restart now');
         app._client.emit('state', inst(done));
         eq([rows(), focused()], [['Alpha', 'Beta', 'DOOM'], 'Store'], 'the focus on the side menu: restarted, DOOM last');
+        eq(drawn.items.some((i) => i.label === 'Restart now'), false, 'the focus on the side menu: restarted, no Restart now');
         app._client.emit('state', inst({}));
         // the HMI's focus on Beta's proxy
         const beta = drawn.items.findIndex((i) => i.label === 'Beta');
         app._components[proxy(1, beta)].emit('focus', { value: true });
         app._client.emit('state', inst(done));
         eq([rows(), focused()], [['DOOM', 'Alpha', 'Beta'], 'Beta'], 'the focus on a row: the rows stay, the focus on Beta');
+        eq(drawn.items.some((i) => i.label === 'Restart now'), true, 'the focus on a row: Restart now stays as drawn');
         app._client.emit('state', Object.assign(inst(done), { components: inst(done).components.concat([
             comp({ id: 'gamma', title: 'Gamma', version: '1.0.0', installed: '1.0.0', status: 'installed' })]) }));
         eq(drawn.items.map((i) => i.label).filter((l) => ['Alpha', 'Beta', 'DOOM', 'Gamma'].indexOf(l) >= 0), ['DOOM', 'Alpha', 'Beta', 'Gamma'],
