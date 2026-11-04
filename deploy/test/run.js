@@ -717,6 +717,16 @@ function testBounceGuard() {
     const late = root.run(['fallback', 'off', '--yes']);
     check('bounce: an old manager and an old bounce: no wait', late.status === 0 && root.kills().length === 4 &&
         !late.out.includes('waiting'), late.out);
+    // the head unit's clock went back since a bounce or a write (a car at 2023 with times of 2026): a bounce
+    // time later than now is another clock's, as is a bundle written later than now
+    const st3 = root.state();
+    st3.lastBounceAt = Math.floor(Date.now() / 1000) + 3 * 365 * 86400;
+    delete st3.lastBounce;
+    write(root.p('var/opt/mgu-deploy/state.json'), JSON.stringify(st3));
+    root.setManagerStart(Date.now() / 1000 - 3600);
+    const back = root.run(['fallback', 'on', '--yes']);
+    check('bounce: a recorded bounce later than now (the clock went back) holds nothing back',
+        back.status === 0 && root.kills().length === 5 && !back.out.includes('waiting'), back.out);
     const none = fakeRoot({ minUp: MIN, noManager: true });
     const n0 = Date.now();
     const r = none.run(['fallback', 'on', '--yes']);

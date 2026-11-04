@@ -45,7 +45,7 @@ var cp = require('child_process');
 
 /* deploy/component.json's version; bumped when a file under deploy/unit/
  * changes. */
-var VERSION = '0.7.15';
+var VERSION = '0.7.16';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -299,15 +299,29 @@ function saveState(s) {
  * epoch seconds: the record every later bounce, from any invocation,
  * keeps its distance from. Written to state.json at each bounce. */
 var LAST_BOUNCE = 0;
+/* The last bounce in epoch seconds of the clock now. The head unit's clock can go back (no time
+ * source: a car's MGU at 2023-08-18 with files of 2026), so a bounce is also kept as its boot and
+ * uptime: one of this boot is placed by uptime, one of an earlier boot is past (oapcontroller's crash
+ * window does not outlive a boot). A time later than now, kept by an older deploy tool, was taken
+ * under another clock and is left out. */
 function lastBounceAt() {
-    var s = readJsonOrNull(STATE_FILE), disk = s && typeof s.lastBounceAt === 'number' ? s.lastBounceAt : 0;
+    var s = readJsonOrNull(STATE_FILE), disk = s && typeof s.lastBounceAt === 'number' ? s.lastBounceAt : 0,
+        b = s && s.lastBounce, up = uptimeS(), boot = bootId();
+    if (b && typeof b.up === 'number' && typeof b.boot === 'string' && boot && up !== null) {
+        disk = b.boot === boot && b.up <= up ? nowS() - (up - b.up) : 0;
+    } else if (disk > nowS() + 5) disk = 0;
     return Math.max(disk, LAST_BOUNCE);
+}
+function uptimeS() {
+    try { var u = parseFloat(fs.readFileSync(path.join(CFG.proc, 'uptime'), 'utf8')); return u > 0 ? u : null; }
+    catch (e) { return null; }
 }
 function recordBounce(t) {
     LAST_BOUNCE = Math.max(LAST_BOUNCE, t);
-    var s = readJsonOrNull(STATE_FILE);
+    var s = readJsonOrNull(STATE_FILE), up = uptimeS(), boot = bootId();
     if (!s || typeof s !== 'object') s = {};
-    s.lastBounceAt = Math.max(typeof s.lastBounceAt === 'number' ? s.lastBounceAt : 0, LAST_BOUNCE);
+    s.lastBounceAt = Math.max(typeof s.lastBounceAt === 'number' && s.lastBounceAt <= nowS() + 5 ? s.lastBounceAt : 0, LAST_BOUNCE);
+    if (up !== null && boot) s.lastBounce = { boot: boot, up: up - (nowS() - t) };
     mkdirp(DEPLOY_DIR);
     writeAtomic(STATE_FILE, JSON.stringify(s, null, 2) + '\n', 0o644);
 }
@@ -3099,9 +3113,15 @@ function watchInstall(a) {
 
 /* The newest write, in epoch seconds, of the bundles the manager loads:
  * main.js (the fallback copy, when bound) and AppManagement.js. */
+/* When the app manager's bundles were last written, in epoch seconds. A time later than now was set
+ * under another clock (the head unit's clock went back since): not counted as written after any start. */
 function bundlesWritten() {
+    var now = nowS();
     return [mainJs(), FALLBACK_COPY, appManagementJs()].reduce(function (newest, p) {
-        try { return Math.max(newest, fs.statSync(p).mtime.getTime() / 1000); } catch (e) { return newest; }
+        try {
+            var m = fs.statSync(p).mtime.getTime() / 1000;
+            return m > now + 60 ? newest : Math.max(newest, m);
+        } catch (e) { return newest; }
     }, 0);
 }
 /* The running manager's pid and start in epoch seconds (null when

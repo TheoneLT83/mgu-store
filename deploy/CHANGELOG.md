@@ -1,5 +1,9 @@
 # Deploy tool changelog
 
+## 0.7.16
+
+- A head unit whose clock went back (no time source: a car's MGU at 2023-08-18 holding files and a bounce of 2026) no longer bounces the app manager for every app, 60 s apart. A bounce is kept with its boot and uptime too (`lastBounce`), so the 60 s between bounces count by uptime in the same boot, and a bounce of an earlier boot holds nothing back; a recorded bounce time later than now is another clock's and is left out. The app manager's bundles written at a time later than now count as written before its start, so an update goes in place again.
+
 ## 0.7.15
 
 - After a firmware update, which puts the root file system back and keeps `/var/opt`, an install sets up again what the update took. Each tool install records the firmware it was installed under (`state.json` `tools`) and keeps the tool's units, drop-ins and `component.json` under `/var/opt/mgu-deploy/kept/<id>/<version>/`.
