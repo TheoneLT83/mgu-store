@@ -25,7 +25,8 @@
  * update (no manager in ps), "respawn" puts another pid in the pid file at
  * the start of each install or update (oapcontroller respawned the
  * manager) and never settles it, "deaf" announces the hook but never reads
- * a request, "late" announces it 1.5 s after the start.
+ * a request, "late" announces it 1.5 s after the start, "backoff" and "held"
+ * hold the controller's queue (below).
  * $FAKE_MGR_PASS_MS: the start-up provisioning pass that many ms after the
  * start (fake_manager.js startupPass).
  *
@@ -145,20 +146,34 @@ stub[`${u}callMethod`] = function (m, id, ...args) {
     };
 });
 /* The controller: $FAKE_INPLACE_AHEAD_MS puts another app's operation
- * ahead of the first request in the installer's queue. */
+ * ahead of the first request in the installer's queue. "backoff": a network
+ * retry delay (another app's failed online update) holds its queue until
+ * clearBackOff, which the controller has only while the delay is under way;
+ * "held": the same delay without clearBackOff. */
 let ahead = Number(env.FAKE_INPLACE_AHEAD_MS || 0) > 0;
+let release = null;
+const held = mode === 'backoff' || mode === 'held' ? new Promise((resolve) => { release = resolve; }) : Promise.resolve();
 const appManager = {
     appManager: stub,
-    install: (id, opts) => stub.install(id, opts),
+    retries: mode === 'backoff' || mode === 'held' ? 1 : 0,
+    install: (id, opts) => held.then(() => stub.install(id, opts)),
     update: (id, mechanism) => {
         if (ahead) {
             ahead = false;
             stub.other('stock_app');
         }
-        return stub.update(id, mechanism);
+        return held.then(() => stub.update(id, mechanism));
     },
     uninstall: (id) => stub.uninstall(id)
 };
+if (mode === 'backoff') {
+    appManager.clearBackOff = () => {
+        delete appManager.clearBackOff;
+        appManager.retries = 0;
+        fake.log('network retry delay cleared');
+        release();
+    };
+}
 const logger = { info: (m) => fake.log(`hook ${m}`) };
 setInterval(() => {}, 1 << 30);
 if (env.FAKE_MGR_PASS_MS) setTimeout(fake.startupPass, Number(env.FAKE_MGR_PASS_MS));

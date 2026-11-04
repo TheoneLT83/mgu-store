@@ -1399,6 +1399,20 @@ function testInplace() {
         hr.status === 1 && hr.out.includes('not bounced, it may still be installing') && hr.out.includes('rolling back') &&
         hang.root.kills().length === 1 && hang.root.managerPid() === hang.mgr.pid && hang.mgr.exitCode === null &&
         !('second_app' in (readJsonOrNull(hang.root.p(`var/opt/public/oap/oap_${MGR}/data/custom_apps.json`)) || {})), hr.out);
+    // a network retry delay holds the manager's queue (another app's failed online update on a bench): the hook
+    // clears it, and the install goes in place
+    const bo = inplaceRoot('backoff', { minUp: 1 });
+    const bor = bo.root.run(['install', '--artifact', appArtifact('second_app', '1.0.0', true), '--yes']);
+    check('in place: a network retry delay holding the queue is cleared, the install goes in place, no bounce',
+        bor.status === 0 && bo.root.kills().length === 1 && bo.root.managerLog().includes('network retry delay cleared') &&
+        bo.root.managerLog().includes('install second_app 1.0.0 uid 13002 in place'), `${bor.out}\n${bo.root.managerLog()}`);
+    // the queue held with no way to clear it: after MGU_DEPLOY_INPLACE_START_MS not handed to the installer, a bounce
+    const hd = inplaceRoot('held', { minUp: 1 });
+    const hdr = hd.root.run(['install', '--artifact', appArtifact('second_app', '1.0.0', true), '--yes'],
+        { MGU_DEPLOY_INPLACE_START_MS: '2000', MGU_DEPLOY_WATCH_TIMEOUT_MS: '20000' });
+    check('in place: a request the manager does not start in time goes to a bounce, which installs the app',
+        hdr.status === 0 && hd.root.kills().length === 2 && hdr.out.includes('had not started the in-place install after') &&
+        hdr.out.includes('through a bounce'), hdr.out);
     const blink = inplaceRoot('blink');
     const br = blink.root.run(['install', '--artifact', appArtifact('second_app', '1.0.0', true), '--yes']);
     check('in place: a moment with no manager in ps is not a restart: installed in place, no bounce', br.status === 0 &&

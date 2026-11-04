@@ -1,5 +1,10 @@
 # Deploy tool changelog
 
+## 0.7.17
+
+- An in-place install no longer waits out the app manager's network retry delays: on a unit without BMW's servers (a bench) the manager's own online update of a stock app (`oap-cdc-2018`: "Preinstalled source is too old and request to registry failed") fails and holds its queue with a growing retry delay, and our request, first in that queue, waited behind it until the 600 s timeout. The hook clears a pending delay while our request is not yet with the installer, as MainApp's own install() and update() do.
+- A request the manager has still not handed to its installer after 90 s (`MGU_DEPLOY_INPLACE_START_MS`) goes to a bounce, as one the manager never took. Right before the bounce the request is looked at once more: when the manager has started it meanwhile there is no bounce, which could cut that install short, and it is watched to its end.
+
 ## 0.7.16
 
 - A head unit whose clock went back (no time source: a car's MGU at 2023-08-18 holding files and a bounce of 2026) no longer bounces the app manager for every app, 60 s apart. A bounce is kept with its boot and uptime too (`lastBounce`), so the 60 s between bounces count by uptime in the same boot, and a bounce of an earlier boot holds nothing back; a recorded bounce time later than now is another clock's and is left out. The app manager's bundles written at a time later than now count as written before its start, so an update goes in place again.
