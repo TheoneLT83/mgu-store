@@ -1,5 +1,9 @@
 # Updater changelog
 
+## 0.8.22
+
+- A branch source's app of the same version is an update only when its own folder or the repo's shared build files changed: mgu-repo.json's `build.shared` (paths in the repo) names them; without it, the build script's top folder as before. idrive7-apps names `kit/runtime`, `kit/platform`, `kit/localization` and its build scripts, so a change to its renderer, tests or tools updates no app.
+
 ## 0.8.20
 
 robertnisipeanu/mgu-store's 0.8.19 and 0.8.20 with this repository's sources:

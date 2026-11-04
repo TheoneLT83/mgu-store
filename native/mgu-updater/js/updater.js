@@ -875,6 +875,17 @@ function writeAs(file, text, uid, gid, groups) {
     });
 }
 
+
+/* The repo's paths every scripted app of a branch source is built from: its mgu-repo.json's build.shared, else
+ * the build script's top folder; none for an app without a script. */
+function sharedPaths(entry) {
+    const script = entry.script && (entry.script.python || entry.script.node);
+    if (entry.script && Array.isArray(entry.script.shared)) {
+        return entry.script.shared;
+    }
+    return typeof script === 'string' && script.includes('/') ? [script.split('/')[0]] : [];
+}
+
 class Updater {
     constructor(conf) {
         this.conf = conf;
@@ -1691,9 +1702,8 @@ class Updater {
         }
         const inside = (f, p) => !!p && (f === p || f.startsWith(`${p}/`));
         const others = (rt.components || []).filter((c) => c.id !== entry.id && c.path).map((c) => c.path);
-        const script = entry.script && (entry.script.python || entry.script.node);
-        const shared = typeof script === 'string' && script.includes('/') ? `${script.split('/')[0]}/` : null;
-        return files.some((f) => inside(f, entry.path) || (shared && f.startsWith(shared) && !others.some((p) => inside(f, p))));
+        const shared = sharedPaths(entry);
+        return files.some((f) => inside(f, entry.path) || (shared.some((p) => inside(f, p)) && !others.some((p) => inside(f, p))));
     }
 
     /* Where an entry's icon is kept: <state_dir>/icons/<sha256>.png, named by
@@ -3230,11 +3240,10 @@ class Updater {
         const e = r.entry, installed = this.installedVersion(e.installAs || id, e.kind);
         let ask;
         if (rt.mode === 'repo' && e.path && rt.commit) {
-            const script = e.script && (e.script.python || e.script.node);
-            const shared = typeof script === 'string' && script.includes('/') ? script.split('/')[0] : null;
+            const shared = sharedPaths(e).filter((p) => p !== e.path);
             const origin = this.origins[e.installAs || id] || this.origins[id];
             const base = origin && origin.source === r.source ? origin.commit : null;
-            ask = rt.reader.commits(rt.commit, [e.path].concat(shared && shared !== e.path ? [shared] : [])).then((list) => {
+            ask = rt.reader.commits(rt.commit, [e.path].concat(shared)).then((list) => {
                 const at = base ? list.findIndex((c) => c.sha === base) : -1;
                 return list.map((c, i) => ({ title: c.title, text: '', date: c.date.slice(0, 10), rev: c.sha.slice(0, 7),
                     new: !!base && (at < 0 || i < at) }));

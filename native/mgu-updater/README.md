@@ -171,6 +171,10 @@ commit). Without one: `releases` when the repo has a release, else
   installed first. The updater itself requires `mgu-python`, so it is on
   every unit with the updater: an updater update installs it first, and it
   cannot be removed.
+- From a branch, a scripted app at a new commit with the same version is
+  an update only when its own folder, or a path the build reads for every
+  app, changed: `build.shared` (paths in the repo), else the build
+  script's top folder.
 - `apps` (`{ "path": "<folder>/*", "manifest", "exclude", ...the entry's
   other fields }`, or a list of them) lists every subfolder of that folder
   holding the manifest as an app with a build script, its id the

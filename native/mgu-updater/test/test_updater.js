@@ -692,6 +692,19 @@ function testCatalog() {
     ok('plan: same version is installed', catalogLib.plan(good.components.map(r), [{ id: 'doom', version: '1.0.1' }])[0].status === 'installed');
     ok('plan: a local build ahead of the catalog is newer', catalogLib.plan(good.components.map(r), [{ id: 'doom', version: '1.2.0' }])[0].status === 'newer');
     ok('versions compare numerically', catalogLib.compareVersions('1.10.0', '1.9.9') === 1);
+    // a branch app of the same version is an update only when its folder or the repo's shared build files changed:
+    // mgu-repo.json's build.shared, else the build script's top folder
+    const { Updater: U } = require('../js/updater');
+    const touched = (files, script) => U.prototype.touched.call({ src: new Map([['s', { changes: { c: files },
+        components: [{ id: 'a', path: 'apps/a' }, { id: 'b', path: 'apps/b' }] }]]) },
+    { id: 'a', path: 'apps/a', script }, 's', 'c');
+    const narrow = { python: 'kit/tools/build.py', shared: ['kit/runtime', 'kit/tools/build.py'] };
+    ok('changes: an app\'s own folder', touched(['apps/a/main.js'], narrow) === true);
+    ok('changes: another app\'s folder is not this one\'s', touched(['apps/b/main.js'], narrow) === false);
+    ok('changes: a shared path from build.shared', touched(['kit/runtime/mgu.js'], narrow) === true && touched(['kit/tools/build.py'], narrow) === true);
+    ok('changes: the rest of the script\'s folder is not shared when build.shared names the paths',
+        touched(['kit/renderd/prebuilt/mgu-renderd', 'kit/tools/test_x.js'], narrow) === false);
+    ok('changes: without build.shared, the script\'s top folder', touched(['kit/renderd/x'], { python: 'kit/tools/build.py' }) === true);
 }
 
 /* tar.js: what it packs it reads back; links, `..` and oversize archives are refused or left out. */

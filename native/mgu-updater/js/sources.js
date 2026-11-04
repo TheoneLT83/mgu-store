@@ -300,8 +300,9 @@ function checkScript(b, vars) {
         (Array.isArray(b.network) && b.network.every((x) => typeof x === 'string')));
     if (!b || typeof b !== 'object' || (b.node === undefined) === (b.python === undefined) || !safeRel(b.node || b.python) ||
         !strings(b.args) || !network ||
-        (b.output !== undefined && typeof b.output !== 'string') || (b.sdk !== undefined && !safeRel(b.sdk))) {
-        throw new Error('build must be {"node" or "python": "<script in the repo>", "args": [...], "output", "sdk", "network"}');
+        (b.output !== undefined && typeof b.output !== 'string') || (b.sdk !== undefined && !safeRel(b.sdk)) ||
+        (b.shared !== undefined && !(strings(b.shared) && b.shared.every((x) => safeRel(x))))) {
+        throw new Error('build must be {"node" or "python": "<script in the repo>", "args": [...], "output", "sdk", "network", "shared"}');
     }
     const output = b.output === undefined ? null : fill(b.output, vars);
     if (output !== null && !safeRel(output)) {
@@ -312,7 +313,9 @@ function checkScript(b, vars) {
         args: (b.args || []).map((a) => fill(a, vars)),
         output,
         sdk: b.sdk || null,
-        network: Array.isArray(b.network) ? b.network.indexOf(vars.id) >= 0 : !!b.network
+        network: Array.isArray(b.network) ? b.network.indexOf(vars.id) >= 0 : !!b.network,
+        // the repo's files every app is built from (none named: the script's top folder)
+        shared: b.shared ? b.shared.slice() : null
     };
 }
 
