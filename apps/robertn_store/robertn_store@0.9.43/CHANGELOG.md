@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.43
+
+robertnisipeanu/mgu-store's 0.9.18 with this repository's Store: while an installed app or tool waits for a restart, Store and Installed show Restart now, which opens the confirm step of Settings' Restart head unit. On Installed it sits right of Install all updates (or Check for updates); on Store, left of the filters. The confirm step's Restart is disabled while the updater cannot restart the unit.
+
 ## 0.9.42
 
 robertnisipeanu/mgu-store's 0.9.17 with this repository's Store: an installed app or tool that does not work until it is set up again (after a firmware update) shows `Not working`, and its page says why.
