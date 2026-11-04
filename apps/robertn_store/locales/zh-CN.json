@@ -1,8 +1,12 @@
 {
  "hmiLanguages": [
-  "CHINESISCH_SIMPLE"
+  "CHINESISCH_SIMPLE",
+  "KANTONESISCH_SIMPLE"
  ],
- "rhmiTexts": "zh_CN",
+ "rhmiTexts": [
+  "zh_CN",
+  "zh_yue_Hans_CN"
+ ],
  "font": "chinese",
  "words": {
   " and ": " 和 ",
@@ -46,6 +50,7 @@
   "Connecting": "连接中",
   "Connecting{0}": "连接中{0}",
   "Default branch": "默认分支",
+  "Delete": "删除",
   "Don't use Wi-Fi": "停用 Wi-Fi",
   "Downloading": "下载中",
   "Downloading {0} %": "正在下载 {0} %",
@@ -71,6 +76,7 @@
   "Installed {0}": "已安装 {0}",
   "Installing": "安装中",
   "Internet": "互联网",
+  "No USB stick": "未插入 U 盘",
   "No apps installed": "尚未安装应用",
   "No internet": "无网络连接",
   "No internet: Settings > Internet shows how to connect the car": "无网络连接：设置 > 互联网 中说明如何为车辆联网",
@@ -102,6 +108,7 @@
   "Releases": "发布版本",
   "Remove": "移除",
   "Remove account?": "移除此账户？",
+  "Remove all": "全部移除",
   "Remove source?": "移除此来源？",
   "Remove {0} {1}?": "移除 {0} {1}？",
   "Remove?": "移除？",
@@ -121,6 +128,7 @@
   "Scanning": "扫描中",
   "Secured": "加密网络",
   "Settings": "设置",
+  "Shift": "Shift",
   "Sign in": "登录",
   "Sign in with GitHub": "使用 GitHub 登录",
   "Sign-in failed": "登录失败",
@@ -128,14 +136,15 @@
   "Signed in": "已登录",
   "Source": "来源",
   "Sources": "来源",
+  "Space": "空格",
   "Starting": "启动中",
   "Store": "应用商店",
   "Strong": "强",
   "Tags": "标签",
   "Text entry failed: {0}": "文字输入失败：{0}",
   "Tool": "工具",
+  "Tools only it uses: {0}": "仅它使用的工具：{0}",
   "Try again": "重试",
-  "USB not connected": "USB 未连接",
   "Unavailable": "不可用",
   "Undo update": "撤销更新",
   "Unused": "未使用",

@@ -74,7 +74,7 @@ const { typeKey, wifiOf } = require('./store_ui.js');
 const { PHASE, percent, rowState, rowAction, groupState, statusLine, sourceLabel, sourceState,
     sourcesState, sourceActions, sourceChannel, sourceAccount, tokenLabel, tokenState, tokenSources, accountsState,
     loginStatus, loginCode, phoneState, phoneAddress, parseSource, pickOptions, probeStatus, sourcesMessage, tokenMessage,
-    removable, undoable, withSources, listed } = require('./store_view.js');
+    removable, requiredAlone, undoable, withSources, listed, localized } = require('./store_view.js');
 
 const logger = logging.getSDKLogger();
 const tr = i18n.t;
@@ -131,7 +131,7 @@ const ROOTS = { widgets: 'ST_OnlineApps_Store', layer: hostName('layer', 1), emb
 const ID8_CELLS = { Text: 'PrimaryText', Text1stCol: 'PrimaryText', Text2ndCol: 'FrequencyText', TextLeft: 'PrimaryText',
     TextRight: 'FrequencyText' };
 const ID8_LABELS = new Set(['storeStatus', 'storeSourcesStatus', 'storeSrcError', 'storeAccountsStatus', 'storeAccountName',
-    'storeAccountSources', 'storeLoginCode', 'storeLoginUrl', 'storeLoginStatus', 'storeRemoveName', 'storePhoneUrl',
+    'storeAccountSources', 'storeLoginCode', 'storeLoginUrl', 'storeLoginStatus', 'storeRemoveName', 'storeRemoveTools', 'storePhoneUrl',
     'storePhoneError', 'storeSrcAppLabel', 'storeSrcAppUrl', 'storePickStatus']);
 
 /* tools/gen_rhmi.js */
@@ -168,7 +168,8 @@ const C = { status: 'storeStatus', check: 'storeCheck', progress: 'storeProgress
     loginQr: 'storeLoginQr', loginCode: 'storeLoginCode', loginUrl: 'storeLoginUrl',
     loginStatus: 'storeLoginStatus', loginCancel: 'storeLoginCancel',
     srcRemoveCancel: 'storeSrcRemoveCancel', srcRemoveConfirm: 'storeSrcRemoveConfirm',
-    removeName: 'storeRemoveName', removeCancel: 'storeRemoveCancel', removeConfirm: 'storeRemoveConfirm',
+    removeName: 'storeRemoveName', removeTools: 'storeRemoveTools', removeCancel: 'storeRemoveCancel', removeConfirm: 'storeRemoveConfirm',
+    removeAll: 'storeRemoveAll',
     srcAppLabel: 'storeSrcAppLabel', srcAppQr: 'storeSrcAppQr', srcAppUrl: 'storeSrcAppUrl',
     phoneToggle: 'storePhoneToggle', phoneQr: 'storePhoneQr', phoneUrl: 'storePhoneUrl',
     phoneError: 'storePhoneError' };
@@ -278,6 +279,7 @@ class Store extends OnlineApp {
         });
         this._look = readFile(LOOK_FILE).trim() || null;
         this._st = null;
+        this._stRaw = null;
         this._connected = false;
         this._client = new UpdaterClient(SOCKET, { reconnectMs: RECONNECT_MS });
         this._client.on('state', (st) => {
@@ -289,7 +291,8 @@ class Store extends OnlineApp {
             // an install or removal ended: the drawn screens again if they were lost meanwhile (the app
             // manager restarted for it closes the Store's screen for a moment)
             const ended = this._st && this._st.busy && !st.busy;
-            this._st = withOwnIcon(st);
+            this._stRaw = st;
+            this._st = withOwnIcon(localized(st));
             if (ended) {
                 this._drawn.retry();
             }
@@ -430,6 +433,7 @@ class Store extends OnlineApp {
     _displayLanguage(value) {
         if (i18n.setHmiLanguage(value)) {
             logger.info(`display language ${value}: ${i18n.language()}`);
+            this._st = withOwnIcon(localized(this._stRaw));
             this._forgetWritten();
             this._render();
         }
@@ -536,6 +540,7 @@ class Store extends OnlineApp {
         });
         this._bind(C.removeCancel, () => this._closeState(S.remove));
         this._bind(C.removeConfirm, () => this._remove());
+        this._bind(C.removeAll, () => this._remove(this._removeTools().map((t) => t.id)));
         this._bind(C.navSources, () => this._openState(S.sources));
         this._bind(C.sourceList, (row) => this._onSource(row));
         this._bind(C.sourceAdd, () => this._addSource());
@@ -632,6 +637,9 @@ class Store extends OnlineApp {
         }
         logger.info(`screens: ${ui}`);
         this._ui = ui;
+        if (i18n.useDrawn(ui !== 'widgets')) {
+            this._st = withOwnIcon(localized(this._stRaw));
+        }
         this._forgetWritten();
         this._render();
         if (!this._entryUuid) {
@@ -739,7 +747,7 @@ class Store extends OnlineApp {
                 .filter((c) => c.status === 'update' && rowAction(c, this._st.busy) === 'install')
                 .forEach((c) => this._install(c.id));
             break;
-        case 'remove': this._removeId = act.id; this._remove(); break;
+        case 'remove': this._removeId = act.id; this._remove(act.tools); break;
         case 'undo': this._undoId = act.id; this._undo(); break;
         case 'restart': this._restart(); break;
         case 'source-remove': this._sourceId = act.id; this._removeSource(); break;
@@ -902,6 +910,12 @@ class Store extends OnlineApp {
         return (this._connected && this._st && id && this._st.components.find((c) => c.id === id)) || null;
     }
 
+    /* The installed tools only the component the Remove confirm step names requires. */
+    _removeTools() {
+        const row = this._component(this._removeId);
+        return row ? requiredAlone(this._st.components, row) : [];
+    }
+
     _source(id) {
         const sources = this._connected && this._st && this._st.sources;
         return (Array.isArray(sources) && id && sources.find((s) => s.id === id)) || null;
@@ -934,12 +948,14 @@ class Store extends OnlineApp {
         }
     }
 
-    _remove() {
+    /* tools: the ones only it requires that go with it, as its confirm step listed them. */
+    _remove(tools) {
         this._closePage('remove', isConfirm('remove'));
         const row = this._component(this._removeId);
         if (row && removable(row, this._st.busy)) {
-            logger.info(`uninstall ${row.id}`);
-            this._privileged({ op: 'uninstall', id: row.id });
+            const along = Array.isArray(tools) && tools.length ? { tools } : {};
+            logger.info(`uninstall ${row.id}${along.tools ? ` with ${tools.join(', ')}` : ''}`);
+            this._privileged(Object.assign({ op: 'uninstall', id: row.id }, along));
         }
     }
 
@@ -1487,6 +1503,9 @@ class Store extends OnlineApp {
         const removingComponent = this._component(this._removeId);
         // a queued install (iDrive 8) has no installed version
         this._text(C.removeName, removingComponent ? [removingComponent.title, removingComponent.installed].filter(Boolean).join(' ') : '');
+        const removeTools = this._removeTools();
+        this._text(C.removeTools, removeTools.length ? tr("Tools only it uses: {0}", removeTools.map((t) => `${t.title} ${t.installed}`).join(', ')) : '');
+        this._show(C.removeAll, removeTools.length > 0);
 
         // an updater that reports no sources or web hides Sources and Phone access
         const sources = connected && Array.isArray(st.sources) ? st.sources : null;

@@ -106,6 +106,8 @@ function screens() {
             { title: '0.3.3', text: 'Another renderer\'s apps are no longer hidden by the foreground gate.', date: '', rev: '', new: false }] } }],
         ['confirm-remove', { stack: main.concat([{ name: 'app', id: 'gauges' }, { name: 'confirm', kind: 'remove', id: 'gauges' }]),
             focus: 0 }],
+        ['confirm-remove-tools', { stack: main.concat([{ name: 'app', id: 'gauges' }, { name: 'confirm', kind: 'remove', id: 'gauges' }]),
+            focus: 0 }, { components: st.components.map((c) => (c.id === 'gauges' ? Object.assign({}, c, { requiredAlone: ['display-bridge', 'mgu-renderd', 'mgu-uplink', 'mgu-render'] }) : c)) }],
         ['tool-undo', { tab: 'installed', stack: main.concat([{ name: 'app', id: 'mgu-uplink' }]) }],
         ['confirm-undo', { tab: 'installed', stack: main.concat([{ name: 'app', id: 'mgu-uplink' }, { name: 'confirm', kind: 'undo', id: 'mgu-uplink' }]),
             focus: 0 }],

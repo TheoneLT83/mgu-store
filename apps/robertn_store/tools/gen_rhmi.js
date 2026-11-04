@@ -47,7 +47,9 @@
  *                                      text, the status
  *   8  ST_OnlineApps_StoreSourceRemove the confirm step of a source's Remove
  *   9  ST_OnlineApps_StoreRemove       the confirm step of a component's Remove:
- *                                      its name, Cancel, Remove
+ *                                      its name, the tools only it uses,
+ *                                      Cancel, Remove, and Remove all while it
+ *                                      lists tools
  *  30  ST_OnlineApps_StorePhone        Phone access: On/Off, the page's QR code,
  *                                      its address, its error
  *
@@ -63,8 +65,9 @@
  *
  * The widget screens' own words are string ids (SID_STORE_<WORDS>), so the
  * HMI shows them in its display language: the RHMI text files
- * (rhmiData/variantGroups/Common/texts) are written from them, en_GB.json in
- * English and one per language (locales/<code>.json "rhmiTexts") in its words,
+ * (rhmiData/variantGroups/Common/texts) are written from them, en_GB.json and
+ * en_US.json in English and those each language names (locales/<code>.json
+ * "rhmiTexts") in its words,
  * English where it has none. What the app writes at runtime is text.
  *
  * A list is one button component; the app sets its row count at runtime.
@@ -208,8 +211,10 @@ const WIDGET_STATES = [
     ]),
     state(9, 'ST_OnlineApps_StoreRemove', 18, 'Remove?', MAIN.id, [
         label(97, 'storeRemoveName'),
+        text(148, 'storeRemoveTools'),
         button(98, 'storeRemoveCancel', 'Cancel'),
-        button(99, 'storeRemoveConfirm', 'Remove')
+        button(99, 'storeRemoveConfirm', 'Remove'),
+        button(149, 'storeRemoveAll', 'Remove all')
     ]),
     state(30, 'ST_OnlineApps_StorePhone', 19, 'Phone access', MAIN.id, [
         row(130, 'storePhoneToggle', 'Phone access'),
@@ -341,20 +346,19 @@ function english() {
     return out;
 }
 
-/* The RHMI text files: every language the head unit may ask for gets one, so the tile's name
- * always shows (robertn_store 0.9.18) - its translation where there is one (src/locales.js
- * rhmiTexts), else the English texts, as the idrive7-apps kit ships them. */
+/* The HMI's English text files (the oap-sdk's names for ENGLISCH__UK and ENGLISCH__US). */
+const ENGLISH = ['en_GB', 'en_US'];
+
+/* The RHMI text files: English, and each locale's (its rhmiTexts). */
 function texts() {
     const en = english();
-    const translated = {};
+    const out = {};
+    ENGLISH.forEach((n) => { out[`${n}.json`] = en; });
     require('./gen_locales.js').read().forEach((l) => {
         const file = {};
         Object.keys(en).forEach((id) => { file[id] = Object.prototype.hasOwnProperty.call(l.words, en[id]) ? l.words[en[id]] : en[id]; });
-        translated[`${l.rhmiTexts}.json`] = file;
+        l.rhmiTexts.forEach((n) => { out[`${n}.json`] = file; });
     });
-    const out = {};
-    const have = fs.existsSync(TEXTS) ? fs.readdirSync(TEXTS).filter((f) => /^[a-z]{2}_[A-Z]{2}\.json$/.test(f)) : [];
-    new Set(have.concat('en_GB.json', Object.keys(translated))).forEach((f) => { out[f] = translated[f] || en; });
     return out;
 }
 

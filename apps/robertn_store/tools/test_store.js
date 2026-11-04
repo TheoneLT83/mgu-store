@@ -264,6 +264,21 @@ function run() {
         eq(writes.filter((w) => /^storeAccountList\.[01]\./.test(w)).slice(-4), ['storeAccountList.0.Text1stCol=rn',
             'storeAccountList.0.Text2ndCol=1 source', 'storeAccountList.1.Text1stCol=0badc0de', 'storeAccountList.1.Text2ndCol=Rejected']);
         eq(writes.filter((w) => /storeSrcSignIn/.test(w)), [], 'no sign-in on a source');
+        // each app's row titled with its source's author; one author's two DOOMs with owner/repo
+        app._client.emit('state', Object.assign({}, ST, { components: [comp({ source: 'mgu-store' }), comp({ id: 'quake', title: 'Quake', source: 'idrive7-apps' })] }));
+        return tick();
+    }).then(() => {
+        eq([last(/storeAppList\.0\.Text1stCol/), last(/storeAppList\.1\.Text1stCol/)],
+            ['storeAppList.0.Text1stCol=DOOM (robertnisipeanu)', 'storeAppList.1.Text1stCol=Quake (someone)']);
+        app._client.emit('state', Object.assign({}, ST, { sources: ST.sources.concat([Object.assign({}, ST.sources[0], { id: 'more', label: 'robertnisipeanu/more' })]),
+            components: [comp({ source: 'mgu-store' }), comp({ id: 'doom2', source: 'more' })] }));
+        return tick();
+    }).then(() => {
+        eq([last(/storeAppList\.0\.Text1stCol/), last(/storeAppList\.1\.Text1stCol/)],
+            ['storeAppList.0.Text1stCol=DOOM (robertnisipeanu/mgu-store)', 'storeAppList.1.Text1stCol=DOOM (robertnisipeanu/more)']);
+        app._client.emit('state', ST);
+        return tick();
+    }).then(() => {
 
         // without the secret nothing is sent
         reset();
@@ -898,6 +913,27 @@ function runWidgetsExtra() {
         reset();
         app._remove();
         eq(sent.map(secretless), [{ op: 'uninstall', id: 'doom' }]);
+        // an app with a tool only it requires: the step lists it, and Remove all takes it along
+        reset();
+        app._client.emit('state', Object.assign({}, st, { components: [comp({ installed: '1.0.0', status: 'installed', requiredAlone: ['mgu-renderd'] }),
+            id8only, id8installed, renderer, held] }));
+        return tick();
+    }).then(() => {
+        eq([last(/storeRemoveTools\.0\.Text=/), last(/storeRemoveAll\.Visible/)],
+            ['storeRemoveTools.0.Text=Tools only it uses: GPU renderer 1.1.0', 'storeRemoveAll.Visible=1'], 'the tools only it uses, and Remove all');
+        reset();
+        app._components.storeRemoveAll.emit('action', {});
+        return tick();
+    }).then(() => {
+        eq(sent.map(secretless), [{ op: 'uninstall', id: 'doom', tools: ['mgu-renderd'] }], 'Remove all sends the tools with the app');
+        reset();
+        app._act({ do: 'remove', id: 'doom', tools: ['mgu-renderd'] });
+        eq(sent.map(secretless), [{ op: 'uninstall', id: 'doom', tools: ['mgu-renderd'] }], 'as the drawn Remove all does');
+        reset();
+        app._client.emit('state', st);
+        return tick();
+    }).then(() => {
+        eq(last(/storeRemoveAll\.Visible/), 'storeRemoveAll.Visible=0', 'none without such tools');
         reset();
         app._client.emit('state', Object.assign({}, st, { signin: true }));
         return tick();
@@ -1762,7 +1798,11 @@ function runLanguage() {
         displayLanguage('DEUTSCH');
         return tick();
     }).then(() => {
-        eq([check(), nav()], ['Check for updates', '1 update'], 'a language without a translation: English');
+        eq([check(), nav()], ['Nach Updates suchen', '1 Update'], 'German');
+        displayLanguage('KEINE_SPRACHE');
+        return tick();
+    }).then(() => {
+        eq([check(), nav()], ['Check for updates', '1 update'], 'no language: English');
         displayLanguage('CHINESISCH_SIMPLE');
         displayLanguage(255);
         return tick();

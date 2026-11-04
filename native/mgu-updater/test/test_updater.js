@@ -2,7 +2,8 @@
 /**
  * Offline tests of mgu-updater on the head unit's Node 8.16.2, as root
  * (test/run.sh runs them in Docker):
- *  - catalog: parsing (schema 1 and 2), rejection of malformed entries, the plan;
+ *  - catalog: parsing (schema 1 and 2), rejection of malformed entries, the plan
+ *    (texts in other languages kept, bounded);
  *  - a version 1 App Manager index read again and again: only the newest
  *    package of each id kept, what each one is remembered, the cap;
  *  - build folders removed as the uid that owns each part (root's too, after
@@ -688,6 +689,15 @@ function testCatalog() {
     const rows = catalogLib.plan(good.components.map(r), [{ id: 'doom', kind: 'app', version: '1.0.0' }]);
     const described = catalogLib.plan([r(Object.assign({}, good.components[0], { description: 'Plays DOOM' }))], [])[0];
     ok('plan: a row carries the catalog\'s description', described.description === 'Plays DOOM' && rows[0].description === '');
+    const texted = catalogLib.plan([r(Object.assign({}, good.components[0], { texts: {
+        de: { title: '  DOOM\n(de) ', description: 'Spielt DOOM' }, 'pt-BR': { title: 'DOOM' }, 'zh-TW': { description: 'x'.repeat(1200) },
+        fr: { title: '' }, it: 'no', EN: { title: 'x' }, 'de-DE-x-y-z': { title: 'x' }, es: { title: 7 } } }))], [])[0];
+    ok('plan: a row carries the catalog\'s texts, each a title (one line) and a description of a language code',
+        JSON.stringify(texted.texts) === JSON.stringify({ de: { title: 'DOOM (de)', description: 'Spielt DOOM' }, 'pt-BR': { title: 'DOOM' },
+            'zh-TW': { description: 'x'.repeat(1000) } }));
+    ok('plan: no texts, or none usable: null', rows[0].texts === null &&
+        catalogLib.plan([r(Object.assign({}, good.components[0], { texts: ['de'] }))], [])[0].texts === null &&
+        catalogLib.plan([r(Object.assign({}, good.components[0], { texts: { de: {} } }))], [])[0].texts === null);
     ok('plan: an older installed version is an update', rows[0].status === 'update' && rows[0].installed === '1.0.0');
     ok('plan: a missing component is available', rows[1].status === 'available' && rows[1].installed === null);
     ok('plan: a row names its source', rows[0].source === 's' && rows[0].build === null && rows[0].optional === false);
@@ -707,6 +717,43 @@ function testCatalog() {
     ok('changes: the rest of the script\'s folder is not shared when build.shared names the paths',
         touched(['kit/renderd/prebuilt/mgu-renderd', 'kit/tools/test_x.js'], narrow) === false);
     ok('changes: without build.shared, the script\'s top folder', touched(['kit/renderd/x'], { python: 'kit/tools/build.py' }) === true);
+}
+
+/* The tools an app's removal may take along: those it requires itself or
+ * through them that nothing else installed keeps, a tool before those it
+ * requires; one another app, a capability's need or its row keeps stays. */
+function testRequiredAlone() {
+    const { Updater } = require('../js/updater');
+    const rows = [
+        ['app', 'app', { mid: '1.0.0', low: '1.0.0', shared: '1.0.0', fixed: '1.0.0' }],
+        ['mid', 'tool', { low: '1.0.0' }],
+        ['low', 'tool', {}],
+        ['shared', 'tool', {}],
+        ['fixed', 'tool', {}],
+        ['other', 'app', { shared: '1.0.0' }],
+        ['renderer', 'tool', {}, 'gpu'],
+        ['viewer', 'app', { renderer: '1.0.0' }]
+    ];
+    const all = new Map(rows.map(([id, kind, requires, cap]) => [id, { entry: { id, kind, title: id, requires, mguProvides: cap || null } }]));
+    const u = Object.assign(Object.create(Updater.prototype), {
+        installedVersion: (id) => (id === 'viewer' ? null : '1.0.0'),
+        removableRow: (id) => id !== 'fixed',
+        providers: { gpu: [{ id: 'renderer' }] },
+        nextStart: {}
+    });
+    ok('required alone: the tools only the app needs, a tool before those it requires; shared, unremovable ones stay',
+        JSON.stringify(u.requiredAlone('app', all)) === '["mid","low"]', JSON.stringify(u.requiredAlone('app', all)));
+    all.get('app').entry.requires.renderer = '1.0.0';
+    all.get('viewer').entry.requires = {};
+    all.get('viewer').entry.mguNeeds = ['gpu'];
+    u.installedVersion = () => '1.0.0';
+    ok('required alone: the last provider of a capability another installed app needs stays',
+        u.requiredAlone('app', all).indexOf('renderer') < 0 && JSON.stringify(u.requiredAlone('other', all)) === '[]',
+        JSON.stringify(u.requiredAlone('app', all)));
+    u.nextStart = { other: 'remove' };
+    ok('required alone: an app whose removal waits for the next start (iDrive 8) keeps none of its tools',
+        u.keptBy('shared', all, ['shared', 'app']) === null && /^app needs mid$/.test(u.keptBy('mid', all, ['mid']) || ''),
+        JSON.stringify([u.keptBy('shared', all, ['shared', 'app']), u.keptBy('mid', all, ['mid'])]));
 }
 
 /* tar.js: what it packs it reads back; links, `..` and oversize archives are refused or left out. */
@@ -2471,7 +2518,7 @@ function testSources(certs) {
             ok('requires: a requirement that fails to install is the app\'s error, with its reason; the app is not installed',
                 comp('needs_app').error === `needs base_tool 1.0.0 or newer, which did not install from ${src('mgu-store').label}: ` +
                 'install failed: test failure 1; ' +
-                'the previous version was kept' && lines.length === 1 && /base_tool@1\.0\.0/.test(lines[0]) &&
+                'nothing is installed' && lines.length === 1 && /base_tool@1\.0\.0/.test(lines[0]) &&
                 comp('needs_app').status === 'available', JSON.stringify([comp('needs_app').error, lines]));
             // Try again: the requirement installs first again
             fs.writeFileSync(deployLog, '');
@@ -2500,14 +2547,35 @@ function testSources(certs) {
             ok('uninstall: privileged; refused while something installed requires it, when not installed, and for a tool its source does not mark',
                 errs[0] === 'forbidden' && /Needs needs base_tool/.test(errs[1]) && errs[2] === 'robertn_demo is not installed' && /cannot be removed/.test(errs[3]),
                 JSON.stringify(errs));
+            ok('required alone: an installed app\'s row names the installed tools only it requires',
+                JSON.stringify(comp('needs_app').requiredAlone) === '["base_tool"]' && JSON.stringify(comp('base_tool').requiredAlone) === '[]',
+                JSON.stringify([comp('needs_app').requiredAlone, comp('base_tool').requiredAlone]));
+            return priv({ op: 'uninstall', id: 'needs_app', tools: ['opt_tool'] });
+        })
+        .then((err) => {
+            ok('required alone: a tool the app does not alone require is refused, nothing queued',
+                err === 'opt_tool cannot be removed with needs_app' && !st().components.some((c) => c.queued), err);
+            fs.writeFileSync(deployLog, '');
+            fs.writeFileSync(`${deployLog}.fail`, '1');
+            return priv({ op: 'uninstall', id: 'needs_app', tools: ['base_tool'] })
+                .then((err2) => until(st, () => !st().busy && !comp('needs_app').queued && !comp('base_tool').queued && comp('needs_app').error,
+                    20000, 'the failed removal').then(() => err2));
+        })
+        .then((err) => {
+            ok('required alone: when the app\'s removal fails, the tool it would take along stays', err === null &&
+                deployed().join() === 'uninstall needs_app --yes' && comp('base_tool').status === 'installed' && comp('base_tool').error === null,
+                JSON.stringify([err, deployed(), comp('base_tool')]));
+            fs.unlinkSync(`${deployLog}.fail`);
+            fs.writeFileSync(deployLog, '');
             const phases = [];
             const t = setInterval(() => {
                 if (u.busy && u.busy.id === 'needs_app' && phases.indexOf(u.busy.phase) < 0) {
                     phases.push(u.busy.phase);
                 }
             }, 5);
-            return priv({ op: 'uninstall', id: 'needs_app' })
-                .then((err) => until(st, () => !st().busy && comp('needs_app').status === 'available', 20000, 'needs_app removed')
+            return priv({ op: 'uninstall', id: 'needs_app', tools: ['base_tool'] })
+                .then((err) => until(st, () => !st().busy && comp('needs_app').status === 'available' && comp('base_tool').status === 'available',
+                    20000, 'needs_app removed with base_tool')
                     .then(() => {
                         clearInterval(t);
                         return { err, phases };
@@ -2518,6 +2586,45 @@ function testSources(certs) {
             ok('uninstall: through the deploy tool\'s uninstall; the row is available again', err === null &&
                 /^uninstall needs_app --yes$/m.test(fs.readFileSync(deployLog, 'utf8')) &&
                 !JSON.parse(fs.readFileSync(path.join(state, 'origins.json'), 'utf8')).needs_app);
+            ok('required alone: the tools asked for go after the app, through the deploy tool\'s uninstall',
+                deployed().join() === 'uninstall needs_app --yes,uninstall base_tool --yes', JSON.stringify(deployed()));
+            return ask(sock, { op: 'install', id: 'base_tool' }).then(() => installed('base_tool'));
+        })
+        .then(() => {
+            // a tool another origin installed, now updated from this one (its title leads): the deploy tool hears so
+            const cj = path.join(opt, 'base_tool', 'current', 'component.json');
+            fs.writeFileSync(cj, JSON.stringify(Object.assign(JSON.parse(fs.readFileSync(cj, 'utf8')), { title: 'Base' })));
+            u.origins.base_tool = { source: 'gone', commit: null };
+            fs.writeFileSync(deployLog, '');
+            return u.install({ op: 'install', id: 'base_tool', source: 'mgu-store' });
+        })
+        .then(() => {
+            ok('move: a tool another origin installed goes to the deploy tool with --other-source, and this origin is its own',
+                deployed().length === 1 && / --other-source$/.test(deployed()[0]) && u.origins.base_tool.source === 'mgu-store', JSON.stringify(deployed()));
+            fs.writeFileSync(deployLog, '');
+            return u.install({ op: 'install', id: 'base_tool', source: 'mgu-store' });
+        })
+        .then(() => {
+            ok('move: an install from its own origin has no --other-source', deployed().length === 1 && !/--other-source/.test(deployed()[0]),
+                JSON.stringify(deployed()));
+            // a failed update that leaves the new version current says so
+            const root = path.join(opt, 'base_tool');
+            cp.execFileSync('cp', ['-a', path.join(root, 'versions', '1.0.0'), path.join(root, 'versions', '0.9.0')]);
+            const cj = path.join(root, 'versions', '0.9.0', 'component.json');
+            fs.writeFileSync(cj, JSON.stringify(Object.assign(JSON.parse(fs.readFileSync(cj, 'utf8')), { version: '0.9.0' })));
+            fs.unlinkSync(path.join(root, 'current'));
+            fs.symlinkSync('versions/0.9.0', path.join(root, 'current'));
+            fs.writeFileSync(`${deployLog}.failafter`, '');
+            return u.refresh().then(() => u.install({ op: 'install', id: 'base_tool', source: 'mgu-store' }));
+        })
+        .then(() => {
+            fs.unlinkSync(`${deployLog}.failafter`);
+            ok('install: a failure that leaves the new version current says it stays current (a first one that leaves none, that nothing is)',
+                /^install failed: .*activate failed, and its deactivate too; 1\.0\.0 stays current$/.test(u.errors.base_tool || ''), u.errors.base_tool);
+            delete u.errors.base_tool;
+            return u.refresh();
+        })
+        .then(() => {
             // another source's row of an id whose install it queued for the next start (iDrive 8)
             process.env.FAKE_PENDING = 'dup_app=installs at the next start';
             u.origins.dup_app = { source: 'second', commit: null };
@@ -4823,7 +4930,7 @@ function testIdClash() {
             let got = view({});
             ok('ids: an app installed from outside is updated by the origin whose listing has its title (DOOM: mgu-apps, not Doom or ' +
                 'DOOM (App Manager)); the others are beside it', got.get('doom').source === 'mgu-apps' && !got.get('doom').entry.unlisted &&
-                got.get('doom2').entry.listedId === 'doom' && got.get('doom@iterio').entry.blocked === 'doom is already installed',
+                got.get('doom2').entry.listedId === 'doom' && got.get('doom@iterio').entry.blocked === `doom is already installed; its updates come from ${mguApps}`,
                 JSON.stringify(Array.from(got.keys())));
             got = view({}, { at: null, imported: ['doom'] });
             ok('ids: ...an imported one too', got.get('doom').source === 'mgu-apps' && !got.get('doom').entry.blocked);
@@ -4851,7 +4958,7 @@ function testIdClash() {
             titled('stubborn', 'Stubborn');
             got = view({});
             ok('ids: of two sources listing an id, the one whose listing has the installed title updates it',
-                got.get('stubborn').source === 'idrive7-apps' && got.get('stubborn@mgu-apps').entry.blocked === 'stubborn is already installed',
+                got.get('stubborn').source === 'idrive7-apps' && got.get('stubborn@mgu-apps').entry.blocked === `stubborn is already installed; its updates come from ${repo}`,
                 JSON.stringify(Array.from(got.keys()).filter((k) => /stubborn/.test(k))));
             titled('stubborn', 'Something else');
             got = view({});
@@ -4947,6 +5054,22 @@ function testIdClash() {
                 const py2 = lone.resolved().get('mgu-python');
                 ok('ids: ...unless its own origin is gone: then only a listing with its title updates it', py2.entry.unlisted === true,
                     JSON.stringify(py2));
+                // installed from outside (an installer), listed under its title by the built-in source and by another (a fork)
+                const titledPy = Object.assign({}, u.src.get('pytools').components.find((c) => c.id === 'mgu-python'), { title: 'Python runtime' });
+                const forked = new Map(u.src);
+                ['mgu-store', 'pytools'].forEach((s) => forked.set(s, Object.assign({}, u.src.get(s), { components: [titledPy] })));
+                Object.assign(lone, { src: forked, origins: {} });
+                let py3 = lone.resolved();
+                ok('ids: of two sources listing an installed id without an origin under its title, the built-in source updates it; ' +
+                    'the other is beside it, blocked, naming where its updates come from', py3.get('mgu-python').source === 'mgu-store' &&
+                    !py3.get('mgu-python').entry.unlisted && py3.get('mgu-python@pytools').entry.blocked ===
+                    `mgu-python is already installed; its updates come from ${store}`,
+                    JSON.stringify(Array.from(py3.entries()).filter(([k]) => /python/.test(k))));
+                Object.assign(lone, { stored: lone.stored.filter((d) => d.id !== 'mgu-store').concat([{ id: 'mgu-store', type: 'file', path: store }]) });
+                py3 = lone.resolved();
+                ok('ids: ...and with neither of them built in, it has no update: a row of its own, both beside it blocked',
+                    py3.get('mgu-python').entry.unlisted === true && py3.get('mgu-python@pytools').entry.blocked === 'mgu-python is already installed',
+                    JSON.stringify(Array.from(py3.entries()).filter(([k]) => /python/.test(k))));
                 fs.writeFileSync(py, pyWas);
                 tool('plain-tool', { title: 'Plain', uninstallable: true });
                 tool('bare-tool', { mguProvides: 'widget' });
@@ -5845,6 +5968,7 @@ function main() {
     testCatalog();
     testCollect();
     testFileLog();
+    testRequiredAlone();
     return testTar()
         .then(() => testDeployTimeout())
         .then(() => testIndexV1Cache().catch((e) => ok('index v1 cache scenario', false, e.stack)))

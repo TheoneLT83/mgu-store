@@ -17,6 +17,7 @@
  *   mgu-deploy.sh updater-sources            (sources.json on stdin)
  *   mgu-deploy.sh sdk-donor [--json]
  *   mgu-deploy.sh apply-pending              (iDrive 8, at boot: queued app changes)
+ *   mgu-deploy.sh relist                     (iDrive 8, at boot: our apps in custom_apps.json)
  *   mgu-deploy.sh remove-unused              (at boot: files a tool handed over)
  *   mgu-deploy.sh appmanager [--json] | appmanager adopt [--yes]   (IterioDev's App Manager)
  *   mgu-deploy.sh help
@@ -45,7 +46,7 @@ var cp = require('child_process');
 
 /* deploy/component.json's version; bumped when a file under deploy/unit/
  * changes. */
-var VERSION = '0.7.17';
+var VERSION = '0.7.18';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -209,12 +210,21 @@ function sha256File(p) {
     return crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 }
 function sha256Buf(b) { return crypto.createHash('sha256').update(b).digest('hex'); }
+/* file replaced by rename, the new file and its folder on disk before it returns */
 function writeAtomic(file, data, mode) {
     mkdirp(path.dirname(file));
-    var tmp = file + '.tmp-' + process.pid;
-    fs.writeFileSync(tmp, data);
-    if (mode !== undefined) fs.chmodSync(tmp, mode);
+    var tmp = file + '.tmp-' + process.pid, fd = fs.openSync(tmp, 'w');
+    try {
+        fs.writeFileSync(fd, data);
+        if (mode !== undefined) fs.fchmodSync(fd, mode);
+        fs.fsyncSync(fd);
+    } finally { fs.closeSync(fd); }
     fs.renameSync(tmp, file);
+    fsyncDir(path.dirname(file));
+}
+function fsyncDir(dir) {
+    var fd = fs.openSync(dir, 'r');
+    try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
 }
 function copyFileMode(src, dest, mode) {
     mkdirp(path.dirname(dest));
@@ -1296,7 +1306,10 @@ function restoreSnapshot(dir, only) {
         if (only && only.indexOf(e.path) < 0) return;
         (isRootfsPath(e.path) ? rootEntries : plain).push(e);
     });
+    /* the hooks' marks (noteHook) record hooks that ran, which no snapshot undoes */
+    var marks = readJsonOrNull(STATE_FILE);
     plain.forEach(function (e) { putBackEntry(dir, e); });
+    if (marks && typeof marks === 'object' && plain.some(function (e) { return e.path === STATE_FILE; })) persistMarks(marks);
     /* The lists' entries cover every unit on disk at each step: entries the
      * snapshot has go in first (added only), the units, links and drop-ins
      * go back, and only then the lists as the snapshot has them. */
@@ -2011,6 +2024,11 @@ function tileFlags(entry) {
  * apps from its das files at the manager's start, and its cache is that. */
 function tileState(app, fb) {
     var visible = tileFlags(app.entry).visible, listed = fb.apps.indexOf(app.id) >= 0;
+    var named = isId8() ? provisioningNames(app.id) : null;
+    if (named !== null) {
+        visible = visible && (named || (fb.listed_by_manager || []).indexOf(app.id) >= 0);
+        return { provisioned: visible && named, fallback: visible && !named, visible: visible };
+    }
     if (isId8()) listed = listed && fb.active;
     else if (listed && !retiredBackups().length) visible = visible && fb.manager_runs_copy === true;
     return { provisioned: visible && !listed, fallback: visible && listed, visible: visible };
@@ -2307,8 +2325,50 @@ function runHook(id, dir, c, which, state) {
     var reboot = result && typeof result.reboot === 'string' && result.reboot.trim() ? oneLine(result.reboot).trim() : null;
     if (result && result.reboot !== undefined && !reboot) warn(prefix + '"reboot" is not a reason; ignored');
     if (reboot) say(prefix + 'a head-unit restart is pending: ' + reboot);
+    noteHook(state, id, c.version, which);
     if (result && result.removeWhenUnused !== undefined) handOver(id, result.removeWhenUnused, state);
     return { ok: true, reboot: reboot };
+}
+/* Per tool, in state.json: the kept versions whose last hook to run was
+ * their deactivate ("deactivated": { <id>: [<version>...] }), which are not
+ * deactivated again, and those whose deactivate failed when an install
+ * would have removed them ("deactivate_owed"), kept for the tool's next
+ * install or removal to run it again; a version made current has neither.
+ * which: the hook that ran, "owed", or "gone" for a version no longer kept
+ * or made current. */
+function noteHook(state, id, version, which) {
+    ['deactivated', 'deactivate_owed'].forEach(function (key) {
+        var all = state[key] && typeof state[key] === 'object' ? state[key] : (state[key] = {});
+        var list = (Array.isArray(all[id]) ? all[id] : []).filter(function (v) { return v !== version; });
+        if (which === (key === 'deactivated' ? 'deactivate' : 'owed')) list.push(version);
+        if (list.length) all[id] = list;
+        else delete all[id];
+    });
+    /* kept in memory for the command's own save when the disk refuses it */
+    try { persistMarks(state); } catch (e) { warn(id + ': the record of its hooks is not on disk yet: ' + e.message); }
+}
+/* The marks of state (noteHook) written into state.json at once, whatever
+ * else the command changes and saves later. */
+function persistMarks(state) {
+    var disk = readJsonOrNull(STATE_FILE);
+    if (!disk || typeof disk !== 'object') disk = {};
+    disk.deactivated = state.deactivated;
+    disk.deactivate_owed = state.deactivate_owed;
+    mkdirp(DEPLOY_DIR);
+    writeAtomic(STATE_FILE, JSON.stringify(disk, null, 2) + '\n', 0o644);
+}
+function noted(state, key, id, version) {
+    return !!(state[key] && Array.isArray(state[key][id]) && state[key][id].indexOf(version) >= 0);
+}
+/* The kept versions of tool id besides current whose deactivate is still to
+ * run, oldest first: one newer than current never deactivated (an earlier
+ * deploy tool's rollback left it), or one it is owed. */
+function deactivateDue(state, id, root, current) {
+    var all = [];
+    try { all = fs.readdirSync(path.join(root, 'versions')).filter(semverParts); } catch (e) { /* none kept */ }
+    return all.filter(function (v) {
+        return v !== current && (noted(state, 'deactivate_owed', id, v) || semverCmp(v, current) > 0 && !noted(state, 'deactivated', id, v));
+    }).sort(semverCmp);
 }
 
 /* ---- files removed once unused ---------------------------------------------- */
@@ -2396,6 +2456,42 @@ function installTool(a, state, tx) {
     var i7 = i7Takeover(a);
     tx.root = root; tx.before = before; tx.rootExisted = fs.existsSync(root);
     tx.versionExisted = fs.existsSync(dest); tx.socketsActive = {};
+    /* an older version, or one from another source (a.otherSource): the
+     * version it replaces runs its deactivate first, with all of it in
+     * place, as at its removal; a failed one keeps that version current */
+    if (prev && prev.deactivate && before !== c.version && (a.otherSource || semverCmp(c.version, before) < 0)) {
+        tx.deactivated = true;
+        var dr = runHook(c.id, path.join(versions, before), prev, 'deactivate', state);
+        if (!dr.ok) throw refuse(c.id + ' ' + before + ': deactivate ' + dr.why + '; ' + before + ' stays current');
+        if (dr.reboot) addPending(state, c.id, dr.reboot);
+    }
+    /* a kept version whose deactivate is due (deactivateDue) runs it before
+     * the version goes, as at its removal; one that fails refuses the
+     * install, the version kept and owed for the tool's next install or
+     * removal. A failed install activates the version it replaces again.
+     * Laying the current version again after a firmware update
+     * (a.firmwareMoved: the firmware put the patched files back) leaves them,
+     * kept; laying it again for another reason runs them, and one that fails
+     * stays kept and owed while the current version is laid again. */
+    var due = before ? deactivateDue(state, c.id, root, before).filter(function (v) { return v !== c.version; }) : [];
+    tx.keep = a.firmwareMoved ? due : [];
+    (a.firmwareMoved ? [] : due).forEach(function (v) {
+        var vc = readJsonOrNull(path.join(versions, v, 'component.json'));
+        if (!vc || vc.id !== c.id || !vc.deactivate) return;
+        tx.deactivated = true;
+        var hr = runHook(c.id, path.join(versions, v), vc, 'deactivate', state);
+        if (!hr.ok) {
+            noteHook(state, c.id, v, 'owed');
+            if (a.repair) {
+                tx.keep.push(v);
+                warn(c.id + ' ' + v + ': deactivate ' + hr.why + '; it stays kept and owed, and ' + c.id + ' ' + c.version + ' is laid again');
+                return;
+            }
+            throw refuse(c.id + ' ' + c.version + ': the kept ' + c.id + ' ' + v + ' must be deactivated first, and its deactivate ' +
+                hr.why + '; ' + before + ' stays current');
+        }
+        if (hr.reboot) addPending(state, c.id, hr.reboot);
+    });
     /* A current that is no link (a folder an earlier installer left, e.g.
      * app-privacy 1.5.0's) cannot be replaced by rename: it goes aside, and
      * a rollback puts it back. It goes once the install is through. */
@@ -2434,13 +2530,22 @@ function installTool(a, state, tx) {
         rmrf(aside);
     }
     if (before !== c.version) switchCurrent(root, c.version);
+    /* what the versions it replaces installed and this one does not list
+     * goes, its running units stopped first */
+    var gone = prev && before !== c.version ? declaredOnly(toolDeclared(root, prev), c) : null;
+    tx.stopped = gone ? stopUnits(gone, state) : [];
     /* systemd units, enablement and the boot lists change in one window,
      * and only when the desired bytes differ: the payload and the lists'
      * entries on disk first, so no power cut leaves a unit enabled without
-     * them. */
+     * them; the units going are out before their entries. */
     var rec = recmgrOp(recmgrNamesOf(c), []);
     var crash = crashListPlan(installedTools()), remounts = rootMountMode() === 'ro';
-    var ops = [rec, crash && crash.op].filter(Boolean), unitChanged = !!rec, changed = [];
+    var crashAdd = crash && crash.op && crash.add.length ? crash.op : null, crashRemove = crash && crash.op && !crashAdd ? crash.op : null;
+    if (crashAdd && crash.remove.length) {
+        crashAdd = Object.assign({}, crash.op, { data: crashListWith(fs.readFileSync(CFG.crashList, 'utf8'), crash.add, []) });
+        crashRemove = crash.op;
+    }
+    var ops = [rec, crashAdd].filter(Boolean), unitChanged = !!rec, changed = [];
     (c.units || []).forEach(function (u) {
         var src = path.join(a.dir, 'units', u.name), destUnit = path.join(CFG.systemd, u.name);
         if (!bytesEqualFile(fs.readFileSync(src), destUnit)) {
@@ -2464,16 +2569,24 @@ function installTool(a, state, tx) {
             ops.push({ type: 'copy', src: src, path: dest, mode: 0o644 }); unitChanged = true;
         }
     });
-    /* a drop-in the version it replaces had and this one has not */
-    ((prev && prev.dropins) || []).filter(function (d) {
-        return !(c.dropins || []).some(function (x) { return x.unit === d.unit && x.name === d.name; }) && lstatOrNull(dropinPath(d));
-    }).forEach(function (d) { ops.push({ type: 'delete', path: dropinPath(d) }); unitChanged = true; });
     i7.units.forEach(function (u) { ops.push({ type: 'delete', path: path.join(CFG.systemd, u) }); unitChanged = true; });
-    var limits = limitsPlan(installedTools(), limitedUnits(c));
+    var del = gone ? deleteOps(gone) : [];
+    if (del.length) { ops = ops.concat(del); unitChanged = true; }
+    var limits = limitsPlan(installedTools(), limitedUnits(c).concat(gone ? limitedUnits(gone) : []));
     if (limits.ops.length) { ops = ops.concat(limits.ops); unitChanged = true; }
+    var recGone = gone && recmgrPresent() ? recmgrNamesGone(gone, installedTools()) : [];
+    if (recGone.length) {
+        var recWas = rec ? rec.data : recmgrText(), recNext = recmgrWith(recWas, [], recGone);
+        if (recNext !== recWas) {
+            checkListEdit(CFG.recmgr, RECMGR_LIST, recWas, recNext, [], recGone);
+            ops.push({ type: 'copy', data: recNext, path: CFG.recmgr, mode: 0o644 });
+        }
+    }
+    if (crashRemove) ops.push(crashRemove);
     if (ops.length) { syncDisks(); rootfsWindow(ops); }
     crashListDone(crash, remounts);
     if (unitChanged) runOk(CFG.systemctl, ['daemon-reload']);
+    if (del.length) pruneCreatedDirs(state);
     if (i7.paths.length) {
         i7.files.forEach(function (f) { rmrf(path.join(I7_DIR, f)); });
         try { fs.rmdirSync(I7_DIR); } catch (e) { /* not empty, or gone */ }
@@ -2533,10 +2646,11 @@ function installTool(a, state, tx) {
         }
     }
     fs.readdirSync(versions).forEach(function (v) {
-        if (v !== c.version && v !== before) rmrf(path.join(versions, v));
+        if (v !== c.version && v !== before && tx.keep.indexOf(v) < 0) { rmrf(path.join(versions, v)); noteHook(state, c.id, v, 'gone'); }
     });
     keepToolCopy(a);
     recordTool(state, c.id, c.version);
+    noteHook(state, c.id, c.version, 'gone');
     say(c.id + ' ' + c.version + ' installed');
 }
 
@@ -2573,15 +2687,56 @@ function keepToolCopy(a) {
         });
     } catch (e) { warn(c.id + ' ' + c.version + "'s units are not kept: " + e.message); }
 }
+/* Lays again from tool t's kept copy the units, enablement links and
+ * drop-ins its version lists that are missing (ones a change to another
+ * version took out), as an install lays them: its recmgr names first, then
+ * those, then their limits, in one rootfs window. Nothing without a copy.
+ * Returns the units laid. */
+function layMissing(t, state) {
+    var kept = keptToolArtifact(t), c = t.component, ops = [];
+    if (!kept) return [];
+    (c.units || []).forEach(function (u) {
+        var dest = path.join(CFG.systemd, u.name);
+        if (!lstatOrNull(dest)) ops.push({ type: 'copy', src: path.join(kept.dir, 'units', u.name), path: dest, mode: 0o644 });
+    });
+    (c.enable || []).forEach(function (en) {
+        var link = path.join(CFG.systemd, en.target + '.wants', en.unit);
+        if (lstatOrNull(link)) return;
+        if (!fs.existsSync(path.dirname(link))) noteCreatedDir(state, path.dirname(link));
+        ops.push({ type: 'mkdir', path: path.dirname(link) }, { type: 'symlink', path: link, target: '../' + en.unit });
+    });
+    (c.dropins || []).forEach(function (d) {
+        var dest = dropinPath(d);
+        if (lstatOrNull(dest)) return;
+        if (!fs.existsSync(path.dirname(dest))) noteCreatedDir(state, path.dirname(dest));
+        ops.push({ type: 'mkdir', path: path.dirname(dest) },
+            { type: 'copy', src: path.join(kept.dir, 'dropins', d.unit + '.d', d.name), path: dest, mode: 0o644 });
+    });
+    if (!ops.length) return [];
+    var rec = recmgrOp(recmgrNamesOf(c), []);
+    rootfsWindow((rec ? [rec] : []).concat(ops, limitsPlan(installedTools(), limitedUnits(c)).ops));
+    runOk(CFG.systemctl, ['daemon-reload']);
+    say(t.id + ' ' + t.version + ': laid again from the copy kept here: ' +
+        ops.filter(function (op) { return op.type !== 'mkdir'; }).map(function (op) { return path.relative(CFG.systemd, op.path); }).join(', '));
+    return ops.filter(function (op) { return op.type === 'copy' && path.dirname(op.path) === CFG.systemd; })
+        .map(function (op) { return path.basename(op.path); });
+}
 /* Tool id's version and the firmware it was installed under, in state.json. */
 function recordTool(state, id, version) {
     if (!state.tools || typeof state.tools !== 'object') state.tools = {};
     state.tools[id] = { version: version };
     if (unitInfo().firmware) state.tools[id].firmware = unitInfo().firmware;
 }
+/* Whether tool t was installed under another firmware than the one running
+ * (state.json tools[id].firmware, recordTool, against the unit's build
+ * string). */
+function firmwareMoved(t, state) {
+    var rec = state.tools && state.tools[t.id], fw = unitInfo().firmware;
+    return !!(rec && rec.firmware && fw && rec.firmware !== fw);
+}
 /* Why installed tool t needs laying again, or null. */
 function toolStale(t, state) {
-    var c = t.component, rec = state.tools && state.tools[t.id], fw = unitInfo().firmware;
+    var c = t.component, rec = state.tools && state.tools[t.id];
     var missing = (c.units || []).filter(function (u) { return !lstatOrNull(path.join(CFG.systemd, u.name)); })
         .map(function (u) { return u.name; });
     (c.enable || []).forEach(function (en) {
@@ -2591,7 +2746,7 @@ function toolStale(t, state) {
     });
     (c.dropins || []).forEach(function (d) { if (!lstatOrNull(dropinPath(d))) missing.push(d2s(d)); });
     if (missing.length) return missing.join(', ') + ' missing';
-    return rec && rec.version === t.version && rec.firmware && fw && rec.firmware !== fw ? 'installed under firmware ' + rec.firmware : null;
+    return rec && rec.version === t.version && firmwareMoved(t, state) ? 'installed under firmware ' + rec.firmware : null;
 }
 /* Tool t laid again from its kept copy: the artifact installTool takes, or
  * null without a copy of its installed version. */
@@ -2749,7 +2904,9 @@ function cmdVerify() {
  * stopped, and units it restarted restart on what is current again. After a
  * failed activate the units it started or restarted are restarted on what
  * is current again, or stopped when their unit went with the failed version;
- * whenever this install ran its activate, the previous version's runs again. */
+ * whenever this install ran a new version's activate, that version's
+ * deactivate runs before anything goes back (a failed one keeps it
+ * current), and the previous version's activate runs again. */
 function rollbackTool(a, tx, backup, e, state) {
     var c = a.component;
     var was = tx.before ? c.id + ' ' + tx.before : tx.legacy ? c.id + '\'s earlier install' : null;
@@ -2760,6 +2917,18 @@ function rollbackTool(a, tx, backup, e, state) {
                 privacyTool() + ' apply succeeds');
         }
         return;
+    }
+    /* the version going runs its deactivate first, as at its removal; a
+     * failed one keeps it current */
+    if (tx.activated && c.deactivate && tx.before !== c.version) {
+        var dr = runHook(c.id, path.join(tx.root, 'versions', c.version), c, 'deactivate', state);
+        if (!dr.ok) {
+            say(c.id + ' ' + c.version + ' stays current: deactivate ' + dr.why);
+            keepToolCopy(a);
+            recordTool(state, c.id, c.version);
+            return;
+        }
+        if (dr.reboot) addPending(state, was ? c.id : 'mgu-deploy', (was ? '' : c.id + ' removed: ') + dr.reboot);
     }
     say('rolling back ' + c.id + ' ' + c.version + (tx.before ? ' to ' + tx.before : tx.legacy ? ' to its earlier install' : '') + ' from ' + backup);
     restoreSnapshot(backup);
@@ -2784,12 +2953,14 @@ function rollbackTool(a, tx, backup, e, state) {
             say(c.id + ': the earlier install\'s current folder is back');
         }
     }
+    if (!fs.existsSync(path.join(tx.root, 'versions', c.version))) noteHook(state, c.id, c.version, 'gone');
     Object.keys(tx.socketsActive || {}).forEach(function (u) {
         if (!tx.socketsActive[u] && !fs.existsSync(path.join(CFG.systemd, u))) {
             systemctl(['stop', u]); say('stopped ' + u);
         }
     });
     runOk(CFG.systemctl, ['daemon-reload']);
+    (tx.stopped || []).forEach(function (u) { runOk(CFG.systemctl, ['start', u]); say('started ' + u); });
     pruneCreatedDirs(state);
     if (e.health) restartAgain(e.health, was);
     if (e.privacy) {
@@ -2801,13 +2972,17 @@ function rollbackTool(a, tx, backup, e, state) {
         e.activate.forEach(function (u) { if (again.indexOf(u) < 0) { systemctl(['stop', u]); say('stopped ' + u); } });
         restartAgain(again, was || c.id);
     }
-    if (tx.activated) reactivate(c.id, tx.before && tx.before !== c.version ? path.join(tx.root, 'versions', tx.before) : null, state);
+    /* the version it replaces again; the same version again only when its activate did not run */
+    if (tx.activated || tx.deactivated) {
+        reactivate(c.id, tx.before && (tx.before !== c.version || !tx.activated) ? path.join(tx.root, 'versions', tx.before) : null, state);
+    }
 }
 /* Runs the activate of the version in dir again, after a change that ran
  * another version's activate or the tool's deactivate did not go through. */
 function reactivate(id, dir, state) {
     var prev = dir ? readJsonOrNull(path.join(dir, 'component.json')) : null;
-    if (!prev || !prev.activate) return;
+    if (!prev) return;
+    if (!prev.activate) { noteHook(state, id, prev.version, 'gone'); return; }
     var hr = runHook(id, dir, prev, 'activate', state);
     if (hr.ok && hr.reboot) addPending(state, id, hr.reboot);
     say(hr.ok ? id + ' ' + prev.version + ' activated again' : id + ' ' + prev.version + ' activate failed too: ' + hr.why);
@@ -3822,6 +3997,87 @@ function uninstallApp(id, state) {
     leftovers.forEach(function (l) { say('leftover: ' + l); });
     say(id + ' uninstalled');
 }
+/* What tool component c and every other version kept beside it
+ * (root/versions/<v>/component.json) install: their units, enablement
+ * links, drop-ins and recmgr names together, as one component. */
+function toolDeclared(root, c) {
+    var all = { id: c.id, units: [], enable: [], dropins: [], recmgr: [] };
+    var versions = [];
+    try { versions = fs.readdirSync(path.join(root, 'versions')).filter(semverParts); } catch (e) { /* none kept */ }
+    [c].concat(versions.map(function (v) { return readJsonOrNull(path.join(root, 'versions', v, 'component.json')); })).forEach(function (v) {
+        if (!v || v.id !== c.id) return;
+        var add = function (key, same) {
+            (Array.isArray(v[key]) ? v[key] : []).forEach(function (x) {
+                if (!all[key].some(function (y) { return same(x, y); })) all[key].push(x);
+            });
+        };
+        add('units', function (x, y) { return x.name === y.name; });
+        add('enable', function (x, y) { return x.unit === y.unit && x.target === y.target; });
+        add('dropins', function (x, y) { return x.unit === y.unit && x.name === y.name; });
+        add('recmgr', function (x, y) { return x === y; });
+    });
+    return all;
+}
+/* What tool component c installs that keep does not: its units,
+ * enablement links and drop-ins keep does not list, and its recmgr names. */
+function declaredOnly(c, keep) {
+    var none = function (key, same) {
+        return (c[key] || []).filter(function (x) { return !(keep[key] || []).some(function (y) { return same(x, y); }); });
+    };
+    return { id: c.id, recmgr: c.recmgr || [],
+        units: none('units', function (x, y) { return x.name === y.name; }),
+        enable: none('enable', function (x, y) { return x.unit === y.unit && x.target === y.target; }),
+        dropins: none('dropins', function (x, y) { return x.unit === y.unit && x.name === y.name; }) };
+}
+/* The unit, enablement link and drop-in paths the installed tools other
+ * than id list: never stopped or taken out for id. */
+function listedElsewhere(id) {
+    var out = {};
+    installedTools().forEach(function (t) { if (t.id !== id) toolTouched(t.component).forEach(function (p) { out[p] = true; }); });
+    return out;
+}
+/* Stops c's running units recmgr has loaded, before they are taken out;
+ * any other keeps running until a reboot (pending). Returns those stopped. */
+function stopUnits(c, state) {
+    var stopped = [], others = listedElsewhere(c.id);
+    (c.units || []).forEach(function (u) {
+        if (others[path.join(CFG.systemd, u.name)] || unitState(u.name, 'is-active') !== 'active') return;
+        if (recmgrLoaded(recmgrBase(u.name))) { runOk(CFG.systemctl, ['stop', u.name]); say('stopped ' + u.name); stopped.push(u.name); }
+        else { addPending(state, c.id, PENDING_RECMGR); warn(u.name + ' left running until a reboot'); }
+    });
+    return stopped;
+}
+/* The rootfs ops that take out c's units, enablement links and drop-ins
+ * on disk that no other installed tool lists. */
+function deleteOps(c) {
+    var others = listedElsewhere(c.id);
+    return (c.units || []).map(function (u) { return path.join(CFG.systemd, u.name); })
+        .concat((c.enable || []).map(function (en) { return path.join(CFG.systemd, en.target + '.wants', en.unit); }))
+        .concat((c.dropins || []).map(dropinPath))
+        .filter(function (p) { return !others[p] && lstatOrNull(p); }).map(function (p) { return { type: 'delete', path: p }; });
+}
+/* The recmgr names in c that no tool in rest has. */
+function recmgrNamesGone(c, rest) {
+    return recmgrNamesOf(c).filter(function (n) {
+        return !rest.some(function (t) { return recmgrNamesOf(t.component).indexOf(n) >= 0; });
+    });
+}
+/* Takes out c's units (stopUnits first), enablement links, drop-ins and
+ * their limits, then the recmgr names in c that no tool in rest (the tools
+ * that stay) has and the crash handler's names rest no longer wants, in one
+ * rootfs window: units before list entries. */
+function removeToolPieces(c, rest, state) {
+    var ops = deleteOps(c).concat(limitsPlan(rest, limitedUnits(c)).ops);
+    var rec = recmgrOp([], recmgrNamesGone(c, rest));
+    if (rec) ops.push(rec);
+    var unitOps = ops.length;
+    var crash = crashListPlan(rest), remounts = rootMountMode() === 'ro';
+    if (crash && crash.op) ops.push(crash.op);
+    if (ops.length) rootfsWindow(ops);
+    crashListDone(crash, remounts);
+    if (unitOps) runOk(CFG.systemctl, ['daemon-reload']);
+    pruneCreatedDirs(state);
+}
 /* The version folder whose deactivate ran (or started) in this removal, for
  * cmdUninstall to activate again when the removal does not go through. */
 var deactivated = null;
@@ -3833,39 +4089,22 @@ function uninstallTool(id, state) {
     if (c.preUninstall) preUninstall(c, root);
     /* the stock bundles go back first; a failed revert keeps the tool */
     if (id === 'app-privacy' && privacyRevert()) privacyReverted();
-    /* the tool's deactivate runs with all of it still in place; a failed one
-     * keeps the tool. A restart it asks for is pending under the deploy tool,
-     * since the tool's own entries go with it. */
-    if (c.deactivate) {
-        deactivated = path.join(root, 'versions', currentTarget(root));
-        var hr = runHook(id, deactivated, c, 'deactivate', state);
-        if (!hr.ok) throw refuse(id + ' ' + c.version + ': deactivate ' + hr.why + '; ' + id + ' stays installed');
+    /* the tool's deactivate runs with all of it still in place, then that of
+     * each kept version whose deactivate is due (deactivateDue), which
+     * reverts what only it set up; a failed one keeps the tool. A restart one asks for is
+     * pending under the deploy tool, since the tool's own entries go with it. */
+    [currentTarget(root)].concat(deactivateDue(state, id, root, c.version)).forEach(function (v, i) {
+        var vc = i ? readJsonOrNull(path.join(root, 'versions', v, 'component.json')) : c;
+        if (!vc || vc.id !== id || !vc.deactivate) return;
+        var dir = path.join(root, 'versions', v);
+        if (!i) deactivated = dir;
+        var hr = runHook(id, dir, vc, 'deactivate', state);
+        if (!hr.ok) throw refuse(id + ' ' + vc.version + ': deactivate ' + hr.why + '; ' + id + ' stays installed');
         if (hr.reboot) addPending(state, 'mgu-deploy', id + ' removed: ' + hr.reboot);
-    }
-    (c.units || []).forEach(function (u) {
-        if (unitState(u.name, 'is-active') !== 'active') return;
-        if (recmgrLoaded(recmgrBase(u.name))) { runOk(CFG.systemctl, ['stop', u.name]); say('stopped ' + u.name); }
-        else { addPending(state, id, PENDING_RECMGR); warn(u.name + ' left running until a reboot'); }
     });
-    var ops = [], removeRec = recmgrNamesOf(c).filter(function (n) {
-        return !installedTools().some(function (t) { return t.id !== id && recmgrNamesOf(t.component).indexOf(n) >= 0; });
-    });
-    (c.units || []).forEach(function (u) { ops.push({ type: 'delete', path: path.join(CFG.systemd, u.name) }); });
-    (c.enable || []).forEach(function (en) {
-        ops.push({ type: 'delete', path: path.join(CFG.systemd, en.target + '.wants', en.unit) });
-    });
-    (c.dropins || []).forEach(function (d) { ops.push({ type: 'delete', path: dropinPath(d) }); });
-    var rest = installedTools().filter(function (t) { return t.id !== id; });
-    ops = ops.concat(limitsPlan(rest, limitedUnits(c)).ops);
-    var rec = recmgrOp([], removeRec);
-    if (rec) ops.push(rec);
-    var unitOps = ops.length;
-    var crash = crashListPlan(rest), remounts = rootMountMode() === 'ro';
-    if (crash && crash.op) ops.push(crash.op);
-    if (ops.length) rootfsWindow(ops);
-    crashListDone(crash, remounts);
-    if (unitOps) runOk(CFG.systemctl, ['daemon-reload']);
-    pruneCreatedDirs(state);
+    var declared = toolDeclared(root, c);
+    stopUnits(declared, state);
+    removeToolPieces(declared, installedTools().filter(function (t) { return t.id !== id; }), state);
     var own = fs.readdirSync(root).filter(function (n) { return ['versions', 'current', 'current.new'].indexOf(n) < 0; });
     if (own.length) say('removing ' + id + "'s own files beside its versions: " + own.sort().join(', '));
     rmrf(root);
@@ -3889,7 +4128,7 @@ function uninstallQueuedId8(id, state) {
 }
 function touchedForUninstall(id) {
     var tool = installedTools().filter(function (t) { return t.id === id; })[0];
-    if (tool) return toolTouched(tool.component).concat(uplinkDropIns(id));
+    if (tool) return toolTouched(toolDeclared(tool.root, tool.component)).concat(uplinkDropIns(id));
     var paths = [appEntryFile(id), customAppsFile()].concat(uplinkDropIns(id));
     preinstalledFor(id).forEach(function (p) { paths.push(p); });
     return paths;
@@ -4205,6 +4444,114 @@ function uninstallAppId8(id, state, queueOnly) {
     customAppsRemove(id);
     queueId8({ action: 'remove', id: id });
     say(id + ' is ' + ID8_REMOVES + ' of the head unit');
+}
+/* ---- iDrive 8: our apps' listing under backend provisioning -------------------------- */
+/* Telematics serves the das files until the car's first sync with BMW's
+ * backend (Update apps and services); from then on it serves the
+ * backend's provisioning (ProvSigned.xml), which has no section for our
+ * apps, and MainApp-21 gives an app with no section no tile. The fallback
+ * copy gives such an app the flags custom_apps.json lists for it, so every
+ * app of ours the das files list (registered, or with its package in
+ * place) keeps an entry there with its das line's flags: an install,
+ * apply-pending, status (run as root, as the updater does) and the boot
+ * unit put a missing one back. An app with a queued removal is left out.
+ * The copy records the sections it filled for the running MainApp-21 in
+ * mgu-deploy-listed.json beside custom_apps.json. */
+function provSignedFile() { return path.join(CFG.varOpt, 'public', 'tm', 'tm_12000', 'data', 'prov', 'ProvSigned.xml'); }
+function listedRecordFile() { return path.join(mgrHome(), 'data', 'mgu-deploy-listed.json'); }
+function reEscape(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+/* The flags of the app's enable line in the first das file that has one,
+ * or null. */
+function dasFlags(id) {
+    var re = new RegExp('<' + reEscape(id) + '((?:\\s+[\\w-]+="[^"]*")*)\\s*/>'), flags = null;
+    DAS.some(function (d) {
+        var x = '', m;
+        try { x = fs.readFileSync(dasFile(d), 'utf8'); } catch (e) { return false; }
+        if (!(m = re.exec(x))) return false;
+        flags = {};
+        m[1].replace(/([\w-]+)="([^"]*)"/g, function (all, k, v) { flags['-' + k] = v; });
+        return true;
+    });
+    return flags;
+}
+function id8Unlisted() {
+    var listed = readCustomApps(), removing = readPending().filter(function (c) { return c.action === 'remove'; })
+        .map(function (c) { return c.id; });
+    return dasApps().filter(function (id) {
+        return !Object.prototype.hasOwnProperty.call(listed, id) && removing.indexOf(id) < 0 &&
+            (!!lstatOrNull(appEntryFile(id)) || preinstalledFor(id).length > 0) && !!dasFlags(id);
+    });
+}
+function relistId8() {
+    var ids = id8Unlisted();
+    ids.forEach(function (id) { customAppsPut(id, dasFlags(id)); });
+    return ids;
+}
+/* Whether the provisioning Telematics serves has the app's section: the
+ * backend's once the car has it, else the das files'. Null when the
+ * backend's cannot be read (not root). */
+var provSignedText;
+function provisioningNames(id) {
+    if (provSignedText === undefined) {
+        try { provSignedText = fs.readFileSync(provSignedFile(), 'utf8'); }
+        catch (e) { provSignedText = e.code === 'ENOENT' ? null : false; }
+    }
+    if (provSignedText === false) return null;
+    if (provSignedText === null) return !!dasFlags(id);
+    return new RegExp('<' + reEscape(id) + '[\\s/>]').test(provSignedText);
+}
+/* The apps whose missing section the running MainApp-21's copy filled. */
+function filledByManager() {
+    var r = readJsonOrNull(listedRecordFile()), pid = managerPid();
+    return r && pid && r.pid === pid && Array.isArray(r.apps) ? r.apps : [];
+}
+function fallbackUnitOld() {
+    return fallbackPresent() && !bytesEqualFile(fs.readFileSync(fallbackUnitSource()), path.join(CFG.systemd, FALLBACK_UNIT));
+}
+/* status, run as root: relistId8, and the fallback's boot unit file
+ * brought up to date (main.js stays bound as it is); both count from
+ * MainApp-21's next start. */
+function syncListingId8() {
+    if (!isId8()) return null;
+    var out = process.stdout.write, locked = false;
+    process.stdout.write = function () { return true; };
+    try {
+        if (!id8Unlisted().length && !fallbackUnitOld()) return { state: 'ok', reason: 'every app of ours is listed' };
+        if (!FAKE && process.getuid() !== 0) return { state: 'pending', reason: 'status not run as root' };
+        if (!runningInstalled() && !FAKE) return { state: 'pending', reason: 'this deploy tool is not the installed one' };
+        locked = statusLock();
+        if (!locked) return { state: 'pending', reason: 'another mgu-deploy run holds the lock' };
+        var ids = relistId8(), done = ids.length ? ['listed ' + ids.join(', ')] : [];
+        if (ids.length) process.stderr.write('listed for the provisioning fallback, from the next start: ' + ids.join(', ') + '\n');
+        if (fallbackUnitOld()) {
+            var busy = rootBusy();
+            if (busy) return { state: ids.length ? 'changed' : 'pending', reason: done.concat(['boot unit: ' + busy]).join('; ') };
+            takeSnapshot('listing', [path.join(CFG.systemd, FALLBACK_UNIT)]);
+            syncDisks();
+            rootfsWindow([{ type: 'copy', src: fallbackUnitSource(), path: path.join(CFG.systemd, FALLBACK_UNIT), mode: 0o644 }]);
+            runOk(CFG.systemctl, ['daemon-reload']);
+            pruneBackups();
+            done.push('boot unit brought up to date');
+        }
+        return { state: 'changed', reason: done.join('; ') };
+    } catch (e) {
+        process.stderr.write('mgu-deploy: our apps not listed again: ' + e.message + '\n');
+        return { state: 'error', reason: e.message };
+    } finally {
+        if (locked) releaseLock();
+        process.stdout.write = out;
+    }
+}
+/* The fallback's boot unit runs it before MainApp-21; another run holding
+ * the lock leaves it to status. */
+function cmdRelist() {
+    if (!isId8()) { say('nothing to list: not iDrive 8'); return 0; }
+    if (!statusLock()) { say('another mgu-deploy run holds the lock; status lists them'); return 0; }
+    try {
+        var ids = relistId8();
+        say(ids.length ? 'listed for the provisioning fallback: ' + ids.join(', ') : 'every app of ours is listed');
+        return 0;
+    } finally { releaseLock(); }
 }
 /* ---- iDrive 8: app changes in place ------------------------------------------------- */
 /* While the fallback copy (fallback_build.js, MainApp-21's variant) is
@@ -4543,6 +4890,10 @@ function cmdApplyPending() {
         }
         results.push(res);
     });
+    try {
+        var listedNow = relistId8();
+        if (listedNow.length) say('listed for the provisioning fallback: ' + listedNow.join(', '));
+    } catch (e) { process.stderr.write('listing for the provisioning fallback failed: ' + e.message + '\n'); }
     if (results.length) writeAtomic(ID8_LAST, JSON.stringify({ at: new Date().toISOString(), results: results }, null, 2) + '\n', 0o644);
     changes.forEach(function (c) { if (c.file) rmrf(c.file); });
     writePending([], kept);
@@ -5418,6 +5769,7 @@ function journalTail(unit) {
 function collectStatus(state) {
     var fb = fallbackState(), components = [], pending = [], seen = {};
     fb.manager_runs_copy = isId8() ? null : managerRunsCopy();
+    if (isId8()) fb.listed_by_manager = filledByManager();
     fb.refused = state.fallback_refused || null;
     function pend(id, reason) {
         var k = id + ':' + reason;
@@ -5461,16 +5813,18 @@ function collectStatus(state) {
         idrive7: { apps: i7Apps(state) },
         stock_backup: fs.existsSync(path.join(BACKUPS_DIR, 'stock')) };
 }
-function cmdStatus(args, crashList, live, limits) {
+function cmdStatus(args, crashList, live, limits, listing) {
     var s = collectStatus(loadState());
     s.crash_list = crashList;
     s.service_limits = limits;
     if (live) s.live_installs = live;
+    if (listing) s.listing = listing;
     s.app_privacy_record = privacyRecord();
     if (args.json) { say(JSON.stringify(s)); return 0; }
     say('crash handler whitelist: ' + crashList.state + ' (' + crashList.reason + ')');
     say('service limits: ' + limits.state + ' (' + limits.reason + ')');
     if (live) say('live app installs: ' + live.state + ' (' + live.reason + ')');
+    if (listing) say('our apps listed for the fallback: ' + listing.state + ' (' + listing.reason + ')');
     say('mgu-deploy ' + VERSION);
     say('head unit: ' + (s.unit.hmi ? hmiName(s.unit.hmi) : 'unknown') + ' (' + unitInfo().basis + '), firmware ' +
         (s.unit.firmware || 'unknown'));
@@ -5520,9 +5874,9 @@ function cmdStatus(args, crashList, live, limits) {
 }
 function artifactTouched(a) {
     if (a.kind === 'tool') {
-        /* the installed version's drop-ins too: an update that drops one removes it */
+        /* the installed version's too: what it has and this one has not goes */
         var installed = installedTools().filter(function (t) { return t.id === a.id; })[0];
-        var gone = ((installed && installed.component.dropins) || []).map(dropinPath);
+        var gone = installed ? toolTouched(toolDeclared(installed.root, installed.component)) : [];
         return toolTouched(a.component).concat(gone).concat(i7Takeover(a).paths)
             .concat([path.join(CFG.varOpt, a.id, 'versions', a.version)]).concat(uplinkDropIns(a.id));
     }
@@ -5594,6 +5948,7 @@ function cmdCheck(args) {
     bridgeTodoLines().forEach(function (l) { say('  ' + l); });
     var fb = fallbackState();
     fb.manager_runs_copy = isId8() ? null : managerRunsCopy();
+    if (isId8()) fb.listed_by_manager = filledByManager();
     say('fallback: ' + (fb.active ? 'active' : 'inactive'));
     installedApps().forEach(function (app) {
         var tile = tileState(app, fb);
@@ -5831,6 +6186,7 @@ function installRun(args, afresh) {
     var stage = stageDir(), state = loadState(), done = [], attempted = false, id8 = isId8(), elsewhere = {};
     try {
         var validated = files.map(function (f) { return validateArtifact(f, stage); });
+        if (args.otherSource) validated.forEach(function (a) { a.otherSource = a.kind === 'tool'; });
         validated = orderArtifacts(validated);
         /* a kit (--skip-older) installs what is for this unit and leaves the rest */
         validated = validated.filter(function (a) {
@@ -5879,6 +6235,7 @@ function installRun(args, afresh) {
             }
             say(t.id + ' ' + t.version + ': ' + why + '; laid again from the copy kept here');
             kept.repair = why;
+            kept.firmwareMoved = firmwareMoved(t, state);
             validated.push(kept);
         });
         validated = orderArtifacts(validated);
@@ -5986,6 +6343,12 @@ function installRun(args, afresh) {
             }
         });
         if (relist) { attempted = true; relistApps(state); }
+        if (id8 && !noOap) {
+            try {
+                var listedNow = relistId8();
+                if (listedNow.length) say('listed for the provisioning fallback, from the next start of the head unit: ' + listedNow.join(', '));
+            } catch (e) { warn('our apps not listed for the provisioning fallback: ' + e.message); }
+        }
         settlePrivacyBounce();
         /* out of the staging folder, which goes before they install */
         Object.keys(elsewhere).forEach(function (id) {
@@ -6131,6 +6494,8 @@ function cmdUninstall(args) {
         if (isTool) { uninstallTool(id, state); dropVerify(id); } else uninstallApp(id, state);
         if (!args.keepPackages) rmrf(keptDir(id));
         if (isTool && state.tools) delete state.tools[id];
+        if (isTool && state.deactivated) delete state.deactivated[id];
+        if (isTool && state.deactivate_owed) delete state.deactivate_owed[id];
         syncDropIns();
         state.pending_reboot = state.pending_reboot.filter(function (p) { return p.id !== id; });
         saveState(state); selfInstall();
@@ -6139,22 +6504,27 @@ function cmdUninstall(args) {
             process.stderr.write('uninstall failed, rolling back from ' + backup + '\n');
             try { restoreSnapshot(backup); settleFallback(); } catch (e2) { process.stderr.write('rollback failed: ' + e2.message + '\n'); }
         }
-        if (deactivated) {
-            try {
-                var back = loadState();
-                reactivate(id, deactivated, back);
-                saveState(back);
-            } catch (e3) { process.stderr.write(id + ': activating it again failed: ' + e3.message + '\n'); }
-        }
+        /* the deactivates that ran stay recorded, so none runs twice */
+        try {
+            var back = loadState();
+            back.deactivated = state.deactivated;
+            back.deactivate_owed = state.deactivate_owed;
+            if (deactivated) reactivate(id, deactivated, back);
+            saveState(back);
+        } catch (e3) { process.stderr.write(id + ': activating it again failed: ' + e3.message + '\n'); }
         throw e;
     }
     return 0;
 }
 /* rollback <id>: a tool's current back to the one other version kept
- * (args.to: that version only). Its restart[] units follow the install
- * rules and the health check; a failed check returns current and
- * restarts them again. Unit files stay as the newer version installed
- * them (they run from current/). With args.restartRunning (the check at
+ * (args.to: that version only). The version going runs its deactivate
+ * first (a failed one refuses the rollback), then the units, links,
+ * drop-ins and list names it has and the other does not go. The other's
+ * restart[] units follow the install rules and the health check; a failed
+ * check, app-privacy apply or activate puts the snapshot back and restarts
+ * them again, and the version going is activated again. Unit files both
+ * list stay as the newer version installed them (they run from
+ * current/). With args.restartRunning (the check at
  * a start) running ones restart even when keepRunning. An app goes back
  * to its kept older package (rollbackAppCmd). */
 function cmdRollback(args) {
@@ -6174,58 +6544,93 @@ function cmdRollback(args) {
     if (!args.to && others.length > 1) throw refuse(id + ': several versions are kept (' + others.join(', ') + '); install the one wanted');
     var target = args.to || others[0], tc = readJsonOrNull(path.join(root, 'versions', target, 'component.json'));
     if (!tc || tc.id !== id) throw refuse(id + ': versions/' + target + ' has no readable component.json');
-    var state = loadState();
-    takeSnapshot('rollback', toolTouched(tool.component));
+    var state = loadState(), cc = tool.component;
+    var backup = takeSnapshot('rollback', toolTouched(cc).concat(toolTouched(tc)));
     say('rolling back ' + id + ' ' + cur + ' -> ' + target);
-    dropVerify(id);
-    switchCurrent(root, target);
-    var names = function (c) { return (c.units || []).map(function (u) { return u.name; }).sort().join(', '); };
-    if (names(tool.component) !== names(tc)) {
-        warn('unit files stay as ' + cur + ' installed them (' + (names(tool.component) || 'none') + '); ' +
-            target + ' lists ' + (names(tc) || 'none') + '. Install an artifact to change them.');
-    }
     if (id === 'mgu-deploy') {
+        dropVerify(id);
+        switchCurrent(root, target);
         ensureShim();
         saveState(state);
         say('mgu-deploy ' + target + ' is current; the shim runs it from the next call');
         return 0;
     }
+    var deactivated = false, switched = false, stopped = [], laid = [], started = [], touched = [], step = null;
     try {
-        /* a running service started by a keepRunning version stays running either way */
-        var keep = Object.assign({}, tc, { keepRunning: !args.restartRunning && (tc.keepRunning || tool.component.keepRunning) });
-        var touched = applyRestarts(keep, state, false), bad = healthCheck(touched);
-        if (bad) {
-            switchCurrent(root, cur);
-            say(cur + ' is current again');
-            restartAgain(touched, id + ' ' + cur);
-            throw fail(id + ' ' + target + ': ' + bad);
+        /* the version going runs its deactivate first, with all of it in
+         * place, as at its removal; a failed one keeps it current */
+        if (cc.deactivate) {
+            deactivated = true;
+            var dr = runHook(id, path.join(root, 'versions', cur), cc, 'deactivate', state);
+            if (!dr.ok) throw refuse(id + ' ' + cur + ': deactivate ' + dr.why + '; ' + cur + ' stays current');
+            if (dr.reboot) addPending(state, id, dr.reboot);
         }
+        dropVerify(id);
+        switchCurrent(root, target);
+        switched = true;
+        /* what the version going installed and target does not list goes */
+        var gone = declaredOnly(cc, tc);
+        stopped = stopUnits(gone, state);
+        removeToolPieces(gone, installedTools(), state);
+        laid = layMissing({ id: id, version: target, root: root, component: tc }, state);
+        /* a running service started by a keepRunning version stays running
+         * either way; one laid again starts as at a first install */
+        var keep = Object.assign({}, tc, { keepRunning: !args.restartRunning && (tc.keepRunning || cc.keepRunning) });
+        var isLaid = function (u) { return laid.indexOf(u) >= 0; };
+        touched = applyRestarts(Object.assign({}, keep, { restart: (tc.restart || []).filter(function (u) { return !isLaid(u); }) }), state, false)
+            .concat(applyRestarts(Object.assign({}, keep, { restart: (tc.restart || []).filter(isLaid) }), state, true));
+        started = touched.filter(isLaid);
+        (tc.enable || []).forEach(function (en) {
+            if (!/\.socket$/.test(en.unit) || !isLaid(en.unit)) return;
+            if (!recmgrLoaded(recmgrBase(en.unit))) { addPending(state, id, PENDING_BOOT); say(en.unit + ' ' + PENDING_BOOT); return; }
+            if (systemctl(['start', en.unit]).status === 0) { say('started ' + en.unit); started.push(en.unit); }
+            else warn('could not start ' + en.unit);
+        });
+        var bad = healthCheck(touched);
+        if (bad) { step = 'restart'; throw fail(id + ' ' + target + ': ' + bad); }
         if (id === 'app-privacy') {
             var pr = privacyApplyAndBounce(state);
-            if (!pr.ok) {
-                switchCurrent(root, cur);
-                say(cur + ' is current again');
-                var again = privacyApplyAndBounce(state);
-                if (!again.ok) say('app-privacy ' + cur + ' apply failed too: ' + again.why);
-                throw fail('app-privacy ' + target + ': ' + pr.why);
-            }
+            if (!pr.ok) { step = 'privacy'; throw fail('app-privacy ' + target + ': ' + pr.why); }
         }
         if (tc.activate) {
             var hr = runHook(id, path.join(root, 'versions', target), tc, 'activate', state);
-            if (!hr.ok) {
-                switchCurrent(root, cur);
-                say(cur + ' is current again');
-                restartAgain(touched, id + ' ' + cur);
-                if (tool.component.activate) {
-                    var back = runHook(id, path.join(root, 'versions', cur), tool.component, 'activate', state);
-                    if (!back.ok) say(id + ' ' + cur + ' activate failed too: ' + back.why);
-                    else if (back.reboot) addPending(state, id, back.reboot);
-                }
-                throw fail(id + ' ' + target + ': activate ' + hr.why);
-            }
+            if (!hr.ok) { step = 'activate'; throw fail(id + ' ' + target + ': activate ' + hr.why); }
             if (hr.reboot) addPending(state, id, hr.reboot);
         }
+        noteHook(state, id, target, 'gone');
+    } catch (e) {
+        /* a failed activate: the version gone to runs its deactivate before
+         * anything goes back, as after a failed install; a failed one keeps
+         * it current */
+        var stays = false;
+        if (step === 'activate' && tc.deactivate) {
+            var td = runHook(id, path.join(root, 'versions', target), tc, 'deactivate', state);
+            if (!td.ok) { stays = true; say(id + ' ' + target + ' stays current: deactivate ' + td.why); }
+            else if (td.reboot) addPending(state, id, td.reboot);
+        }
+        if (switched && !stays) {
+            try {
+                restoreSnapshot(backup);
+                runOk(CFG.systemctl, ['daemon-reload']);
+                stopped.forEach(function (u) { runOk(CFG.systemctl, ['start', u]); say('started ' + u); });
+                started.filter(function (u) { return !lstatOrNull(path.join(CFG.systemd, u)); })
+                    .forEach(function (u) { systemctl(['stop', u]); say('stopped ' + u); });
+                say(cur + ' is current again');
+            } catch (e2) { process.stderr.write('putting ' + cur + ' back failed: ' + e2.message + '\n'); }
+        }
+        if (!stays && (step === 'restart' || step === 'activate')) {
+            restartAgain(touched.filter(function (u) { return started.indexOf(u) < 0; }), id + ' ' + cur);
+        }
+        if (step === 'privacy') {
+            var again = privacyApplyAndBounce(state);
+            if (!again.ok) say('app-privacy ' + cur + ' apply failed too: ' + again.why);
+        }
+        if (!stays && (deactivated || step === 'activate')) reactivate(id, path.join(root, 'versions', cur), state);
+        throw e;
     } finally { saveState(state); }
+    /* pieces of its own no copy kept here could lay again */
+    var gap = toolStale({ id: id, version: target, component: tc }, state);
+    if (gap) warn(id + ' ' + target + ': ' + gap + '; an install of its artifact lays them again');
     say(id + ' rolled back to ' + target);
     return 0;
 }
@@ -6483,6 +6888,7 @@ var HELP = [
     '  updater-sources                  seed the updater\'s sources.json from stdin (kept when present)',
     '  sdk-donor [--json]               a readable copy of the oap-sdk donor bundle, and its oap-sdk module',
     '  apply-pending                    iDrive 8: apply the queued app changes (at boot, before MainApp)',
+    '  relist                           iDrive 8: list our das-listed apps in custom_apps.json (at boot, before MainApp)',
     '  verify                           check the tools updated for this start; roll back one that does not work (at boot)',
     '  remove-unused                    remove the files tools handed over that no process runs (at boot)',
     '  appmanager [--json]              IterioDev\'s App Manager on this unit: its service and what was adopted',
@@ -6497,6 +6903,7 @@ function parseArgs(argv) {
         if (argv[i] === '--artifact') { out.artifacts.push(argv[++i]); }
         else if (argv[i] === '--json') out.json = true;
         else if (argv[i] === '--skip-older') out.skipOlder = true;
+        else if (argv[i] === '--other-source') out.otherSource = true;
         else if (argv[i] === '--yes') out.yes = true;
         else if (argv[i] === '--remove') out.remove = argv[++i] || '';
         else if (argv[i] === '--list') out.list = true;
@@ -6530,7 +6937,11 @@ function runCommand() {
         if (args.command === 'help' || args.command === '--help') { say(HELP); return 0; }
         if (args.command === 'check') return cmdCheck(args);
         if (args.command === 'install') return cmdInstall(args);
-        if (args.command === 'status') return cmdStatus(args, syncBootLists(), syncLiveId8(), syncLimits());
+        if (args.command === 'status') return cmdStatus(args, syncBootLists(), syncLiveId8(), syncLimits(), syncListingId8());
+        if (args.command === 'relist') {
+            if (!FAKE && typeof process.getuid === 'function' && process.getuid() !== 0) throw refuse('run as root');
+            return cmdRelist();
+        }
         if (args.command === 'uninstall') return cmdUninstall(args);
         if (args.command === 'rollback') return cmdRollback(args);
         if (args.command === 'restore') return cmdRestore(args);

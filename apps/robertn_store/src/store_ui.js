@@ -24,7 +24,7 @@ const { t: tr } = require('./i18n.js');
  * each nav, grid and list item, on each filter cell (acts). The acts:
  * { do: 'tab', tab }, { do: 'filter', filter }, { do: 'open', page },
  * { do: 'back' }, { do: 'check' }, { do: 'install', id }, { do: 'update-all' },
- * { do: 'remove', id }, { do: 'restart' },
+ * { do: 'remove', id, tools? }, { do: 'restart' },
  * { do: 'source-remove', id }, { do: 'account-remove', id }, { do: 'add-source' },
  * { do: 'add-token' }, { do: 'sign-in' }, { do: 'sign-in-cancel' }, { do: 'phone' },
  * { do: 'pick', channel }, { do: 'pick-retry' }, { do: 'pick-add-token' }, { do: 'key', key } (typeKey),
@@ -44,7 +44,7 @@ const { t: tr } = require('./i18n.js');
  */
 const { PHASE, percent, rowAction, statusLine, sourceLabel, sourceState, sourceActions, sourceChannel, sourceAccount,
     tokenLabel, tokenState, tokenSources, accountsState, loginStatus, loginCode, phoneState, phoneAddress, hmiNames,
-    notForUnit, removable, undoable, pickOptions, probeStatus, sourceNames, listed, startPending } = require('./store_view.js');
+    notForUnit, removable, requiredAlone, undoable, pickOptions, probeStatus, sourceNames, listed, startPending } = require('./store_view.js');
 
 const GREEN = '#35d07f';
 const BLUE = '#3d9bff';
@@ -75,9 +75,11 @@ const rawComps = (m) => (m.connected && m.st && Array.isArray(m.st.components) ?
 function comps(m) {
     return rawComps(m).filter(listed);
 }
-const srcName = (m, c) => (c.source && sourceNames(sources(m))[c.source]) || '';
-/* Its title, with its source's short name where another listed row has the same title (two sources' DOOM). */
-const named = (m, c) => (srcName(m, c) && comps(m).some((o) => o !== c && o.title === c.title) ? `${c.title} (${srcName(m, c)})` : c.title);
+/* Its title, with its source's name where another listed row has the same title (two sources' DOOM). */
+function named(m, c) {
+    const name = sourceNames(comps(m), sources(m))(c);
+    return name && comps(m).some((o) => o !== c && o.title === c.title) ? `${c.title} (${name})` : c.title;
+}
 /* A component's page: its row, else (its row's id changed with an install)
  * the row of the same source and listed id, else (its source turned to a
  * stick copying it, or back) the row of its id. */
@@ -187,8 +189,9 @@ function pending(c, busy) {
     return !notForUnit(c) && !c.blocked && !!(c.error || startPending(c) || c.status === 'update' || c.pendingReboot);
 }
 
-function tile(m, c, busy) {
-    return Object.assign(iconOf(c), { id: c.id, title: c.title, src: srcName(m, c), act: { do: 'open', page: pageOf(c) } }, tileState(c, busy));
+/* A tile; name: its screen's sourceNames. */
+function tile(m, c, busy, name) {
+    return Object.assign(iconOf(c), { id: c.id, title: c.title, src: name(c), act: { do: 'open', page: pageOf(c) } }, tileState(c, busy));
 }
 
 function nav(m, sel) {
@@ -213,6 +216,7 @@ function storeView(m) {
     const shown = comps(m).filter((c) => m.filter === 'all' || (m.filter === 'app' ? !isTool(c) : isTool(c)));
     // what is not on the car yet first, each group in its usual order
     const list = shown.filter((c) => !c.installed).concat(shown.filter((c) => c.installed));
+    const name = sourceNames(list, sources(m));
     const checking = !!(m.connected && m.st && m.st.catalog && m.st.catalog.checking);
     const online = m.connected && m.st && m.st.online;
     return {
@@ -224,7 +228,7 @@ function storeView(m) {
         online: { items: !m.connected ? [] : checking ? [{ text: tr("Checking"), color: BLUE, dot: true }]
             : online ? [{ text: tr("Online"), color: GREEN, dot: true }] : [{ text: tr("Offline"), color: AMBER, dot: true }] },
         restartNow: restartNow(m),
-        grid: { items: list.map((c) => tile(m, c, busy)), empty: m.connected ? tr("Nothing here") : '' }
+        grid: { items: list.map((c) => tile(m, c, busy, name)), empty: m.connected ? tr("Nothing here") : '' }
     };
 }
 
@@ -238,12 +242,13 @@ function installedView(m) {
     const apps = keep(all.filter((c) => !isTool(c)), m.held && m.held.apps);
     const tools = keep(all.filter(isTool), m.held && m.held.services);
     const updates = all.filter((c) => c.status === 'update' && rowAction(c, busy) === 'install');
+    const name = sourceNames(all, sources(m));
     const item = (c) => {
         const s = tileState(c, busy);
         const up = c.status === 'update' && s.badge === 'update';
         const open = { do: 'open', page: pageOf(c) };
         return Object.assign(iconOf(c), { id: c.id, title: c.title, act: open,
-            sub: [up ? (c.installed === c.version ? `${c.installed} · ${tr('new build')}` : `${c.installed} → ${target(c)}`) : `${c.installed}${isTool(c) ? tr(' · tool') : ''}`, srcName(m, c)].filter(Boolean).join(' · '), subColor: up ? BLUE : DIM,
+            sub: [up ? (c.installed === c.version ? `${c.installed} · ${tr('new build')}` : `${c.installed} → ${target(c)}`) : `${c.installed}${isTool(c) ? tr(' · tool') : ''}`, name(c)].filter(Boolean).join(' · '), subColor: up ? BLUE : DIM,
             // the Update chip only says so: the row opens the page, whose button updates (Update all for all)
             right: up ? 'chip:' + tr('Update') : s.sub !== tr("Installed") ? `chip:${s.sub}` : 'chevron', chipColor: up ? BLUE : s.subColor,
             chipAct: null });
@@ -267,10 +272,11 @@ function usbView(m) {
     const usb = (sources(m) || []).filter((s) => s.usb);
     const ids = usb.map((s) => s.id);
     const list = comps(m).filter((c) => ids.indexOf(c.source) >= 0);
+    const name = sourceNames(list, sources(m));
     return {
         title: { text: 'USB' },
         subtitle: { text: usb.length ? `${usb.map(sourceLabel).join(', ')} · ${plural(list.length, 'package')}` : '' },
-        grid: { items: list.map((c) => tile(m, c, busy)), empty: usb.length ? tr("Nothing here") : tr("USB not connected") }
+        grid: { items: list.map((c) => tile(m, c, busy, name)), empty: usb.length ? tr("Nothing here") : tr("No USB stick") }
     };
 }
 
@@ -464,9 +470,15 @@ function confirmView(m, page) {
     let title = '';
     let line = '';
     let now = null;
+    let also = hidden;
     if (page.kind === 'remove') {
         title = c ? tr("Remove {0} {1}?", named(m, c), c.installed || '').replace(' ?', '?') : tr("Remove?");
         now = button(tr("Remove"), { do: 'remove', id: page.id }, { vicon: 'trash', style: 'primary', color: RED });
+        const tools = c ? requiredAlone(all, c) : [];
+        if (tools.length) {
+            line = tr("Tools only it uses: {0}", tools.map((t) => `${named(m, t)} ${t.installed}`).join(', '));
+            also = button(tr("Remove all"), { do: 'remove', id: page.id, tools: tools.map((t) => t.id) }, { vicon: 'trash', style: 'outline' });
+        }
     } else if (page.kind === 'undo') {
         title = c ? tr("Back to {0} {1}?", named(m, c), c.previous || '').replace(' ?', '?') : tr("Undo update");
         now = button(tr("Undo update"), { do: 'undo', id: page.id }, { vicon: 'back', style: 'primary', color: BLUE });
@@ -489,7 +501,7 @@ function confirmView(m, page) {
         line = page.ssid;
         now = button(tr("Forget"), { do: 'wifi-forget', ssid: page.ssid }, { vicon: 'trash', style: 'primary', color: RED });
     }
-    return { icon, title: { text: title }, text: { text: line }, now, later: button(tr("Cancel"), { do: 'back' }, { vicon: 'back', style: 'outline' }),
+    return { icon, title: { text: title }, text: { text: line }, now, also, later: button(tr("Cancel"), { do: 'back' }, { vicon: 'back', style: 'outline' }),
         note: { text: '' } };
 }
 
@@ -647,7 +659,8 @@ function informationView(m) {
     if (m.version) row('store', 'Store', 'robertn_store', m.version);
     if (st && st.updater) row('updater', 'Updater', 'mgu-updater', st.updater.version);
     const on = comps(m).filter((c) => c.installed && c.id !== 'robertn_store' && c.id !== 'mgu-updater');
-    on.filter((c) => !isTool(c)).concat(on.filter(isTool)).forEach((c) => row(c.id, c.title, [c.id, isTool(c) ? 'tool' : 'app', srcName(m, c)].filter(Boolean).join(' · '), c.installed));
+    const name = sourceNames(on, sources(m));
+    on.filter((c) => !isTool(c)).concat(on.filter(isTool)).forEach((c) => row(c.id, c.title, [c.id, isTool(c) ? 'tool' : 'app', name(c)].filter(Boolean).join(' · '), c.installed));
     return { title: { text: 'Information' }, status: { text: st ? plural(on.length + 2, 'component') : '', color: DIM }, list: { items, empty: m.connected ? '' : 'Not connected' } };
 }
 

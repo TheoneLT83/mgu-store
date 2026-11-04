@@ -1,4 +1,4 @@
-# robertn_store 0.9.41
+# robertn_store 0.9.43
 
 The Store: every app and head-unit tool of every source, each with its
 state, the progress of the running install, the sources, the phone page
@@ -26,10 +26,11 @@ USB, Settings) beside:
 
 - **Store**: All / Apps / Tools, Online / Offline / Checking, the status line
   (or the running install; an app whose title another listed app has is
-  named with its source, `DOOM (idrive7-apps)`), a grid of tiles: the package's picture when the
+  named with its source, `DOOM (cauliflowermossgrape)`), a grid of tiles: the package's picture when the
   updater names one (`components[].icon`, a PNG file), else a letter tile
-  (round for a tool), its name, its source under it (the repo's name,
-  `owner/repo` where two sources share a repo name, a catalog's host), its state (`Installed`, `Update 1.0.1`, `Downloading
+  (round for a tool), its name, its author under it (the repo's owner,
+  a catalog's host, a USB stick's label; `owner/repo` where another tile of the
+  same name comes from the same author), its state (`Installed`, `Update 1.0.1`, `Downloading
   42 %`, `Waiting`, `Not for this head unit`, `Failed`, `Restart pending`, `Not working`,
   version and size) and a badge or progress ring. While a listed app or tool waits
   for a restart, **Restart now** sits left of the filters: Settings' confirm
@@ -44,12 +45,12 @@ USB, Settings) beside:
   Installing, Removing) with its progress; `Not installable` and why (a package of an id another source's app
   holds; installed, it shows as installed, with Remove and no update), `Not for this head unit` / `For
   iDrive 8` (that version is not offered), the failure in full (above the description), what is wrong with an installed component (the updater's `problem`: `In-page drawing unavailable: <reason>` from the renderer, `Not working: <reason>` for one that does not work until it is set up again after a firmware update), `Restart pending`; and what can be done:
-  Install, Update to, Try again, Restart head unit, Undo update (where the updater offers the version before; a confirm step), Remove (a confirm step). A second renderer
+  Install, Update to, Try again, Restart head unit, Undo update (where the updater offers the version before; a confirm step), Remove (a confirm step; for an app it lists the tools only that app uses, the updater's `requiredAlone`, with Remove all, which removes them too). A second renderer
   installs beside the first. On iDrive 8 an app install or removal is
   queued for the next start: its row shows `Restart pending`, as a tool
   pending a restart does.
 - **Installed**: apps and head-unit tools, each with its version and
-  source, its update (a press on Update installs it) or state, Update all,
+  author (as on Store), its update (a press on Update installs it) or state, Update all,
   and Restart now beside it (as on Store). The ones with something running or
   waiting (an install, update or removal, a queued one, an update, a failure,
   a restart pending) come first; while the focus is on a row, the rows and
@@ -114,41 +115,60 @@ installs it; the same package runs on iDrive 7.
 
 ## Languages
 
-The Store is in the head unit's display language: English, and Simplified
-Chinese (translated by [JackieZ123430](https://github.com/JackieZ123430)).
+The Store is in the head unit's display language, every one the iDrive 7
+and iDrive 8 HMI offers: English (UK, US), German, Dutch (also Flemish),
+Danish, Swedish, Norwegian, Finnish, Polish, Czech, Slovak, Slovenian,
+Hungarian, Romanian, French (France, Canada), Italian, Turkish, Spanish
+(Spain, Latin America), Portuguese (Portugal, Brazil), Greek, Russian,
+Ukrainian, Indonesian, Vietnamese, Japanese, Korean, Simplified Chinese
+(also Cantonese simplified; translated by [JackieZ123430](https://github.com/JackieZ123430)),
+Traditional Chinese (also Cantonese traditional), Arabic, Hebrew and Thai.
+The drawn screens cannot lay out Arabic, Hebrew (right to left, joined
+letters) or Thai (stacked marks): in those three the tile and the widget
+screens are translated and the drawn screens are English.
+
 It reads `currentDisplayLanguage` of HMIContext (`HMI_CID`, iDrive 7) and
 HMIContext2 (`1`, iDrive 8), the manifest's proxies, at start and follows
-each change, the drawn screens and the widget
-screens alike; any other language, and a value it cannot read, is English.
-Names, versions, sources, accounts, SSIDs and the updater's errors are shown
-as they are.
+each change; a value it cannot read is English. Names, versions, sources,
+accounts, SSIDs and the updater's errors are shown as they are. A
+component's title and description are in the language when its catalog
+entry has them (`texts`, `release/README.md`), else English.
 
 A language is one file, `locales/<code>.json`: the HMI's languages it is
-for (`CommonTypes.Language`), its RHMI text file and its words, each keyed
-by the English (`{0}`, `{1}` stand for the values):
+for (`CommonTypes.Language`), its RHMI text files (named as the oap-sdk
+names those languages), the glyphs it is drawn with, and its words, each
+keyed by the English (`{0}`, `{1}` stand for the values); `"drawn": false`
+keeps the drawn screens English:
 
 ```json
-{ "hmiLanguages": ["CHINESISCH_SIMPLE"], "rhmiTexts": "zh_CN", "font": "chinese",
-  "words": { "Update {0}": "更新 {0}" } }
+{ "hmiLanguages": ["CHINESISCH_SIMPLE", "KANTONESISCH_SIMPLE"], "rhmiTexts": ["zh_CN", "zh_yue_Hans_CN"],
+  "font": "chinese", "words": { "Update {0}": "更新 {0}" } }
 ```
 
 `tools/build.js` writes them into the Store (`src/locales.js`, by
-`tools/gen_locales.js`) and, by `tools/gen_rhmi.js`, the RHMI text file of
-each language (`rhmiData/variantGroups/Common/texts`): the widget screens'
-own words are string ids, which the HMI shows in its language, the Store's
-tile name too. `tools/test_i18n.js` checks that every word the Store
-translates (its `tr()` words, the layouts' own words, the widget screens'
-string ids) has a translation in every language, with the same `{n}`, that
-no translation is left over, and that each language's characters can be
-drawn: Inter has ASCII and `·…→–—°×` (`tools/bake_fonts.py`), so a language
-with other characters needs them baked, or a font of its own (`"font"`).
+`tools/gen_locales.js`) and, by `tools/gen_rhmi.js`, the RHMI text files
+(`rhmiData/variantGroups/Common/texts`): the widget screens' own words are
+string ids, which the HMI shows in its language, the Store's tile name too.
+`tools/test_i18n.js` checks that every word the Store translates has a
+translation in every language, with the same `{n}`, that every HMI language
+has its text file, and that each language's words and catalog texts can be
+drawn; `tools/test_fit.js` that no translation is cut on a drawn screen
+where the English fits.
 
-Chinese is drawn with Noto Sans SC (SIL OFL, `src/LICENSE-NotoSansSC.txt`),
-baked by `tools/bake_chinese.py` into `src/font_chinese.js`, used for text
-Inter cannot draw while Chinese is the language and loaded the first time
-it is: the Store's own words at 48 px, and GB2312's 3,755 most used
-characters at 24 px, for names and descriptions. Its two atlases take
-about 3,040 rows of the renderer's shared 2048 x 4096 glyph texture.
+Inter has ASCII and `·…→–—°×` (`tools/bake_fonts.py`). Every other
+language has a font of its own, used for text Inter cannot draw and
+loaded the first time it is:
+
+| `font` | Glyphs | Baked by |
+|---|---|---|
+| `latin`, `greek`, `cyrillic`, `vietnamese` | Inter with those letters, regular and semibold | `tools/bake_inter.py` |
+| `chinese`, `chinese-tc`, `japanese`, `korean` | Noto Sans SC, TC, JP, KR (SIL OFL, `src/LICENSE-NotoSans*.txt`): the Store's words at 40 px, and the language's common characters for names and descriptions at 18 or 20 px | `tools/bake_cjk.py` |
+
+The renderer's glyph texture (two columns of 1024 x 4096) is shared by
+every app and keeps every atlas until the renderer restarts. Inter's and
+one language's atlases fit with room to spare. After display-language
+changes the texture can fill up, and the new language's text then shows
+after the head unit's next start.
 
 ## The widget screens
 
@@ -167,6 +187,8 @@ about 3,040 rows of the renderer's shared 2048 x 4096 glyph texture.
 | `Car Data` · `Not for this head unit` | nothing (installed; the updater marks the new version `compat: "no"`); *Remove?* when `uninstallable` |
 | `DOOM` · `Failed, retry` | try again (the status line names the error); a removal the last start failed to apply is removed again (*Remove?*); an install it failed to apply is installed again, and its page also has *Remove* (when `uninstallable`), which clears it |
 | `Renderer` · `Install 0.2.0` | install it (beside another installed renderer) |
+
+Each row's name ends with its author, as on the Store's tiles: `DOOM (cauliflowermossgrape)`.
 
 The start screen has a status line (`1 update, checked 14:02`, `Offline`,
 `Checking for updates`, `Restarting`, the last error; `Restart the head
@@ -363,16 +385,17 @@ locales/<code>.json        a language's words (README "Languages")
 src/i18n.js                the words in the display language
 src/locales.js             the languages, written by tools/gen_locales.js
 src/kit_*.js               the kit: record, canvas, vicons, png, themes (MIT, src/LICENSE-kit.txt);
-                           kit_fonts.js maps its families onto the look's faces (Chinese onto Noto Sans SC); kit_themes.js idrive7 is the iDrive 7 look
+                           kit_fonts.js maps its families onto the look's faces, and a language's font onto its own atlases; kit_themes.js idrive7 is the iDrive 7 look
 src/font_regular.js, src/font_semibold.js   Inter glyph atlases, the iDrive 8 look (tools/bake_fonts.py)
 src/font_id7_regular.js, src/font_id7_semibold.js   Ubuntu condensed atlases, the iDrive 7 look (tools/bake_fonts.py --ubuntu)
-src/font_chinese.js        Noto Sans SC glyph atlases (tools/bake_chinese.py)
+robertn_store@<version>/fonts/<font>.json   a language's glyph atlases (tools/bake_inter.py, tools/bake_cjk.py)
 lib/mgu_render_client.js   mgu-render's client, copied by tools/build.js
 tools/gen_locales.js       src/locales.js from locales/*.json
 tools/gen_rhmi.js          application.xml + uiDescription.json for iDrive 7 and 8 from one table, and the RHMI texts
 tools/build.js             languages, RHMI, lib/, the source package, and given a donor the OAP tgz
 tools/bake_fonts.py        the font atlases (Pillow; Inter 4.1's TTFs, the Ubuntu font's Ubuntu[wdth,wght].ttf)
-tools/bake_chinese.py      the Noto Sans SC atlases (Pillow, NotoSansSC[wght].ttf of google/fonts, SHA-256 checked)
+tools/bake_inter.py        the Latin, Greek, Cyrillic and Vietnamese atlases (Pillow, Inter 4.1's TTFs)
+tools/bake_cjk.py          the Noto Sans SC, TC, JP and KR atlases (Pillow, google/fonts' TTFs, SHA-256 checked)
 tools/gen_screens.py       src/am_screens.js from App Manager 2's screens.json
 tools/fixture.js           an updater state with one of everything, and the drawn screens over it
 tools/test_view.js         the texts for every row, source, account, sign-in and phone state
@@ -381,8 +404,9 @@ tools/test_qr.js           the QR pictures (decoded back with zbarimg when insta
 tools/test_speller.js      src/speller.js against a fake use case factory
 tools/test_screens.js      every drawn screen in iDrive 7's and 8's boxes: in the box, values, presses, focus order, scrolling, touch
 tools/test_store.js        src/store.js's flows against stand-in SDK, RHMI, updater, speller and renderer
-tools/test_i18n.js         every language: its words, placeholders, RHMI text file, font
-tools/shots.js             screenshots of the drawn screens through mgu-render --replay
+tools/test_i18n.js         every language: its words, placeholders, RHMI text files, fonts, catalog texts
+tools/test_fit.js          every language's words on every drawn screen: nothing cut where the English fits
+tools/shots.js             screenshots of the drawn screens through mgu-render --replay (STORE_LANGUAGE: in that language)
 tools/test_drag.js         a drag frame against the frame built whole, through mgu-render --replay
 tools/make_icon.py         the 140x140 tile icon from tools/store_icon.svg (headless Chromium)
 robertn_store@0.9.43/       staged package tree (no javascript/: the build writes it)

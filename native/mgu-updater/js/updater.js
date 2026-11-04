@@ -1158,13 +1158,25 @@ class Updater {
      * more, or that has none (installed from outside the updater, imported),
      * of the origins listing it that hold no other id for it (aside): the
      * one whose listing has the installed one's title (an app's en_GB
-     * entry-point text, a tool's component.json title), or, for one with
+     * entry-point text, a tool's component.json title), of several the
+     * built-in source (the installers install from it), or, for one with
      * no recorded origin, the only one listing it. Else none: two of that
-     * title, or none of it. */
+     * title and neither built in, or none of it. */
     openLead(id, origins, recorded) {
         const have = installedApp(this.conf, id, true) || installedTool(this.conf, id);
         const titled = origins.filter((g) => have.title && g.best.entry.title === have.title);
-        return !recorded && origins.length === 1 ? origins[0] : titled.length === 1 ? titled[0] : null;
+        const builtin = titled.filter((g) => this.stored.some((d) => d.builtin && d.id === g.origin));
+        return !recorded && origins.length === 1 ? origins[0] : titled.length === 1 ? titled[0] : builtin.length === 1 ? builtin[0] : null;
+    }
+
+    /* Why another origin's listing of installed id cannot install, given
+     * the id's row (resolved): the source it came from, else the one that
+     * updates it. */
+    installedWhy(id, lead) {
+        const holder = this.holder(id);
+        const from = holder ? ` from ${this.sourceLabel(holder)}` : !lead.entry.unlisted ?
+            `; its updates come from ${this.sourceLabel(lead.source)}` : '';
+        return `${id} is already installed${from}`;
     }
 
     /* Of one origin's listings of an id, the one it offers: the highest
@@ -1274,7 +1286,7 @@ class Updater {
                 }
                 const key = `${id}@${source}`;
                 map.set(key, { entry: Object.assign({}, entry, { id: key, listedId: id, installAs: id,
-                    blocked: installed ? `${id} is already installed${holder ? ` from ${this.sourceLabel(holder)}` : ''}` : null }), source });
+                    blocked: installed ? this.installedWhy(id, map.get(id)) : null }), source });
             });
         });
         this.unlisted().forEach((r) => {
@@ -1412,7 +1424,8 @@ class Updater {
     }
 
     state() {
-        const resolved = Array.from(this.resolved().values());
+        const all = this.resolved();
+        const resolved = Array.from(all.values());
         const installed = resolved.map((r) => this.installedOf(r.entry.id, r.entry.kind, r.entry.title === r.entry.id)).filter(Boolean);
         const rows = catalogLib.plan(resolved, installed).map((row, i) => {
             const entry = resolved[i].entry;
@@ -1456,6 +1469,8 @@ class Updater {
                 queued: this.queue.some((q) => q.id === row.id),
                 // the version Undo update returns to, only where it is offered
                 previous: row.installed && ours ? this.undoTo(unit) : null,
+                // the installed tools only this app requires, which its removal may take along
+                requiredAlone: row.installed && ours && entry.kind === 'app' ? this.requiredAlone(row.id, all) : [],
                 error: this.errors[row.id] || (failed && failed.why) || this.verifyError(unit) || null,
                 // what the last start failed to apply, while its error shows
                 applyFailed: !this.errors[row.id] && failed ? failed.op : null
@@ -2232,11 +2247,73 @@ class Updater {
         this.next();
     }
 
+    /* Whether row r of id (in all, this.resolved()) may remove it: the row
+     * of the origin that installed (or queued) it, marked uninstallable,
+     * and id neither the updater, the deploy tool nor what the updater
+     * requires. */
+    removableRow(id, r, all) {
+        const unit = r.entry.installAs || id;
+        const rec = this.origins[unit];
+        const owner = this.installedOf(unit, r.entry.kind) ? all.get(unit) || r :
+            rec ? Array.from(all.values()).find((o) => (o.entry.installAs || o.entry.id) === unit && this.originOf(o.source) === rec.source) || r : r;
+        return owner === r && r.entry.uninstallable && id !== SELF && id !== this.conf.deploy_tool && !(selfComponent().requires || {})[id];
+    }
+
+    /* Why installed id stays when it and the ids in along are removed: an
+     * installed component besides them, its removal not queued for the next
+     * start (iDrive 8), requires it, or needs a capability only they
+     * provide; null when nothing keeps it. */
+    keptBy(id, all, along) {
+        const besides = (o) => along.indexOf(o.entry.id) < 0 && this.installedVersion(o.entry.id, o.entry.kind) &&
+            this.nextStart[o.entry.installAs || o.entry.id] !== 'remove';
+        const needs = Array.from(all.values()).find((o) => o.entry.requires[id] && besides(o));
+        if (needs) {
+            return `${needs.entry.title} needs ${id}`;
+        }
+        const r = all.get(id);
+        const cap = r && r.entry.mguProvides;
+        const needer = cap && !this.providerIds(cap).some((p) => along.indexOf(p) < 0) &&
+            Array.from(all.values()).find((o) => (o.entry.mguNeeds || []).indexOf(cap) >= 0 && besides(o));
+        return needer ? `${needer.entry.title} needs a ${cap}: remove it first, or install another ${cap}` : null;
+    }
+
+    /* The installed tools that only installed app id requires, itself or
+     * through them, which its removal may take along: each one its row may
+     * remove and nothing else installed keeps, a tool before those it
+     * requires. */
+    requiredAlone(id, all) {
+        const app = all.get(id);
+        if (!app || app.entry.kind !== 'app' || !this.installedVersion(app.entry.installAs || id, 'app')) {
+            return [];
+        }
+        const set = [id];
+        let grew = true;
+        while (grew) {
+            grew = false;
+            all.forEach((t, tid) => {
+                if (set.indexOf(tid) < 0 && t.entry.kind === 'tool' && set.some((s) => all.get(s).entry.requires[tid]) &&
+                    this.installedVersion(t.entry.installAs || tid, 'tool') && this.removableRow(tid, t, all) && !this.keptBy(tid, all, set.concat([tid]))) {
+                    set.push(tid);
+                    grew = true;
+                }
+            });
+        }
+        const left = set.slice(1);
+        const out = [];
+        while (left.length) {
+            const i = left.findIndex((t) => !left.some((o) => all.get(o).entry.requires[t]));
+            out.push(left.splice(Math.max(i, 0), 1)[0]);
+        }
+        return out;
+    }
+
     /* Queues a removal of id: one its row marks uninstallable, installed
      * (or its install queued for the next start), that nothing installed,
-     * nor the updater itself, requires. Of one not installed whose change
-     * the last start failed to apply, it puts the failure aside. */
-    requestUninstall(id) {
+     * nor the updater itself, requires; then of each of tools, which must
+     * be among the tools only id requires (requiredAlone). Of one not
+     * installed whose change the last start failed to apply, it puts the
+     * failure aside. */
+    requestUninstall(id, tools) {
         if (this.rebooting) {
             return 'the head unit is restarting';
         }
@@ -2247,11 +2324,7 @@ class Updater {
         }
         const unit = r.entry.installAs || id;
         // the row of the origin that installed (or queued) the id decides
-        const rec = this.origins[unit];
-        const owner = this.installedOf(unit, r.entry.kind) ? all.get(unit) || r :
-            rec ? Array.from(all.values()).find((o) => (o.entry.installAs || o.entry.id) === unit && this.originOf(o.source) === rec.source) || r : r;
-        if (owner !== r || !r.entry.uninstallable || id === SELF || id === this.conf.deploy_tool ||
-            (selfComponent().requires || {})[id]) {
+        if (!this.removableRow(id, r, all)) {
             return `${id} cannot be removed`;
         }
         // an install queued for the next start (iDrive 8) is dropped from the deploy tool's queue
@@ -2268,21 +2341,27 @@ class Updater {
                 return `${id} is not installed`;
             }
         }
-        const needs = Array.from(all.values()).find((o) => o.entry.requires[id] && this.installedVersion(o.entry.id, o.entry.kind));
-        if (needs) {
-            return `${needs.entry.title} needs ${id}`;
+        // nothing installed requires it or needs a capability only it provides
+        const kept = this.keptBy(id, all, [id]);
+        if (kept) {
+            return kept;
         }
-        // the last provider of a capability an installed component needs stays
-        const cap = r.entry.mguProvides;
-        const needer = cap && !this.providerIds(cap).some((p) => p !== id) &&
-            Array.from(all.values()).find((o) => (o.entry.mguNeeds || []).indexOf(cap) >= 0 && this.installedVersion(o.entry.id, o.entry.kind));
-        if (needer) {
-            return `${needer.entry.title} needs a ${cap}: remove it first, or install another ${cap}`;
+        const along = Array.isArray(tools) ? tools.filter((t, i) => tools.indexOf(t) === i) : [];
+        const alone = along.length ? this.requiredAlone(id, all) : [];
+        const stray = along.filter((t) => alone.indexOf(t) < 0 || this.keptBy(t, all, [id].concat(along)))[0];
+        if (stray) {
+            return `${stray} cannot be removed with ${id}`;
         }
-        const refused = this.enqueue(Object.assign({ op: 'uninstall', id }, unit !== id ? { unit } : {}));
+        const items = [{ op: 'uninstall', id }].concat(alone.filter((t) => along.indexOf(t) >= 0).map((t) => ({ op: 'uninstall', id: t, along: id })))
+            .map((q) => {
+                const as = all.get(q.id).entry.installAs || q.id;
+                return Object.assign(q, as !== q.id ? { unit: as } : {});
+            });
+        const refused = items.map((q) => this.conflict(q)).filter(Boolean)[0];
         if (refused) {
             return refused;
         }
+        items.forEach((q) => this.enqueue(q));
         this.changed();
         if (!this.busy) {
             this.next();
@@ -2570,8 +2649,7 @@ class Updater {
                 // installed (since this was asked for): only the origin that updates it (resolved)
                 const lead = this.installedOf(id) ? this.resolved().get(id) : null;
                 if (lead && (lead.entry.unlisted || this.originOf(lead.source) !== this.originOf(item.source))) {
-                    const holder = this.holder(id);
-                    throw new Error(`${id} is already installed${holder ? ` from ${this.sourceLabel(holder)}` : ''}`);
+                    throw new Error(this.installedWhy(id, lead));
                 }
                 return this.artifact(rt, entry, own);
             })
@@ -2612,13 +2690,18 @@ class Updater {
                     this.installedVersion(id, 'app') !== entry.version) {
                     this.startStoreTrial(entry.version);
                 }
-                return this.deploy(verified);
+                // a tool installed from another origin: the version it replaces is deactivated first
+                const rec = this.origins[id];
+                const moved = entry.kind === 'tool' && !!this.installedVersion(id, 'tool') && !!rec && rec.source !== this.originOf(item.source);
+                return this.deploy(verified, moved);
             })
             .then((code) => {
                 if (code !== 0) {
                     const why = this.deployError;
-                    throw new Error(code === 2 ? `${why || 'refused by the deploy tool'}; nothing changed` :
-                        `install failed${why ? ': ' + why : ''}; the previous version was kept`);
+                    const now = this.installedVersion(id, entry.kind);
+                    const left = !now ? 'nothing is installed' : now === entry.version && path.basename(before || '') !== entry.version ?
+                        `${entry.version} stays current` : 'the previous version was kept';
+                    throw new Error(code === 2 ? `${why || 'refused by the deploy tool'}; nothing changed` : `install failed${why ? ': ' + why : ''}; ${left}`);
                 }
                 console.log(`installed ${id}@${entry.version}`);
                 // installed from a stick's copy of a source: that source is its origin
@@ -2656,11 +2739,19 @@ class Updater {
             });
     }
 
-    /* Removes a component through the deploy tool's uninstall. */
+    /* Removes a component through the deploy tool's uninstall. A tool
+     * removed along with an app (item.along) stays while anything installed
+     * still keeps it, as when the app's removal failed. */
     uninstall(item) {
         // the row's id; the id it is installed (or queued) under
         const key = item.id;
         const id = item.unit || item.id;
+        const kept = item.along && this.keptBy(key, this.resolved(), [key]);
+        if (kept) {
+            console.log(`${id}: not removed with ${item.along}: ${kept}`);
+            this.changed();
+            return Promise.resolve(false);
+        }
         this.busy = { id: key, op: 'uninstall', phase: 'uninstall' };
         this.changed();
         console.log(`${id}: uninstall`);
@@ -2934,8 +3025,10 @@ class Updater {
             });
     }
 
-    deploy(file) {
-        return this.deployTool(['install', '--artifact', file, '--yes']).then((code) => this.checkUids().then(() => code));
+    /* otherSource: the artifact replaces an installed tool another origin installed. */
+    deploy(file, otherSource) {
+        return this.deployTool(['install', '--artifact', file, '--yes'].concat(otherSource ? ['--other-source'] : []))
+            .then((code) => this.checkUids().then(() => code));
     }
 
     /* Picks a uid again that something else holds now (an install, an
@@ -3517,7 +3610,7 @@ class Updater {
         case 'check': this.check(); return null;
         case 'install': return typeof req.id === 'string' ? this.request(req.id) : 'install needs an id';
         case 'reboot': return this.reboot(this.authorized(req.secret));
-        case 'uninstall': return typeof req.id === 'string' ? this.requestUninstall(req.id) : 'uninstall needs an id';
+        case 'uninstall': return typeof req.id === 'string' ? this.requestUninstall(req.id, req.tools) : 'uninstall needs an id';
         case 'rollback': return typeof req.id === 'string' ? this.requestRollback(req.id) : 'rollback needs an id';
         case 'hello': this.storeHello(req); return undefined;
         case 'source-add': return this.sourceAdd(req);

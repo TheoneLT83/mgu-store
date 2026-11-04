@@ -180,26 +180,40 @@ eq([own(f), text(f, 'note1')], [['Back'], 'doom is already installed from robert
 ok(!f.values.facts.items.some((c) => /^Id /.test(c.text)), 'blocked: no id of its own');
 f = frame(fixture.model({}, two), { textScale: 1, focus: 0, scroll: {} });
 eq(f.values.grid.items[1].sub, 'Not installable');
-// two sources' Doom: two tiles, each named with its source; a page follows its row when the install gives it another id
+// two sources' Doom: two tiles, each named with its source's author; a page follows its row when the install gives it another id
 two.sources = [{ id: 'idrive7-apps', label: 'cauliflowermossgrape/idrive7-apps' }, { id: 'iterio', label: 'https://apps.example.org/index.json' }];
 eq(frame(fixture.model({}, two), { textScale: 1, focus: 0, scroll: {} }).values.grid.items.map((t) => [t.title, t.src]),
-    [['DOOM', 'idrive7-apps'], ['DOOM', 'apps.example.org']]);
-// two sources of the same repo name: owner/repo on each
+    [['DOOM', 'cauliflowermossgrape'], ['DOOM', 'apps.example.org']]);
+// two sources of the same repo name: each one's author
 two.sources = [{ id: 'idrive7-apps', label: 'one/apps' }, { id: 'iterio', label: 'two/apps' }];
-eq(frame(fixture.model({}, two), { textScale: 1, focus: 0, scroll: {} }).values.grid.items.map((t) => t.src), ['one/apps', 'two/apps']);
+eq(frame(fixture.model({}, two), { textScale: 1, focus: 0, scroll: {} }).values.grid.items.map((t) => t.src), ['one', 'two']);
+// one author's two repos' DOOM: owner/repo on those tiles and rows, the author alone on the rest; on a page, from owner/repo
+const same = Object.assign({}, two, { sources: [{ id: 'idrive7-apps', label: 'robertnisipeanu/mgu-store' }, { id: 'iterio', label: 'robertnisipeanu/idrive-apps' }],
+    components: two.components.map((c) => Object.assign({}, c, { blocked: null, installed: '1.0.0', status: 'installed' }))
+        .concat([Object.assign({}, two.components[0], { id: 'quake', title: 'Quake', listedId: null, installAs: null, installed: '1.0.0', status: 'installed' })]) });
+eq(frame(fixture.model({}, same), { textScale: 1, focus: 0, scroll: {} }).values.grid.items.map((t) => t.src),
+    ['robertnisipeanu/mgu-store', 'robertnisipeanu/idrive-apps', 'robertnisipeanu']);
+eq(frame(fixture.model({ tab: 'installed' }, same), { textScale: 1, focus: 0, scroll: {} }).values.apps.items.map((t) => t.sub),
+    ['1.0.0 · robertnisipeanu/mgu-store', '1.0.0 · robertnisipeanu/idrive-apps', '1.0.0 · robertnisipeanu']);
+eq(text(frame(fixture.model({ stack: [{ name: 'main' }, { name: 'app', id: 'quake' }] }, same), { textScale: 1, focus: 0, scroll: {} }), 'author'),
+    'from robertnisipeanu/mgu-store');
+// the fixture's tiles, rows and USB tiles: the author, a stick's label
+f = screen('store');
+eq(f.values.grid.items.slice(0, 2).map((t) => t.src), ['TheoneLT83', 'USB STICK'], 'tiles: the author');
+eq(screen('usb').values.grid.items.map((t) => t.src), ['USB STICK', 'USB STICK'], 'USB: the stick');
 // the status line names the source of a row whose title another row has: downloading, and a failure
 const sub = (st) => text(frame(fixture.model({}, st), { textScale: 1, focus: 0, scroll: {} }), 'subtitle');
 two.sources = [{ id: 'idrive7-apps', label: 'cauliflowermossgrape/idrive7-apps' }, { id: 'iterio', label: 'someone/other-apps' }];
 const dooms = (o) => Object.assign({}, two, { components: [Object.assign({}, two.components[0], o), Object.assign({}, two.components[1], { blocked: null })] });
 eq(sub(Object.assign(dooms({}), { busy: { id: 'doom2', op: 'install', phase: 'download', progress: 42, total: 100 } })),
-    'Downloading 42 % · DOOM (idrive7-apps)');
-eq(sub(dooms({ error: 'the build failed (exit 3)' })), 'DOOM (idrive7-apps): the build failed (exit 3)');
+    'Downloading 42 % · DOOM (cauliflowermossgrape)');
+eq(sub(dooms({ error: 'the build failed (exit 3)' })), 'DOOM (cauliflowermossgrape): the build failed (exit 3)');
 // Remove? names which of two installed DOOMs; with one DOOM, its title alone
 const confirmOf = (st) => text(frame(fixture.model({ stack: [{ name: 'main' }, { name: 'app', id: 'doom2' }, { name: 'confirm', kind: 'remove', id: 'doom2' }] }, st),
     { textScale: 1, focus: 0, scroll: {} }), 'title');
 const both = dooms({ installed: '1.0.0', status: 'installed' });
 both.components[1] = Object.assign({}, both.components[1], { installed: '1.0.1', status: 'installed' });
-eq(confirmOf(both), 'Remove DOOM (idrive7-apps) 1.0.0?');
+eq(confirmOf(both), 'Remove DOOM (cauliflowermossgrape) 1.0.0?');
 eq(confirmOf(Object.assign({}, both, { components: [both.components[0]] })), 'Remove DOOM 1.0.0?');
 // one DOOM listed: its title alone
 eq(sub(Object.assign({}, dooms({}), { components: [dooms({}).components[0]], busy: { id: 'doom2', op: 'install', phase: 'download', progress: 42, total: 100 } })),
@@ -296,6 +310,17 @@ Object.keys(UNITS).forEach((unit) => {
 f = screen('confirm-remove');
 eq(f.labels, ['Cancel', 'Remove']);
 eq(text(f, 'title'), 'Remove Gauges 1.2.0?');
+// an app with tools only it requires: they are listed, and Remove all takes the installed ones along
+f = screen('confirm-remove-tools');
+eq(f.labels, ['Cancel', 'Remove', 'Remove all']);
+eq(text(f, 'text'), 'Tools only it uses: Display bridge 0.2.3, GPU renderer 1.1.0, Network driver 0.4.0');
+eq([f.items[1].act, f.items[2].act], [{ do: 'remove', id: 'gauges' }, { do: 'remove', id: 'gauges', tools: ['display-bridge', 'mgu-renderd', 'mgu-uplink'] }]);
+[['iDrive 7', ID7.layout], ['iDrive 8', SCREENS]].forEach(([unit, lay]) => {
+    const cs = lay.screens.find((x) => x.name === 'confirm').components;
+    const line = cs.find((c) => c.name === 'text');
+    const also = cs.find((c) => c.name === 'also');
+    ok(line.opts.wrap && line.h >= 2 * line.opts.size * 1.25 && also.y >= line.y + line.h, `${unit}: the confirm step's line wraps over two lines above Remove all`);
+});
 eq(screen('confirm-restart').items[1].act, { do: 'restart' });
 f = screen('confirm-account');
 eq(f.items[1].act, { do: 'account-remove', id: '3f9a01c2' });
@@ -312,7 +337,7 @@ ok(!f.items.some((i) => i.label === 'Update'), 'the Update chip is not pressed o
 eq(f.items.find((i) => i.label === 'Extended dashboard' || i.act && i.act.page && i.act.page.id === 'gauges').act.do, 'open', 'its row opens the page');
 ok(f.labels.indexOf('Display bridge') >= 0 && f.labels.indexOf('M Vitals') < 0, 'installed ones only');
 eq(f.values.apps.items.filter((i) => i.id === 'gauges' || i.id === 'robertn_store').map((i) => i.sub),
-    ['1.2.0 · new build · idrive7-apps', '0.7.0 · mgu-store'], 'a row names its source (an update first)');
+    ['1.2.0 · new build · TheoneLT83', '0.7.0 · TheoneLT83'], 'a row names its source\'s author (an update first)');
 // Installed: what runs or waits first (downloading, an update, queued, failed, restart pending), each part in the catalog's order
 const ids = (g) => [g.values.apps.items.map((i) => i.id), g.values.services.items.map((i) => i.id)];
 eq(ids(f), [['doom', 'gauges', 'extended_dashboard', 'vehicle_control', 'robertn_store'],
@@ -351,7 +376,7 @@ Object.keys(UNITS).forEach((unit) => {
     const th = def.opts.tileH;
     // the first row's texts but the letter tiles' letters
     const row0 = texts.filter((t) => t.y < def.y + th && t.str.length > 1);
-    eq(row0.slice(0, 3).map((t) => t.str), ['M Vitals', 'idrive7-apps', '2.1.0 · 402 KB'], `${unit}: title, source, state (not installed first)`);
+    eq(row0.slice(0, 3).map((t) => t.str), ['M Vitals', 'TheoneLT83', '2.1.0 · 402 KB'], `${unit}: title, source, state (not installed first)`);
     // the tile's bottom 8 px hold the focus rings (store_frame.js): every line, descenders included, ends above them
     ok(row0.every((t) => t.y + 0.25 * t.size <= def.y + th - 8),
         `${unit}: the lines clear of the focus rings (${row0.map((t) => Math.round(t.y + 0.25 * t.size))} of ${def.y + th - 8})`);

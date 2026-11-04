@@ -33,7 +33,11 @@ core, the deploy tool's on-unit `mgu-deploy.js` (`deploy/README.md`):
   (`deploy/hu` from a checkout, for development). It bootstraps the car
   and installs the deploy tool, the uplink and this updater.
 - **Sources**: this updater and the Store. It hands each verified
-  artifact to `/var/opt/mgu-deploy/mgu-deploy.sh install --artifact`.
+  artifact to `/var/opt/mgu-deploy/mgu-deploy.sh install --artifact`, with
+  `--other-source` for a tool another source installed (its origin in
+  `origins.json`), whose version going is deactivated first. A tool with
+  no recorded origin (installed over SSH, or before origins were kept)
+  installs without it, as an update or a downgrade of the same tool.
 
 Both take the same artifacts (`release.js` packs tools with `deploy/hu
 artifact`), the same `component.json`, the same `versions/<v>` + `current`
@@ -104,7 +108,7 @@ API requests it made.
 | Layout | Where | Components |
 |---|---|---|
 | catalog | a `catalog` release's `catalog.json` asset (`release/README.md`), the https URL, `catalog.json` in a folder | schema 1 or 2 entries; artifact URLs absolute or relative to the catalog |
-| releases | a GitHub repo's releases (newest first, drafts and prereleases left out): assets named `<id>@<x.y.z>.tgz` or `.mgu` | each id's newest version, the `.tgz` over the `.mgu` of one version; titles from an optional `mgu-store.json` asset (`{"apps":{"<id>":{"title","description"}}}`), else the installed app's en_GB entry-point text, else the id; always apps, each `uninstallable` |
+| releases | a GitHub repo's releases (newest first, drafts and prereleases left out): assets named `<id>@<x.y.z>.tgz` or `.mgu` | each id's newest version, the `.tgz` over the `.mgu` of one version; titles from an optional `mgu-store.json` asset (`{"apps":{"<id>":{"title","description","texts"}}}`), else the installed app's en_GB entry-point text, else the id; always apps, each `uninstallable` |
 | repo tree | `mgu-repo.json` at a repo's or folder's root, at one commit | see below |
 | index | an https URL answering IterioDev's App Manager index: version 2, `{"version": 2, "packages": [{"url", "sha256", "size", "id", "kind", "version", "title", "author", "description", "icon", "iconSha256", …}]}`, or version 1, `{"packages": [{"url", "sha256"}]}` | version 2: each entry as it stands, no package downloaded (50 at most, 32 MiB each); `kind` `app`, or `renderer` / `tether`: a tool providing that kind, as a stick's service package (below); an app without `mguHmi` is for iDrive 8, the App Manager's head unit; an entry of another kind or without an https `url`, a sha256 and a size is left out, named in the source's `error`. An install downloads the package, checks its sha256 and that its `package.json` is the id, version and service its entry names, and keeps it in `state/index/<source id>/<sha256>.tgz` (root, 0600) while it is the newest of its id the index lists. Version 1: each package (https, absolute or relative to the index) downloaded once, checked against its sha256 and read like a stick's `oap/` package; `state/index/<source id>/index.json` keeps what each listed package is (one that does not read: until the updater's next version), and only the newest of each id is kept, as for version 2; a package that is missing or does not match is left out, named in the source's `error`. The packages kept come to at most 128 MiB, every source's together; one past that, or no longer kept, is downloaded again for its install or icon |
 
@@ -210,8 +214,8 @@ commit). Without one: `releases` when the repo has a release, else
   does (*Gate needs a renderer: install <the ones the sources list>
   first*), and the last installed provider of a capability an installed
   component needs is not removed.
-- `title`, `description`, `requires`, `optional` and `uninstallable` come
-  from the entry, else from the component's own file. A component that
+- `title`, `description`, `texts`, `requires`, `optional` and
+  `uninstallable` come from the entry, else from the component's own file. A component that
   cannot be used is left out and the source's `error` says why; the rest
   are listed.
 - GitHub: the files are read at the commit through the contents API, and
@@ -285,7 +289,9 @@ lists the id.
 - Every other origin's listing is beside it, as a row keyed `<id>@<source>`
   that installs as `<id>` (`installAs`), and, while another origin's `<id>`
   is installed, `blocked` with the reason (`<id> is already installed from
-  <source>`): its install is refused. A tool and a package built elsewhere
+  <source>`, or, for one installed without a recorded origin,
+  `<id> is already installed; its updates come from <source>`): its
+  install is refused. A tool and a package built elsewhere
   (a release, catalog or index package, a stick's `oap/`), which may name
   its id in its code, keep their id so.
 - An app the updater builds (a repo tree's build script, or source
@@ -310,11 +316,12 @@ lists the id.
   updater: the installers, the emulator's provisioning; `imported`), or
   whose origin lists its id no more (a stick that is gone, a source
   removed), is updated by the origin whose listing has its title (an
-  app's en_GB entry-point text, a tool's `component.json` title); one
+  app's en_GB entry-point text, a tool's `component.json` title), of
+  several the built-in source (the installers install from it); one
   without a recorded origin also by the only origin listing its id,
   whatever its title. An origin holding
   another id for an app of that id (`doom2`) is not counted. With two of
-  that title, or none of it, it has no update. That origin's row has the
+  that title and neither built in, or none of it, it has no update. That origin's row has the
   id, and installing from it records it as the origin. So a car set up
   offline updates the Store, the updater and the uplink from a stick, an
   App Manager app from a stick's `oap/`, and a source removed and added
@@ -820,12 +827,18 @@ each request, and whenever it changes (at most every 250 ms):
   "components": [ { "id": "doom", "kind": "app", "title": "DOOM", "version": "1.0.1",
     "installed": "1.0.0", "size": 2080457, "status": "update", "source": "idrive7-apps",
     "build": null, "optional": false, "uninstallable": true, "revision": null,
-    "description": "…", "author": "…", "icon": "/var/opt/mgu-updater/state/icons/…png",
+    "description": "…", "texts": { "de": { "title": "DOOM", "description": "…" } }, "author": "…",
+    "icon": "/var/opt/mgu-updater/state/icons/…png",
     "mguHmi": ["ID7"], "compat": "yes", "provides": null, "service": null,
     "listedId": null, "installAs": "doom", "blocked": null, "pendingReboot": false, "problem": null, "repair": null, "nextStart": null, "queued": false,
-    "previous": null, "error": null } ] }
+    "previous": null, "requiredAlone": [], "error": null } ] }
 ```
 
+- `texts`: the component's title and description in other languages, by
+  the Store's language code (`de`, `pt-BR`, `zh-TW`), as its catalog entry,
+  `mgu-repo.json` entry or `mgu-store.json` app has them (`"texts":
+  {"de": {"title", "description"}}`), else null. The Store shows the head
+  unit's language, else English.
 - `components`: each origin's component of an id (Sources, "Ids"); `id`
   the row's id (requests and `busy` name it), `listedId` the id its source
   lists when `id` is another, `installAs` the id it is or would be
@@ -864,6 +877,14 @@ each request, and whenever it changes (at most every 250 ms):
   deploy tool's check at the start of the head unit found a tool's new
   version not working (`last_verify`): `<version> did not work after the
   restart (<why>); <previous> is back`, while that version runs.
+  `requiredAlone`: of an installed app, the installed tools only it
+  requires, itself or through one another, that its removal may take along
+  (each one its row may remove, nothing else installed requires, and none
+  the last provider of a capability another installed component needs),
+  in the order they are removed; else `[]`. The requirements it follows
+  are the sources' catalog rows (`requires`), not the installed
+  components' own files, so a requirement only an installed version
+  declares is not seen.
 - `unit`: the head unit (`hmi` `ID7`, `ID8` or null, `firmware` its build
   string), null until the deploy tool says. `allProviders`: the installed tools
   providing each capability; `providers`: the first of them each, for the
@@ -908,7 +929,7 @@ Store says it at each connection (below, "The Store's update").
 | Request | Does |
 |---|---|
 | `{"op":"reboot"}` | restarts the head unit ("Restarting the head unit"): at once with the secret; without it while a Store older than 0.9.16 is installed, within the restart limits |
-| `{"op":"uninstall","id"}` | removes an `uninstallable` component (every app but the Store) |
+| `{"op":"uninstall","id","tools"?}` | removes an `uninstallable` component (every app but the Store); then each of `tools`, which must be among the app row's `requiredAlone` (else nothing is queued), a tool before those it requires. A tool whose turn comes while something installed still requires it (the app's removal failed) stays; an app whose removal waits for the next start (iDrive 8) requires none |
 | `{"op":"rollback","id"}` | Undo update: a component whose row has `previous` back to that version, through `mgu-deploy.sh rollback <id> --yes` |
 | `{"op":"source-add","type":"github","repo":"o/r","channel"?}`, `{"op":"source-add","type":"https","url"}` | adds a source (id: the repo's name, else `s-<hex>`) and reads it |
 | `{"op":"source-probe","repo":"o/r"}` | `{"type":"probe","repo",status}`: what a GitHub repo can be added on, read with each token in turn, then without one. `ok` with `name` (the repo as GitHub spells it), `releases` (it has a release), `tags` (an x.y.z tag), `defaultBranch` (null when no channel takes its name), `branches` (100 a page, at most 300, in the order offered: main, master, the default branch, the rest; names no channel takes left out) and `more` (there are more); `auth-needed` (no token reaches it, or it is not there; a 403 that is no rate limit counts as no reach), `offline`, `rate-limited` (a 429, or a 403 with `x-ratelimit-remaining: 0` or `retry-after`), `error` with `error`. A repo that is already a source is refused |
