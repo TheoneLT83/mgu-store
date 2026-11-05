@@ -1,5 +1,11 @@
 # Deploy tool changelog
 
+## 0.7.20
+
+robertnisipeanu/mgu-store's 0.7.18 with this repository's deploy tool.
+
+- iDrive 7: an update of an app while the app manager runs older code than its files hold (a fallback copy rebuilt by this install, as after a failed install's rollback took the fallback and the app's listing away) lists the app in `custom_apps.json` before it restarts the manager. The restarted manager provisions the app at its start and updates it in place; one it found unlisted refuses the update as disabled (`robertn_store has been disabled (enabled = false / allowed = false)`).
+
 ## 0.7.19
 
 - iDrive 7: the fallback copy of the app manager keeps the registry entry of an app whose init failed at the manager's start, when its folder holds that app's package. MainApp deleted such an entry, kept the folder, and installed the app afresh under a new uid, so each such start used up about ten uids of a range of 248. The app is tried again after 10, 30 and 60 s, takes no fresh install while it waits, and loads from its entry at the next start. Each failure is recorded in `oap_12201/data/mgu-deploy-init-failures.json`, with its error.
