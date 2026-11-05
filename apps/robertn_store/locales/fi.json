@@ -180,6 +180,9 @@
     "Changelog": "Muutokset",
     "Internet": "Internet",
     "Information": "Tiedot",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Proxy": "Välityspalvelin",
+    "Address": "Osoite",
+    "Use http://host:port or socks5://host:port": "Käytä muotoa http://host:port tai socks5://host:port"
   }
 }

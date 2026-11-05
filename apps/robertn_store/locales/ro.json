@@ -180,6 +180,9 @@
     "Changelog": "Modificări",
     "Internet": "Internet",
     "Information": "Informații",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Proxy": "Proxy",
+    "Address": "Adresă",
+    "Use http://host:port or socks5://host:port": "Folosiți http://host:port sau socks5://host:port"
   }
 }

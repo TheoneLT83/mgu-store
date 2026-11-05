@@ -180,6 +180,9 @@
     "Changelog": "Novidades",
     "Internet": "Internet",
     "Information": "Informações",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Proxy": "Proxy",
+    "Address": "Endereço",
+    "Use http://host:port or socks5://host:port": "Use http://host:port ou socks5://host:port"
   }
 }

@@ -180,6 +180,9 @@
     "Changelog": "Log perubahan",
     "Internet": "Internet",
     "Information": "Informasi",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Proxy": "Proxy",
+    "Address": "Alamat",
+    "Use http://host:port or socks5://host:port": "Gunakan http://host:port atau socks5://host:port"
   }
 }

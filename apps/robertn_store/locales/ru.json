@@ -180,6 +180,9 @@
     "Changelog": "Изменения",
     "Internet": "Интернет",
     "Information": "Информация",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Proxy": "Прокси",
+    "Address": "Адрес",
+    "Use http://host:port or socks5://host:port": "Используйте http://host:port или socks5://host:port"
   }
 }

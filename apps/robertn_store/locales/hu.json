@@ -180,6 +180,9 @@
     "Changelog": "Változások",
     "Internet": "Internet",
     "Information": "Információ",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Proxy": "Proxy",
+    "Address": "Cím",
+    "Use http://host:port or socks5://host:port": "Használja a http://host:port vagy socks5://host:port formát"
   }
 }

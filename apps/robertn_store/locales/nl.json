@@ -182,6 +182,9 @@
     "Changelog": "Wijzigingen",
     "Internet": "Internet",
     "Information": "Informatie",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Proxy": "Proxy",
+    "Address": "Adres",
+    "Use http://host:port or socks5://host:port": "Gebruik http://host:port of socks5://host:port"
   }
 }

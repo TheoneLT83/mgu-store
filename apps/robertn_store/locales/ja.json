@@ -180,6 +180,9 @@
     "Changelog": "変更履歴",
     "Internet": "インターネット",
     "Information": "情報",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Proxy": "プロキシ",
+    "Address": "アドレス",
+    "Use http://host:port or socks5://host:port": "http://host:port または socks5://host:port を使用"
   }
 }

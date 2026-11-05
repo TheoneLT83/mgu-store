@@ -184,7 +184,10 @@ module.exports = [
    "Changelog": "سجل التغييرات",
    "Internet": "الإنترنت",
    "Information": "معلومات",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "الوكيل",
+   "Address": "العنوان",
+   "Use http://host:port or socks5://host:port": "استخدم http://host:port أو socks5://host:port"
   }
  },
  {
@@ -370,7 +373,10 @@ module.exports = [
    "Changelog": "Seznam změn",
    "Internet": "Internet",
    "Information": "Informace",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Proxy",
+   "Address": "Adresa",
+   "Use http://host:port or socks5://host:port": "Použijte http://host:port nebo socks5://host:port"
   }
  },
  {
@@ -556,7 +562,10 @@ module.exports = [
    "Changelog": "Ændringslog",
    "Internet": "Internet",
    "Information": "Information",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Proxy",
+   "Address": "Adresse",
+   "Use http://host:port or socks5://host:port": "Brug http://host:port eller socks5://host:port"
   }
  },
  {
@@ -742,7 +751,10 @@ module.exports = [
    "Changelog": "Änderungen",
    "Internet": "Internet",
    "Information": "Informationen",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Proxy",
+   "Address": "Adresse",
+   "Use http://host:port or socks5://host:port": "http://host:port oder socks5://host:port verwenden"
   }
  },
  {
@@ -928,7 +940,10 @@ module.exports = [
    "Changelog": "Αλλαγές",
    "Internet": "Internet",
    "Information": "Πληροφορίες",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Proxy",
+   "Address": "Διεύθυνση",
+   "Use http://host:port or socks5://host:port": "Χρησιμοποιήστε http://host:port ή socks5://host:port"
   }
  },
  {
@@ -1114,7 +1129,10 @@ module.exports = [
    "Changelog": "Cambios",
    "Internet": "Internet",
    "Information": "Información",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Proxy",
+   "Address": "Dirección",
+   "Use http://host:port or socks5://host:port": "Usa http://host:port o socks5://host:port"
   }
  },
  {
@@ -1300,7 +1318,10 @@ module.exports = [
    "Changelog": "Cambios",
    "Internet": "Internet",
    "Information": "Información",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Proxy",
+   "Address": "Dirección",
+   "Use http://host:port or socks5://host:port": "Usa http://host:port o socks5://host:port"
   }
  },
  {
@@ -1486,7 +1507,10 @@ module.exports = [
    "Changelog": "Muutokset",
    "Internet": "Internet",
    "Information": "Tiedot",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Välityspalvelin",
+   "Address": "Osoite",
+   "Use http://host:port or socks5://host:port": "Käytä muotoa http://host:port tai socks5://host:port"
   }
  },
  {
@@ -1672,7 +1696,10 @@ module.exports = [
    "Changelog": "Changements",
    "Internet": "Internet",
    "Information": "Informations",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Proxy",
+   "Address": "Adresse",
+   "Use http://host:port or socks5://host:port": "Utilisez http://host:port ou socks5://host:port"
   }
  },
  {
@@ -1858,7 +1885,10 @@ module.exports = [
    "Changelog": "Changements",
    "Internet": "Internet",
    "Information": "Informations",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Proxy",
+   "Address": "Adresse",
+   "Use http://host:port or socks5://host:port": "Utilisez http://host:port ou socks5://host:port"
   }
  },
  {
@@ -2044,7 +2074,10 @@ module.exports = [
    "Changelog": "יומן שינויים",
    "Internet": "אינטרנט",
    "Information": "מידע",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "שרת proxy",
+   "Address": "כתובת",
+   "Use http://host:port or socks5://host:port": "יש להשתמש ב-http://host:port או socks5://host:port"
   }
  },
  {
@@ -2230,7 +2263,10 @@ module.exports = [
    "Changelog": "Változások",
    "Internet": "Internet",
    "Information": "Információ",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Proxy",
+   "Address": "Cím",
+   "Use http://host:port or socks5://host:port": "Használja a http://host:port vagy socks5://host:port formát"
   }
  },
  {
@@ -2416,7 +2452,10 @@ module.exports = [
    "Changelog": "Log perubahan",
    "Internet": "Internet",
    "Information": "Informasi",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Proxy",
+   "Address": "Alamat",
+   "Use http://host:port or socks5://host:port": "Gunakan http://host:port atau socks5://host:port"
   }
  },
  {
@@ -2602,7 +2641,10 @@ module.exports = [
    "Changelog": "Novità",
    "Internet": "Internet",
    "Information": "Informazioni",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Proxy",
+   "Address": "Indirizzo",
+   "Use http://host:port or socks5://host:port": "Usa http://host:port o socks5://host:port"
   }
  },
  {
@@ -2788,7 +2830,10 @@ module.exports = [
    "Changelog": "変更履歴",
    "Internet": "インターネット",
    "Information": "情報",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "プロキシ",
+   "Address": "アドレス",
+   "Use http://host:port or socks5://host:port": "http://host:port または socks5://host:port を使用"
   }
  },
  {
@@ -2974,7 +3019,10 @@ module.exports = [
    "Changelog": "변경 내역",
    "Internet": "인터넷",
    "Information": "정보",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "프록시",
+   "Address": "주소",
+   "Use http://host:port or socks5://host:port": "http://host:port 또는 socks5://host:port 사용"
   }
  },
  {
@@ -3160,7 +3208,10 @@ module.exports = [
    "Changelog": "Endringslogg",
    "Internet": "Internett",
    "Information": "Informasjon",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Proxy",
+   "Address": "Adresse",
+   "Use http://host:port or socks5://host:port": "Bruk http://host:port eller socks5://host:port"
   }
  },
  {
@@ -3348,7 +3399,10 @@ module.exports = [
    "Changelog": "Wijzigingen",
    "Internet": "Internet",
    "Information": "Informatie",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Proxy",
+   "Address": "Adres",
+   "Use http://host:port or socks5://host:port": "Gebruik http://host:port of socks5://host:port"
   }
  },
  {
@@ -3534,7 +3588,10 @@ module.exports = [
    "Changelog": "Lista zmian",
    "Internet": "Internet",
    "Information": "Informacje",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Proxy",
+   "Address": "Adres",
+   "Use http://host:port or socks5://host:port": "Użyj http://host:port lub socks5://host:port"
   }
  },
  {
@@ -3720,7 +3777,10 @@ module.exports = [
    "Changelog": "Novidades",
    "Internet": "Internet",
    "Information": "Informações",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Proxy",
+   "Address": "Endereço",
+   "Use http://host:port or socks5://host:port": "Use http://host:port ou socks5://host:port"
   }
  },
  {
@@ -3906,7 +3966,10 @@ module.exports = [
    "Changelog": "Novidades",
    "Internet": "Internet",
    "Information": "Informações",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Proxy",
+   "Address": "Endereço",
+   "Use http://host:port or socks5://host:port": "Utilize http://host:port ou socks5://host:port"
   }
  },
  {
@@ -4092,7 +4155,10 @@ module.exports = [
    "Changelog": "Modificări",
    "Internet": "Internet",
    "Information": "Informații",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Proxy",
+   "Address": "Adresă",
+   "Use http://host:port or socks5://host:port": "Folosiți http://host:port sau socks5://host:port"
   }
  },
  {
@@ -4278,7 +4344,10 @@ module.exports = [
    "Changelog": "Изменения",
    "Internet": "Интернет",
    "Information": "Информация",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Прокси",
+   "Address": "Адрес",
+   "Use http://host:port or socks5://host:port": "Используйте http://host:port или socks5://host:port"
   }
  },
  {
@@ -4464,7 +4533,10 @@ module.exports = [
    "Changelog": "Zoznam zmien",
    "Internet": "Internet",
    "Information": "Informácie",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Proxy",
+   "Address": "Adresa",
+   "Use http://host:port or socks5://host:port": "Použite http://host:port alebo socks5://host:port"
   }
  },
  {
@@ -4650,7 +4722,10 @@ module.exports = [
    "Changelog": "Spremembe",
    "Internet": "Internet",
    "Information": "Informacije",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Proxy",
+   "Address": "Naslov",
+   "Use http://host:port or socks5://host:port": "Uporabite http://host:port ali socks5://host:port"
   }
  },
  {
@@ -4836,7 +4911,10 @@ module.exports = [
    "Changelog": "Ändringslogg",
    "Internet": "Internet",
    "Information": "Information",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Proxy",
+   "Address": "Adress",
+   "Use http://host:port or socks5://host:port": "Använd http://host:port eller socks5://host:port"
   }
  },
  {
@@ -5022,7 +5100,10 @@ module.exports = [
    "Changelog": "บันทึกการเปลี่ยนแปลง",
    "Internet": "อินเทอร์เน็ต",
    "Information": "ข้อมูล",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "พร็อกซี",
+   "Address": "ที่อยู่",
+   "Use http://host:port or socks5://host:port": "ใช้ http://host:port หรือ socks5://host:port"
   }
  },
  {
@@ -5208,7 +5289,10 @@ module.exports = [
    "Changelog": "Değişiklikler",
    "Internet": "İnternet",
    "Information": "Bilgi",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Proxy",
+   "Address": "Adres",
+   "Use http://host:port or socks5://host:port": "http://host:port veya socks5://host:port kullanın"
   }
  },
  {
@@ -5394,7 +5478,10 @@ module.exports = [
    "Changelog": "Зміни",
    "Internet": "Інтернет",
    "Information": "Інформація",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Проксі",
+   "Address": "Адреса",
+   "Use http://host:port or socks5://host:port": "Використовуйте http://host:port або socks5://host:port"
   }
  },
  {
@@ -5580,7 +5667,10 @@ module.exports = [
    "Changelog": "Nhật ký thay đổi",
    "Internet": "Internet",
    "Information": "Thông tin",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "Proxy",
+   "Address": "Địa chỉ",
+   "Use http://host:port or socks5://host:port": "Dùng http://host:port hoặc socks5://host:port"
   }
  },
  {
@@ -5768,7 +5858,10 @@ module.exports = [
    "{0} tool": "{0} 个工具",
    "{0} tools": "{0} 个工具",
    "{0} update": "{0} 项更新",
-   "{0} updates": "{0} 项更新"
+   "{0} updates": "{0} 项更新",
+   "Proxy": "代理",
+   "Address": "地址",
+   "Use http://host:port or socks5://host:port": "请使用 http://host:port 或 socks5://host:port"
   }
  },
  {
@@ -5956,7 +6049,10 @@ module.exports = [
    "Changelog": "更新紀錄",
    "Internet": "網際網路",
    "Information": "資訊",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Proxy": "代理伺服器",
+   "Address": "位址",
+   "Use http://host:port or socks5://host:port": "請使用 http://host:port 或 socks5://host:port"
   }
  }
 ];

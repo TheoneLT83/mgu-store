@@ -182,6 +182,9 @@
   "{0} tool": "{0} 个工具",
   "{0} tools": "{0} 个工具",
   "{0} update": "{0} 项更新",
-  "{0} updates": "{0} 项更新"
+  "{0} updates": "{0} 项更新",
+  "Proxy": "代理",
+  "Address": "地址",
+  "Use http://host:port or socks5://host:port": "请使用 http://host:port 或 socks5://host:port"
  }
 }

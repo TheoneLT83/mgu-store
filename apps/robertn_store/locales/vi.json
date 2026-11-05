@@ -180,6 +180,9 @@
     "Changelog": "Nhật ký thay đổi",
     "Internet": "Internet",
     "Information": "Thông tin",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Proxy": "Proxy",
+    "Address": "Địa chỉ",
+    "Use http://host:port or socks5://host:port": "Dùng http://host:port hoặc socks5://host:port"
   }
 }

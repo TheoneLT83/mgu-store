@@ -180,6 +180,9 @@
     "Changelog": "سجل التغييرات",
     "Internet": "الإنترنت",
     "Information": "معلومات",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Proxy": "الوكيل",
+    "Address": "العنوان",
+    "Use http://host:port or socks5://host:port": "استخدم http://host:port أو socks5://host:port"
   }
 }

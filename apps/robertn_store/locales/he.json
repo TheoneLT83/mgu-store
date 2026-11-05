@@ -180,6 +180,9 @@
     "Changelog": "יומן שינויים",
     "Internet": "אינטרנט",
     "Information": "מידע",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Proxy": "שרת proxy",
+    "Address": "כתובת",
+    "Use http://host:port or socks5://host:port": "יש להשתמש ב-http://host:port או socks5://host:port"
   }
 }
