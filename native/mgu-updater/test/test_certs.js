@@ -128,7 +128,9 @@ const der = (name) => certs.pemCerts(pem(name))[0];
 function tampered(name) {
     const d = Buffer.from(der(name));
     d[d.length - 1] ^= 0x01;
-    const b64 = d.toString('base64').replace(/.{64}/g, '$&\n');
+    // 64 characters a line; no empty line before END when the length is a multiple of 64 (OpenSSL 1.0.2's PEM reader
+    // refuses one, so the certificate would not load at all, whatever its signature)
+    const b64 = d.toString('base64').match(/.{1,64}/g).join('\n');
     fs.writeFileSync(path.join(T, `${name}-bad.pem`), `-----BEGIN CERTIFICATE-----\n${b64}\n-----END CERTIFICATE-----\n`);
     fs.copyFileSync(path.join(T, `${name}.key`), path.join(T, `${name}-bad.key`));
 }
