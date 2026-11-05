@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.46
+
+robertnisipeanu/mgu-store's 0.9.22 with this repository's Store: **Update all** asks for the Store's own update last, so the Store stays open and shows the other updates until its own one closes it.
+
 ## 0.9.45
 
 - A confirm step has Cancel on the left and its action on the right, Cancel focused first: the controller turned right goes from Cancel to the action, as on the screen.
