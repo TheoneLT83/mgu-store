@@ -1,5 +1,20 @@
 # Deploy tool changelog
 
+## 0.8.2
+
+robertnisipeanu/mgu-store's 0.8.0 and 0.8.1 with this repository's deploy tool.
+
+- The deploy tool runs with umask 022 whatever its caller's, and so do the hooks, `postInstall` scripts and commands it runs. A hook that writes a stock binary with a mode keeps that mode's group and other bits, as when the updater runs it, under an SSH install's umask 077 too.
+- After each `activate`, `deactivate` and `postInstall`, `/usr/bin/carplay` and `/usr/bin/aapd` get any group or other read or execute bit they lack, `/etc/aapd.conf` any group or other read bit, and root:root when owned otherwise, with a warning; the rest of the mode stays. Only a regular file on `/`'s file system, reached through no symlink and covered by no mount, is touched. A `/usr/bin/carplay` left `0700` root stops `carplay.service` (`203/EXEC`) and recmgr restarts the head unit at every start. A hook whose fix fails (`/` not read-only after its rootfs window) fails like one that exits non-zero, its restart reason and files removed once unused recorded first; the install fails after a `postInstall`.
+- `mgu-install.js` unpacks and runs its kit on the unit (`first-install`, and the published deploy tool `uninstall` sends) under umask 022, in a folder root's alone by its mode.
+
+- `mgu-install.js uninstall` removes everything the Store setup put on the head unit, run like `first-install` (`install.sh`, `install.ps1`, the standalone executables, or the script). It lists the apps and tools the deploy tool installed, from any source, and the rest, asks `Remove all of it? [y/N]` (`--yes`: no question; without a terminal and `--yes`, nothing is removed, exit 2), removes it, and ends with one line saying what is left, if anything, and the restart question when a restart finishes the job. A deploy tool on the unit without `remove-all` hands the job to the published one (`--from <folder>`: a folder `usb-repo` wrote), which stays installed should the run not finish.
+- `remove-all [--json]` lists what the Store setup put on the unit; `remove-all --yes` removes it: the apps the deploy tool installed, the tools (a tool another requires after it), the provisioning fallback, app-privacy with its patch reverted, the deploy tool's boot units and recmgr entries, any limits drop-in and crash handler name it still owns, its files in the app manager's folder, the updater's sources and tokens, then `/var/opt/mgu-deploy`. The restart lists are edited as they are on the unit; no backup is restored. iDrive 7: the app manager is restarted once at the end, under the usual rules. A failed step is rolled back and named; app-privacy and the fallback stay while one of our apps does, the deploy tool while anything does, so running it again finishes. iDrive 8: removals MainApp-21 does not take in place go at the next start, after which `apply-pending` removes its boot unit and the deploy tool. Apps and the renderer IterioDev's App Manager installed or the deploy tool adopted from it stay. An install drops a self-removal still waiting for the next start.
+- Every snapshot records the firmware it was taken on (`firmware` in `manifest.json`). `restore` is refused (exit 2, nothing changed) when it would write a file outside `/var/opt` from a snapshot of other firmware, or from one without the record: after a firmware update the stock snapshot holds the firmware before's restart lists and units.
+- iDrive 8: `uninstall app-privacy` goes through while our only apps left are queued for removal at the next start, which removes them before MainApp-21 starts.
+- `mgu-install.js first-install` says `Setup is done` on iDrive 8 only when `status` reports the Store's tile and those of the other apps `custom_apps.json` lists as shown; otherwise it ends with `Restart the head unit to finish setup.` and the restart question, or, when the fallback is off because the copy does not fit, `The Store's tile cannot show:` and the reason. A deploy tool's status without `fallback.listed_by_manager` counts as shown.
+
+
 ## 0.7.20
 
 robertnisipeanu/mgu-store's 0.7.18 with this repository's deploy tool.

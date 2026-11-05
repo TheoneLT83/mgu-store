@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.49
+
+robertnisipeanu/mgu-store's 0.9.24 with this repository's Store.
+
+While wireless CarPlay or Android Auto keeps the uplink from searching for
+its Wi-Fi networks by itself (mgu-uplink 0.7.5), Settings' Wi-Fi row and
+the Wi-Fi page say `Paused for wireless CarPlay` (or Android Auto). Scan
+and the networks work as before.
+
+While Wi-Fi is joined and the uplink reads the access point's frequency
+(mgu-uplink 0.7.5's `wifi.freq`), Settings' Wi-Fi row and the joined
+network's row on the Wi-Fi page add its band: `Online · <network> ·
+5 GHz`, `· 2.4 GHz`. Without it they are as before.
+
 ## 0.9.48
 
 robertnisipeanu/mgu-store's 0.9.23 with this repository's Store: Settings has **Proxy** (Off, or the proxy's address) beside Wi-Fi and
