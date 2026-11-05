@@ -1,5 +1,9 @@
 # Updater changelog
 
+## 0.8.29
+
+- A check asked for while one runs (the Store's Check now during an automatic check) runs once more after it, so it reads what changed meanwhile; the running check alone answered it before.
+
 ## 0.8.28
 
 robertnisipeanu/mgu-store's 0.8.27 with this repository's sources.
