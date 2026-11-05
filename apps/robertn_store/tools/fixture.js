@@ -157,6 +157,7 @@ function screens() {
         ['internet', { tab: 'settings', stack: main.concat([{ name: 'internet' }]) }],
         ['internet-offline', { tab: 'settings', stack: main.concat([{ name: 'internet' }]) }, { online: false }],
         ['store-no-internet', { tab: 'store', stack: main }, { online: false, busy: null }],
+        ['installed-offline', { tab: 'installed', stack: main }, { online: false, busy: null }],
         // an error of about 200 characters: on a component's page, a source's page
         ['app-failed', { stack: main.concat([{ name: 'app', id: 'vehicle_control' }]) }, failedSt(st, 'vehicle_control', { error: LONG_ERROR })],
         ['source-failed', { tab: 'settings', stack: main.concat([{ name: 'source', id: 'car-apps' }]) }, sourceFailed(st)]

@@ -53,6 +53,9 @@ st['components'].insert(i + 1, comp('also', 'vbutton', 1150, 466, 1190, 80, {'te
 screens.append(st)
 # installed: his, tools for system services
 st = copy.deepcopy(S['installed']); get(st, 'svcLabel')['opts']['text'] = 'HEAD-UNIT TOOLS'
+# the online state as on Store, after the title
+st['components'].insert(st['components'].index(get(st, 'title')) + 1,
+    comp('online', 'chips', 800, 140, 360, 80, {'items': '', 'align': 'left', 'after': 'title'}))
 restart_now(st, 'appsLabel', 2300, 140, 100, {'updateAll': [-564, 0], 'subtitle': [0, -70]}); screens.append(st)
 st = copy.deepcopy(S['usb']); get(st, 'title')['opts']['text'] = 'USB'; screens.append(st)
 # settings: sources on the left, access and the head unit on the right

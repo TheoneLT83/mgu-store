@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.47
+
+- Installed shows Online, Offline or Checking after its title, before the app and tool counts, as Store does, in either look.
+- A tap that starts the Store opens it: when the HMI still refuses the Store's screen right after starting it (INVALID_UUID / INVALID_COMPONENTID), the Store asks again, 0.8 s apart, up to 6 times, instead of needing a second tap.
+
 ## 0.9.46
 
 robertnisipeanu/mgu-store's 0.9.22 with this repository's Store: **Update all** asks for the Store's own update last, so the Store stays open and shows the other updates until its own one closes it.

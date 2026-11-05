@@ -631,6 +631,20 @@ const SCREENS = {
      }
     },
     {
+     "name": "online",
+     "rtype": "gpu",
+     "gpu": "chips",
+     "x": 800,
+     "y": 140,
+     "w": 360,
+     "h": 80,
+     "opts": {
+      "items": "",
+      "align": "left",
+      "after": "title"
+     }
+    },
+    {
      "name": "subtitle",
      "rtype": "gpu",
      "gpu": "text",

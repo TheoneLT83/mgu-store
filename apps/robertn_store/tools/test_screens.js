@@ -11,7 +11,7 @@
  */
 const assert = require('assert');
 const path = require('path');
-const { frame, hit, placement } = require(path.join(__dirname, '..', 'src', 'store_frame.js'));
+const { frame, layoutOf, hit, placement } = require(path.join(__dirname, '..', 'src', 'store_frame.js'));
 const SCREENS = require(path.join(__dirname, '..', 'src', 'am_screens.js'));
 const fixture = require('./fixture.js');
 const { view } = require(path.join(__dirname, '..', 'src', 'store_ui.js'));
@@ -420,6 +420,21 @@ const idle = { busy: null, components: fixture.state().components.map((c) => Obj
 ok(screen('settings', {}, idle).labels.indexOf('Restart head unit') >= 0, 'Restart head unit with nothing installing');
 const refused = Object.assign({}, idle, { rebootError: 'too soon after start-up, possible in 3 min' });
 eq(text(screen('settings', {}, refused), 'note'), 'Restart failed: too soon after start-up, possible in 3 min', 'a refused restart beside Restart head unit');
+
+// Installed: the online state as on Store, after the title and before the counts, in every box and look
+const main = [{ name: 'main' }];
+eq([screen('installed'), screen('store-no-internet', { tab: 'installed', stack: main }), screen('offline', { tab: 'installed', stack: main })]
+    .map((g) => (g.values.online.items[0] || {}).text), ['Online', 'Offline', undefined], 'Installed: Online, Offline, nothing without the updater');
+Object.keys(UNITS).forEach((unit) => ['id7', 'id8'].forEach((look) => ['installed', 'installed-restart'].forEach((n) => {
+    const s = fixture.screens().find((x) => x[0] === n);
+    const m = Object.assign(fixture.model(s[1], s[2] ? Object.assign(fixture.state(), s[2]) : undefined), { look });
+    const p = UNITS[unit];
+    const c = (name) => layoutOf(m, { textScale: p.scale, scroll: {}, layout: p.layout }).st.components.find((o) => o.name === name);
+    const [title, online, sub] = [c('title'), c('online'), c('subtitle')];
+    // the iDrive 8 design has the counts under the title
+    ok((title.opts.hidden || online.x > title.x) && (sub.y > online.y + online.h || sub.x >= online.x + online.w),
+        `${unit} ${n} (${look} look): the online state after the title, the counts after it`);
+})));
 
 // Restart now on Store and Installed: while a restart is pending and Restart head unit is offered, it opens that one's
 // confirm step; on Installed it sits right of Update all, as wide and as high

@@ -394,7 +394,7 @@ class Store extends OnlineApp {
                 }
                 const lastUuid = this.getLastExecutedEntryPointUuid &&
                     this.getLastExecutedEntryPointUuid();
-                return lastUuid ? this._onEntryPointExecute(lastUuid) : undefined;
+                return lastUuid ? this._onEntryPointExecute(lastUuid, foregroundStart ? 6 : 1) : undefined;
             });
     }
 
@@ -1414,14 +1414,26 @@ class Store extends OnlineApp {
             .then(() => logger.info(`entry point ${description.name} ENABLED`));
     }
 
-    _onEntryPointExecute(uuid) {
+    /* tries: right after the tap that started the Store the HMI can still
+     * refuse its entry state (INVALID_UUID / INVALID_COMPONENTID); it is
+     * asked again, 0.8 s apart, instead of needing a second tap. */
+    _onEntryPointExecute(uuid, tries) {
         if (this._shutdownPromise || !this.rhmiApplication || !uuid) {
             return Promise.resolve();
         }
         this._sawForeground = true;
         this._setVisible(true);
         return Promise.resolve(this.rhmiApplication.openEntryState(uuid))
-            .catch((err) => logger.warn(`openEntryState failed: ${err && err.message}`));
+            .catch((err) => {
+                let why = String(err && err.message ? err.message : err);
+                try { why += ` ${JSON.stringify(err || {})}`; } catch (e) { /* its message alone */ }
+                if ((tries || 1) > 1 && /INVALID/.test(why)) {
+                    logger.info(`openEntryState refused (${err && err.message}); again in 0.8 s`);
+                    setTimeout(() => this._onEntryPointExecute(uuid, tries - 1), 800);
+                } else {
+                    logger.warn(`openEntryState failed: ${err && err.message}`);
+                }
+            });
     }
 
     /* ---- rendering ---- */

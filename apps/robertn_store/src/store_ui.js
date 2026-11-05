@@ -208,6 +208,13 @@ const button = (text, act, extra) => Object.assign({ hidden: false, disabled: fa
 
 /* ---- the tabs ---- */
 
+/* Store's and Installed's online state: Online, Offline, or Checking while the updater checks its sources. */
+function onlineChip(m) {
+    const checking = !!(m.connected && m.st && m.st.catalog && m.st.catalog.checking);
+    return { items: !m.connected ? [] : checking ? [{ text: tr("Checking"), color: BLUE, dot: true }]
+        : m.st && m.st.online ? [{ text: tr("Online"), color: GREEN, dot: true }] : [{ text: tr("Offline"), color: AMBER, dot: true }] };
+}
+
 function storeView(m) {
     const busy = busyOf(m);
     const busyRow = busy && find(comps(m), busy.id);
@@ -225,8 +232,7 @@ function storeView(m) {
             : m.connected && !checking && !online ? { text: tr("No internet: Settings > Internet shows how to connect the car"), color: AMBER }
                 : { text: m.connected ? statusLine(st, true) : statusLine(null, false, m.secret), color: DIM },
         filter: { sel: Math.max(0, FILTERS.indexOf(m.filter)), acts: FILTERS.map((f) => ({ do: 'filter', filter: f })) },
-        online: { items: !m.connected ? [] : checking ? [{ text: tr("Checking"), color: BLUE, dot: true }]
-            : online ? [{ text: tr("Online"), color: GREEN, dot: true }] : [{ text: tr("Offline"), color: AMBER, dot: true }] },
+        online: onlineChip(m),
         restartNow: restartNow(m),
         grid: { items: list.map((c) => tile(m, c, busy, name)), empty: m.connected ? tr("Nothing here") : '' }
     };
@@ -255,6 +261,7 @@ function installedView(m) {
     };
     return {
         title: { text: tr("Installed") },
+        online: onlineChip(m),
         subtitle: { text: `${plural(apps.length, 'app')} · ${plural(tools.length, 'tool')}` },
         // updates: install them all; none: look for new ones (the updater's check, as Settings' Check now)
         updateAll: updates.length ? button(tr("Install all updates ({0})", updates.length), { do: 'update-all' }, { vicon: 'arrowDown', style: 'primary', color: BLUE })

@@ -171,8 +171,9 @@ function translated(opts) {
 
 /* The screen object am_gpu.js draws: the layout's components with the
  * values over their own options (a layout's own SIZES kept) and the kept
- * scroll. A text with opts.after starts at least AFTER_GAP right of the
- * end of that one's text. A shown component with opts.shift ({ name: [dx,
+ * scroll. A component with opts.after starts at least AFTER_GAP right of
+ * the end of that shown one's text, or of its box when it is chips (where
+ * it starts while they have none). A shown component with opts.shift ({ name: [dx,
  * dw] }) moves those components right by dx and widens them by dw. */
 function screenOf(v, scroll, layout) {
     const def = (layout || SCREENS).screens.find((s) => s.name === v.screen);
@@ -189,19 +190,22 @@ function screenOf(v, scroll, layout) {
     const shift = Object.assign({}, ...components.filter((c) => c.opts.shift && !c.opts.hidden).map((c) => c.opts.shift));
     const placed = components.map((c) => (!shift[c.name] ? c
         : Object.assign({}, c, { x: c.x + shift[c.name][0], w: c.w + shift[c.name][1] })));
+    const out = [];
+    placed.forEach((c0) => {
+        let c = c0;
+        // over: an element whose box this one takes over too, down to its bottom (a failure's description over the history)
+        const under = c.opts.over && placed.find((o) => o.name === c.opts.over);
+        if (under && under.y + under.h > c.y + c.h) {
+            c = Object.assign({}, c, { h: under.y + under.h - c.y });
+        }
+        // after a shown text: the end of its text; after shown chips: the end of their box (none: where they start)
+        const a = c.opts.after && (out.find((o) => o.name === c.opts.after) || placed.find((o) => o.name === c.opts.after));
+        const end = !a || a.opts.hidden ? 0 : a.opts.text ? a.x + measure.textWidth(a.opts.text, a.opts.size, { font: a.opts.font }) + AFTER_GAP
+            : Array.isArray(a.opts.items) ? (a.opts.items.length ? a.x + a.w + AFTER_GAP : a.x) : 0;
+        out.push(end > c.x ? Object.assign({}, c, { x: Math.round(end), w: Math.max(0, c.w - Math.round(end - c.x)) }) : c);
+    });
     // head: the full-screen layout's title strip, filled only as far as the header (am_gpu.js record)
-    return { kind: 'gpu', name: def.name, theme: v.look === 'id7' ? 'idrive7' : def.theme, bg: 'theme', head: def.head,
-        components: placed.map((c0) => {
-            let c = c0;
-            // over: an element whose box this one takes over too, down to its bottom (a failure's description over the history)
-            const under = c.opts.over && placed.find((o) => o.name === c.opts.over);
-            if (under && under.y + under.h > c.y + c.h) {
-                c = Object.assign({}, c, { h: under.y + under.h - c.y });
-            }
-            const a = c.opts.after && placed.find((o) => o.name === c.opts.after);
-            const end = a && a.opts.text ? a.x + measure.textWidth(a.opts.text, a.opts.size, { font: a.opts.font }) + AFTER_GAP : 0;
-            return end > c.x ? Object.assign({}, c, { x: Math.round(end), w: Math.max(0, c.w - Math.round(end - c.x)) }) : c;
-        }) };
+    return { kind: 'gpu', name: def.name, theme: v.look === 'id7' ? 'idrive7' : def.theme, bg: 'theme', head: def.head, components: out };
 }
 
 /* record()'s options for a layout (null: the iDrive 8 design). */
