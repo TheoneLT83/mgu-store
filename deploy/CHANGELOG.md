@@ -1,5 +1,10 @@
 # Deploy tool changelog
 
+## 0.7.19
+
+- iDrive 7: the fallback copy of the app manager keeps the registry entry of an app whose init failed at the manager's start, when its folder holds that app's package. MainApp deleted such an entry, kept the folder, and installed the app afresh under a new uid, so each such start used up about ten uids of a range of 248. The app is tried again after 10, 30 and 60 s, takes no fresh install while it waits, and loads from its entry at the next start. Each failure is recorded in `oap_12201/data/mgu-deploy-init-failures.json`, with its error.
+- `clean-strays` removes a home left under an old uid and clears that uid's quota, which frees it. It also runs before an app install and at the check after a tool's update. It takes only a home in the manager's range that no registry entry or `uids.txt` line names, under which no process runs, and which holds the package of an app registered under another uid. `status` lists them as `stray_homes`.
+
 ## 0.7.18
 
 robertnisipeanu/mgu-store's 0.7.16 and 0.7.17 with this repository's deploy tool.
