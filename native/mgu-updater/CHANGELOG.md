@@ -1,5 +1,12 @@
 # Updater changelog
 
+## 0.8.27
+
+robertnisipeanu/mgu-store's 0.8.26 with this repository's sources.
+
+- The Store's own install runs after every other queued request, the updater's own update and what waits for it included: it closes the Store, which shows the rest of the queue until then.
+- The service runs at `Nice=10` (from the next start of the head unit), so downloads, builds and installs give way to the HMI.
+
 ## 0.8.26
 
 robertnisipeanu/mgu-store's 0.8.23 to 0.8.25 with this repository's sources. The updater requires mgu-deploy 0.7.18.

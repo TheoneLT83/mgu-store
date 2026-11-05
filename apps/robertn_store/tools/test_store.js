@@ -1239,6 +1239,14 @@ function runDrawn() {
         eq([states, drawn.top().name, drawn.items.map((i) => i.label).indexOf('Restart head unit') >= 0], [[], 'app', true],
             'none for an app queued for the next start; its page offers Restart head unit');
         drawn.pop();
+        // Update all: the Store's own update asked for last
+        app._client.emit('state', Object.assign({}, st, { components: [
+            comp({ id: 'robertn_store', title: 'Store', installed: '0.9.0', status: 'update', uninstallable: false }),
+            comp({ installed: '1.0.0', status: 'update' }),
+            comp({ id: 'mgu-render', kind: 'tool', title: 'Renderer', installed: '0.1.0', version: '0.1.1', status: 'update' })] }));
+        reset();
+        app._act({ do: 'update-all' });
+        eq(sent.map((r) => r.id), ['doom', 'mgu-render', 'robertn_store'], 'Update all asks for the Store\'s own update last');
         // Undo update: on the page of a component the updater offers it for, after its confirm step
         app._client.emit('state', Object.assign({}, st, { components: st.components.map((c) => (c.id === 'doom' ?
             Object.assign({}, c, { installed: '1.0.1', status: 'installed', previous: '1.0.0', pendingReboot: false, nextStart: null }) : c)) }));
