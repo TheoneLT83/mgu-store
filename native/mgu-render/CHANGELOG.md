@@ -1,5 +1,9 @@
 # mgu-render changelog
 
+## 0.6.17
+
+- 0.6.16's source built again: the binary built for 0.6.16 was published from an earlier build, and a release publishes no other content under a published version.
+
 ## 0.6.16
 
 - robertnisipeanu/mgu-store's 0.6.11 with this repository's renderer:
