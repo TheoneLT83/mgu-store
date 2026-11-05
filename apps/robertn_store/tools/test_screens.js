@@ -306,9 +306,17 @@ Object.keys(UNITS).forEach((unit) => {
     ok(e.texts.indexOf(LONG) >= 0, `${unit}: the source's error in full (${e.texts})`);
 });
 
-// confirm steps: Cancel first
+// confirm steps: Cancel first, and on its left, so the controller turned right goes from Cancel to the action
 f = screen('confirm-remove');
 eq(f.labels, ['Cancel', 'Remove']);
+Object.keys(UNITS).forEach((unit) => {
+    const p = UNITS[unit];
+    const s = fixture.screens().find((x) => x[0] === 'confirm-remove');
+    const g = frame(fixture.model(s[1], Object.assign(fixture.state(), s[2] || {})), { textScale: p.scale, focus: 0, scroll: {}, layout: p.layout });
+    const [cancel, act] = ['Cancel', 'Remove'].map((l) => g.items.find((it) => it.label === l));
+    ok(cancel.x + cancel.w <= act.x && Math.abs(cancel.y - act.y) < 4, `${unit} confirm: Cancel left of Remove, on one row (${cancel.x}, ${act.x})`);
+    eq(g.items.indexOf(cancel), 0, `${unit} confirm: Cancel focused first`);
+});
 eq(text(f, 'title'), 'Remove Gauges 1.2.0?');
 // an app with tools only it requires: they are listed, and Remove all takes the installed ones along
 f = screen('confirm-remove-tools');

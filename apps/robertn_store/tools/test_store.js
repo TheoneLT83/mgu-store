@@ -1619,6 +1619,28 @@ function runDrawn() {
             ccu(101, 'DREHGEBER_KURZ_GEDRUECKT', 2);
             eq(states.filter((x) => x.indexOf('open') === 0).length, 2, 'a new sequence number while pushed is a new push');
             ccu(101);
+            // a push held a moment: short, then long with a new sequence number - one press; the page it opened is not pressed
+            drawn.pop();
+            drawn.focus = 7;
+            reset();
+            const acted = [];
+            const act = app._drawn.host.act;
+            app._drawn.host.act = (a) => { acted.push(a); return act.call(app._drawn.host, a); };
+            ccu(101, 'DREHGEBER_KURZ_GEDRUECKT', 3);
+            ccu(101, 'DREHGEBER_LANG_GEDRUECKT', 4);
+            eq([acted.length, drawn.top().name], [1, 'app'], 'short then long: one press, nothing pressed on the page it opened');
+            ccu(101);
+            // the same push delivered again right after the page opened presses nothing on it
+            ccu(101, 'DREHGEBER_KURZ_GEDRUECKT', 5);
+            eq(acted.length, 1, 'a push just after the page opened: nothing');
+            ccu(101);
+            drawn.pageAt -= 1000;
+            app._drawn.host.act = (a) => { acted.push(a); };
+            ccu(101, 'DREHGEBER_KURZ_GEDRUECKT', 6);
+            app._drawn.host.act = act;
+            eq(acted.slice(1), [drawn.items[drawn.focus].act], 'a push on the page a moment later presses its button');
+            ccu(101);
+            while (drawn.stack.length > 1) drawn.pop();
             drawn.pop();
             drawn.focus = 5;
             drawn.controller = true;

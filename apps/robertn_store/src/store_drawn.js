@@ -53,8 +53,11 @@ const STATS_OUT = '/dev/shm/robertn_store-stats.log';   // where they go (an OAP
 const STATS_OUT_MAX = 1024 * 1024;              // bytes kept; past it the file starts again
 const TRACE_OUT = '/dev/shm/robertn_store-trace.log';   // the per-frame trace beside mgu-render's (tools/car-test/trace.js)
 const TRACE_MAX = 8 * 1024 * 1024;
-// FrontCCU frontRotaryEncoderPushButton pushed (short, long): by name or ordinal
+// FrontCCU frontRotaryEncoderPushButton pushed (short, long): by name or ordinal; long is the same push held on
 const PUSHED = ['DREHGEBER_KURZ_GEDRUECKT', 'DREHGEBER_LANG_GEDRUECKT', 1, 2];
+const LONG = ['DREHGEBER_LANG_GEDRUECKT', 2];
+// a push this soon after a page opened is the one that opened it, delivered again: it presses nothing there
+const PUSH_GUARD_MS = 350;
 const RELEASED = ['KEINE_BETAETIGUNG', 0];
 const DIAL_MAX_STEP = 24;
 // the controller pushed (FrontCCU deflection, short or long; by name or number): N up, E right, S down, W left
@@ -945,7 +948,8 @@ class Drawn extends EventEmitter {
      * buttons itself (the emulator's HMI routes them neither focus nor
      * presses). An invalid counter keeps the last valid
      * one; a push value other than pushed or released keeps the last state;
-     * a new sequence number while pushed is a new push. */
+     * a new sequence number while pushed is a new push, but not the same push
+     * turning from short to long (held a moment: one press, not two). */
     frontCcu(s) {
         const last = this.fccu;
         const op = s && s.frontRotaryEncoderOperation;
@@ -954,12 +958,14 @@ class Drawn extends EventEmitter {
         this.fccu = {
             knob: typeof op === 'number' && op !== 0xffff ? op : (last ? last.knob : 0xffff),
             press: PUSHED.indexOf(push) >= 0 ? true : RELEASED.indexOf(push) >= 0 ? false : !!(last && last.press),
+            long: PUSHED.indexOf(push) >= 0 ? LONG.indexOf(push) >= 0 : !!(last && last.long),
             seq: PUSHED.indexOf(push) >= 0 ? seq : last && last.seq,
             tilt: s && s.frontRotaryEncoderDeflection
         };
         if (last && this.mode === 'embed' && !this.controller && !this.embedProxies && !this.focusLost) {
+            const longer = last.press && !last.long && this.fccu.long;
             this._dial(last.knob, this.fccu.knob, PUSHED.indexOf(push) >= 0 &&
-                (!last.press || (seq !== undefined && seq !== last.seq)));
+                (!last.press || (seq !== undefined && seq !== last.seq && !longer)));
             if (TILT[this.fccu.tilt] && TILT[this.fccu.tilt] !== TILT[last.tilt]) {
                 this._tilt(TILT[this.fccu.tilt]);
             }
@@ -1036,9 +1042,16 @@ class Drawn extends EventEmitter {
             this.focus = Math.max(0, Math.min(this.items.length - 1, (this.focus < 0 ? 0 : this.focus + steps)));
             this.render();
         }
-        if (pushed && this.items[this.focus]) {
+        if (pushed && this.items[this.focus] && !this._justOpened()) {
             this.host.act(this.items[this.focus].act);
         }
+    }
+
+    /* Whether a page other than the top one opened under PUSH_GUARD_MS ago: the controller's push that
+     * opened it can come again (a push held, a sample repeated), and must not press the new page's
+     * first button (its Restart head unit, Update or Remove). */
+    _justOpened() {
+        return this.stack.length > 1 && msNow() - this.pageAt < PUSH_GUARD_MS;
     }
 }
 

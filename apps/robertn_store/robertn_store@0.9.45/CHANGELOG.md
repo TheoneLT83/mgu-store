@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.45
+
+- A confirm step has Cancel on the left and its action on the right, Cancel focused first: the controller turned right goes from Cancel to the action, as on the screen.
+- A controller push held a moment (short, then long) presses once: it no longer presses the first button of the page it opened as well (an app waiting for a restart: its Restart head unit, which opened the restart step by itself). A push within 350 ms of a page opening presses nothing on it.
+
 ## 0.9.44
 
 robertnisipeanu/mgu-store's 0.9.19 to 0.9.21 with this repository's Store:

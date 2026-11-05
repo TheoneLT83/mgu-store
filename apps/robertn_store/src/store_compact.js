@@ -178,8 +178,9 @@ function compact(W, H0, look, opts) {
         text('title', sx + 176, sy + 44, SW - 216, 50, '', 41, 'bold'),
         text('text', sx + 176, sy + 100, SW - 216, 66, '', 26, 'label', DIM, { wrap: true }),
         button('also', sx + 176, sy + 176, SW - 216, 76, '', 'outline', 28, { vicon: 'trash', hidden: true }),
-        button('now', sx + 40, sy + SH - 126, BW, 90, '', 'primary', 31, { color: BLUE }),
-        button('later', sx + 60 + BW, sy + SH - 126, BW, 90, 'Cancel', 'outline', 31),
+        // Cancel on the left, the action on the right: the controller turned right goes from Cancel (focused first) to it
+        button('later', sx + 40, sy + SH - 126, BW, 90, 'Cancel', 'outline', 31),
+        button('now', sx + 60 + BW, sy + SH - 126, BW, 90, '', 'primary', 31, { color: BLUE }),
         text('note', sx + 40, sy + SH - 30, SW - 80, 24, '', 21, 'label', DIM, { align: 'center' })
     ]);
 

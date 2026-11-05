@@ -43,6 +43,8 @@ st['components'].insert(st['components'].index(get(st, 'desc')) + 1,
 st['components'].append(text('problem', 480, 730, 1560, 90, '', 36, 'label', '#ffb020', wrap=True)); screens.append(st)
 # confirm: his restart sheet, for every confirm step, its line wrapped over two; under it Remove all, shown while an app's removal may take tools along
 st = copy.deepcopy(S['restart']); st['name'] = 'confirm'
+# Cancel on the left, the action on the right: the controller turned right goes from Cancel (focused first) to it
+get(st, 'now')['x'], get(st, 'later')['x'] = get(st, 'later')['x'], get(st, 'now')['x']
 get(st, 'title')['y'] = 290
 get(st, 'text').update({'y': 362, 'h': 90}); get(st, 'text')['opts']['wrap'] = True
 i = next(k for k, c in enumerate(st['components']) if c['name'] == 'text')
