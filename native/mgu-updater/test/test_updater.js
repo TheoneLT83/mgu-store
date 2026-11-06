@@ -1477,7 +1477,7 @@ function testFileLog() {
     console.log = () => {};
     console.error = () => {};
     logToFile(path.join(dir, 'tmp.log'), kept);
-    console.log('robertn_store@0.9.52: 0.9.51 did not start');
+    console.log('trial_app@2.0.1: 2.0.1 did not start');
     for (let i = 0; i < 80; i += 1) {
         console.log('y'.repeat(1024));
     }
@@ -1486,8 +1486,10 @@ function testFileLog() {
     const keptLog = path.join(kept, 'updater.log');
     ok('log: kept in state_dir too, the Store trial\'s reason line in it, past 64 KiB renamed to updater.log.1',
         fs.existsSync(keptLog) && /Z after\n$/.test(fs.readFileSync(keptLog, 'utf8')) &&
-        /robertn_store@0\.9\.51: 0\.9\.51 did not start/.test(fs.readFileSync(`${keptLog}.1`, 'utf8')) &&
-        /Z after\n$/.test(fs.readFileSync(path.join(dir, 'tmp.log'), 'utf8')), fs.readdirSync(kept).join());
+        /trial_app@2\.0\.1: 2\.0\.1 did not start/.test(fs.readFileSync(`${keptLog}.1`, 'utf8')) &&
+        /Z after\n$/.test(fs.readFileSync(path.join(dir, 'tmp.log'), 'utf8')),
+    JSON.stringify([fs.readdirSync(kept), fs.readFileSync(keptLog, 'utf8').slice(-40), fs.readFileSync(`${keptLog}.1`, 'utf8').slice(0, 80),
+        fs.readFileSync(path.join(dir, 'tmp.log'), 'utf8').slice(-40)]));
 }
 
 function testDaemon(certs, pubDir) {
