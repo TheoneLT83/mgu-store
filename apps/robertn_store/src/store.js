@@ -721,6 +721,9 @@ class Store extends OnlineApp {
             break;
         }
         case 'open':
+            // from the menu (Wi-Fi): over the tab shown, once
+            if (act.root && this._drawn.top().name === act.page.name) break;
+            if (act.root) this._drawn.setTab(this._drawn.tab);
             if (act.page.name === 'source') {
                 this._sourceId = act.page.id;
                 this._removingSource = null;
@@ -734,11 +737,7 @@ class Store extends OnlineApp {
             } else if (act.page.name === 'proxy') {
                 this._proxyNote = null;
             } else if (act.page.name === 'wifi') {
-                const w = wifiOf({ connected: this._connected, st: this._st });
-                this._uplinkNote = null;
-                if (w && w.enabled && !w.scanning) {
-                    this._uplink({ op: 'wifi-scan' });
-                }
+                this._wifiOpened();
             }
             if (act.page.name === 'app' || (act.page.name === 'changelog' && !(this._history && this._history.id === act.page.id))) {
                 // the component's update history, asked for each time its page opens
@@ -819,6 +818,15 @@ class Store extends OnlineApp {
 
     /* A request for the uplink, which the updater relays; its refusal shows
      * on the Wi-Fi and preferred-connection pages. */
+    /* The Wi-Fi page opened (its tab, or a link to it): its note cleared, a scan asked while Wi-Fi is on. */
+    _wifiOpened() {
+        const w = wifiOf({ connected: this._connected, st: this._st });
+        this._uplinkNote = null;
+        if (w && w.enabled && !w.scanning) {
+            this._uplink({ op: 'wifi-scan' });
+        }
+    }
+
     _uplink(req) {
         this._uplinkNote = null;
         if (!this._privileged(req)) {

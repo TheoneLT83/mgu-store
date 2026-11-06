@@ -20,7 +20,7 @@ def comp(name, gpu, x, y, w, h, opts, onTap=None):
 def get(st, n): return next(c for c in st['components'] if c['name'] == n)
 def drop(st, *names): st['components'] = [c for c in st['components'] if c['name'] not in names]
 NAV = copy.deepcopy(get(S['store'], 'nav'))
-NAV['opts']['items'] = 'Store, grid\nInstalled, check\nUSB, usb\nSettings, gear'
+NAV['opts']['items'] = 'Store, grid\nInstalled, check\nWi-Fi, wifi\nSettings, gear'
 def base(name):
     return {'kind': 'gpu', 'name': name, 'theme': S['store']['theme'], 'bg': S['store']['bg'], 'components': [copy.deepcopy(NAV)]}
 def text(name, x, y, w, h, t, size, font='label', color='text', align='left', wrap=False):
@@ -62,7 +62,10 @@ st = copy.deepcopy(S['installed']); get(st, 'svcLabel')['opts']['text'] = 'HEAD-
 st['components'].insert(st['components'].index(get(st, 'title')) + 1,
     comp('online', 'chips', 800, 140, 360, 80, {'items': '', 'align': 'left', 'after': 'title'}))
 restart_now(st, 'appsLabel', 2300, 140, 100, {'updateAll': [-564, 0], 'subtitle': [0, -70]}); screens.append(st)
-st = copy.deepcopy(S['usb']); get(st, 'title')['opts']['text'] = 'USB'; screens.append(st)
+# usb: his, a page of Settings' Access, with a back button
+st = copy.deepcopy(S['usb']); get(st, 'title')['opts']['text'] = 'USB'
+get(st, 'title')['x'] = 610; get(st, 'subtitle')['x'] = 610
+st['components'].insert(1, copy.deepcopy(BACK)); screens.append(st)
 # settings: sources on the left, access and the head unit on the right
 st = copy.deepcopy(S['settings'])
 get(st, 'reposLabel')['opts']['text'] = 'SOURCES'
@@ -70,7 +73,7 @@ get(st, 'addRepo')['opts']['text'] = 'Add source'
 get(st, 'connLabel')['opts']['text'] = 'ACCESS'
 drop(st, 'tetherIcon', 'tetherName', 'tetherState', 'tether', 'checkNow', 'lastCheck', 'versions', 'subtitle')
 st['components'] += [
-    comp('access', 'appList', 1880, 412, 920, 260, {'items': [], 'rowH': 120}),
+    comp('access', 'appList', 1880, 412, 920, 260, {'items': [], 'rowH': 120, 'scrollbar': True}),
     text('unit', 1880, 668, 920, 40, '', 32, 'bold'),
     text('versions', 1880, 714, 920, 38, '', 28, 'label', 'dim'),
     comp('checkNow', 'vbutton', 1880, 764, 440, 56, {'text': 'Check now', 'vicon': 'refresh', 'style': 'outline', 'size': 26}, 'event:checkNow'),

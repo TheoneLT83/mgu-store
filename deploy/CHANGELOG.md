@@ -1,5 +1,17 @@
 # Deploy tool changelog
 
+## 0.8.4
+
+- An app rollback (`rollback <app>`, the updater's Undo update and failed Store trial) records the version it goes to,
+  its kept package and that package's sha256 in `state.json` (`reinstall`) before its uninstall, and the app's data
+  folder it sets aside (`data_stash`) as soon as it is set aside. A rollback cut short between its uninstall and its
+  install (the head unit going to standby kills the run, no handler runs) leaves the app lost at that version in
+  `status --json` `lost_apps` once its run is gone (another boot, or its process dead), when the package is still as
+  recorded; the updater's install of it at the next start finishes the rollback, the data carried over. A package
+  changed since is not offered, said on stderr.
+- The Store is never left removed while a package of it is kept (a removal on purpose drops them): unregistered, it
+  is in `lost_apps` at its recorded version's kept package, else the newest kept.
+
 ## 0.8.3
 
 robertnisipeanu/mgu-store's 0.8.2 and 0.8.3 with this repository's deploy tool:

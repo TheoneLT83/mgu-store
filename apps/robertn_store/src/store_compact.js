@@ -30,7 +30,7 @@ const HEAD_H = 80;            // full: the HMI's title strip (idrive7-apps kit d
 const NAV_X = 200;            // full: the header tabs, after the Store's name
 const NAV_CELL = 196;
 const STATUS_X = NAV_X + 4 * NAV_CELL + 12;   // full: where the HMI's strip takes over, in the box
-const NAV_ITEMS = 'Store, grid\nInstalled, check\nUSB, usb\nSettings, gear';
+const NAV_ITEMS = 'Store, grid\nInstalled, check\nWi-Fi, wifi\nSettings, gear';
 const TEXT = 'text';
 const DIM = 'dim';
 const AMBER = '#ffb020';
@@ -100,7 +100,6 @@ function compact(W, H0, look, opts) {
         el('online', 'chips', onlineX, M + 8, ONLINE_W, 48, { items: '', align: low ? 'left' : 'right' }),
         grid()
     ]);
-    const usb = screen('usb', 2, [title('USB'), after('subtitle', X + 130, CW - 130), grid()]);
 
     const colW = (CW - 24) / 2;
     const LIST_Y = HEAD + 38;
@@ -131,8 +130,9 @@ function compact(W, H0, look, opts) {
         button('addRepo', X, B - SET_H, leftW, SET_H, 'Add source', 'tinted', 25, { vicon: 'plus', color: BLUE }),
         el('connPanel', 'rect', rx, HEAD + 4, rw, B - HEAD - 4, { color: 'panelTop', radius: 20 }),
         label('connLabel', rx + 18, HEAD + 18, 'ACCESS'),
-        // Wi-Fi, Internet, Accounts, Phone access and Information, all in view
-        list('access', rx + 12, HEAD + 52, rw - 24, B - SET_H - 26 - HEAD - 52, { rowH: Math.min(LIST.rowH, Math.floor((B - SET_H - 26 - HEAD - 52) / 5)) }),
+        // Internet, Accounts, Proxy, Phone access, USB and Information; a bar at its edge while it holds more than shows
+        list('access', rx + 12, HEAD + 52, rw - 24, B - SET_H - 26 - HEAD - 52, { rowH: Math.min(LIST.rowH, Math.floor((B - SET_H - 26 - HEAD - 52) / 5)),
+            scrollbar: true }),
         button('checkNow', rx + 16, B - SET_H - 14, (rw - 44) / 2, SET_H, 'Check now', 'outline', 25, { vicon: 'refresh' }),
         button('restart', rx + 28 + (rw - 44) / 2, B - SET_H - 14, (rw - 44) / 2, SET_H, 'Restart head unit', 'outline', 25,
             { vicon: 'refresh' })
@@ -203,6 +203,8 @@ function compact(W, H0, look, opts) {
     ]);
 
     const titleX = X + 84;
+    // USB, a page of Settings' Access
+    const usb = screen('usb', 3, [back(), title('USB', titleX), after('subtitle', titleX + 130, R - titleX - 130), grid()]);
     const accounts = screen('accounts', 3, [
         back(),
         title('Accounts', titleX),

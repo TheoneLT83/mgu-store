@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.52
+
+- The menu: Store, Installed, **Wi-Fi** and Settings. Wi-Fi opens the Wi-Fi page (a scan starts, as before), back
+  returns to the tab shown.
+- **USB** is in Settings' Access, its row naming the sticks and how many of their packages are new; it opens the
+  stick's page, with a back button. Settings' menu item counts those packages.
+- Access shows a bar at its right edge while it holds more rows than show, saying where the rows shown are; on the
+  iDrive 8 look its rows have a list's height (they were squeezed to fit).
+
 ## 0.9.51
 
 - What cannot be installed (Not installable, Not for this head unit) is at

@@ -58,7 +58,7 @@ const TEAL = '#36e0c0';
 const DIM = 'dim';
 const PALETTE = [['#2d7fd6', '#16588e'], ['#ff4b55', '#a8101c'], ['#ffc24d', '#c77700'], ['#5fb4ff', '#1f5fd0'],
     ['#b48cff', '#6a3fd0'], ['#36e0c0', '#118c78'], ['#5be38e', '#1f9a52'], ['#ff8a4c', '#c4501a']];
-const TABS = ['store', 'installed', 'usb', 'settings'];
+const TABS = ['store', 'installed', 'wifi', 'settings'];
 const FILTERS = ['all', 'app', 'tool'];
 
 const size = (b) => (!b ? '' : b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
@@ -198,13 +198,19 @@ function tile(m, c, busy, name) {
     return Object.assign(iconOf(c), { id: c.id, title: c.title, src: name(c), act: { do: 'open', page: pageOf(c) } }, tileState(c, busy));
 }
 
+/* What a USB stick offers that can be installed: new and updated packages. */
+function usbNew(m) {
+    const usbIds = (sources(m) || []).filter((s) => s.usb).map((s) => s.id);
+    return comps(m).filter((c) => usbIds.indexOf(c.source) >= 0 && (c.status === 'available' || c.status === 'update') &&
+        !notForUnit(c) && !c.blocked && !startPending(c)).length;
+}
+
+/* The menu: Store, Installed, Wi-Fi (opens the Wi-Fi page over the tab shown), Settings (where USB is, under Access). */
 function nav(m, sel) {
     const updates = comps(m).filter((c) => c.status === 'update' && !notForUnit(c) && !c.blocked && !startPending(c)).length;
-    const usbIds = (sources(m) || []).filter((s) => s.usb).map((s) => s.id);
-    const usbNew = comps(m).filter((c) => usbIds.indexOf(c.source) >= 0 && (c.status === 'available' || c.status === 'update') &&
-        !notForUnit(c) && !c.blocked && !startPending(c)).length;
-    return { sel, items: [[tr("Store"), 'grid', ''], [tr("Installed"), 'check', updates || ''], ['USB', 'usb', usbNew || ''], [tr("Settings"), 'gear', '']]
-        .map(([label, vicon, badge], i) => ({ id: TABS[i], label, vicon, badge: String(badge), act: { do: 'tab', tab: TABS[i] } })) };
+    return { sel, items: [[tr("Store"), 'grid', ''], [tr("Installed"), 'check', updates || ''], ['Wi-Fi', 'wifi', ''], [tr("Settings"), 'gear', usbNew(m) || '']]
+        .map(([label, vicon, badge], i) => ({ id: TABS[i], label, vicon, badge: String(badge),
+            act: TABS[i] === 'wifi' ? { do: 'open', page: { name: 'wifi' }, root: true } : { do: 'tab', tab: TABS[i] } })) };
 }
 
 const hidden = { hidden: true };
@@ -309,14 +315,6 @@ function settingsView(m) {
     const toks = tokens(m);
     const web = m.connected && st && st.web && typeof st.web === 'object' ? st.web : null;
     const access = [];
-    const w = wifiOf(m);
-    if (w) {
-        const s = wifiState(w);
-        const paused = pausedLine(w);
-        const sub = paused || [s[0], bandOf(w)].filter(Boolean).join(' · ');
-        access.push({ id: 'wifi', title: 'Wi-Fi', sub, subColor: paused ? DIM : s[1], plain: true, vicon: 'wifi', iconColor: s[1] === DIM ? 'text' : s[1],
-            right: 'chevron', act: { do: 'open', page: { name: 'wifi' } } });
-    }
     if (m.connected && st) {
         access.push({ id: 'internet', title: 'Internet', sub: st.online ? 'Online' : 'Offline', subColor: st.online ? GREEN : AMBER,
             plain: true, vicon: 'tether', iconColor: 'text', right: 'chevron', act: { do: 'open', page: { name: 'internet' } } });
@@ -335,6 +333,10 @@ function settingsView(m) {
         access.push({ id: 'phone', title: tr("Phone access"), sub: phoneState(web), plain: true, vicon: 'phone', iconColor: 'text',
             right: 'chevron', act: { do: 'open', page: { name: 'phone' } } });
     }
+    // USB: its sticks and what they offer
+    const sticks = (srcs || []).filter((s) => s.usb), fresh = usbNew(m);
+    access.push({ id: 'usb', title: 'USB', sub: sticks.length ? sticks.map(sourceLabel).join(', ') : tr("No USB stick"), plain: true, vicon: 'usb',
+        iconColor: 'text', right: fresh ? `chip:${fresh}+chevron` : 'chevron', chipColor: BLUE, act: { do: 'open', page: { name: 'usb' } } });
     const unit = st && st.unit;
     access.push({ id: 'info', title: 'Information', sub: unit && unit.hmi ? [hmiNames([unit.hmi]), unit.firmware].filter(Boolean).join(' · ') : 'Versions',
         plain: true, vicon: 'display', iconColor: 'text', right: 'chevron', act: { do: 'open', page: { name: 'information' } } });
@@ -343,7 +345,7 @@ function settingsView(m) {
         look: { sel: LOOKS.indexOf(lookOf(m)), acts: LOOKS.map((l) => ({ do: 'look', look: l })) },
         repos: srcs ? { items: srcs.map(sourceRow), empty: tr("None") } : { items: [], empty: '' },
         addRepo: srcs ? button(tr("Add source"), { do: 'add-source' }, { vicon: 'plus', style: 'tinted', color: BLUE }) : hidden,
-        access: { items: access },
+        access: { items: access, scrollbar: true },
         connLabel: { text: tr("ACCESS") },
         checkNow: m.connected ? button(st.catalog && st.catalog.checking ? tr("Checking") : tr("Check now"), { do: 'check' },
             { vicon: 'refresh', style: 'outline', size: 26 }) : hidden,
@@ -649,13 +651,13 @@ function phoneView(m) {
 /* How the car gets internet: the head unit has none of its own; the uplink
  * gives it through its Wi-Fi or a USB device. */
 const INTERNET_WAYS = [
-    { vicon: 'wifi', title: 'Wi-Fi', text: ['Turn the phone\'s hotspot on.', 'Here, open Settings > Wi-Fi and tap Scan.',
+    { vicon: 'wifi', title: 'Wi-Fi', text: ['Turn the phone\'s hotspot on.', 'Here, open Wi-Fi and tap Scan.',
         'Pick the phone\'s network, type its password and tap Connect.'] },
     { vicon: 'iphone', title: 'iPhone', text: 'Cable it to a USB port, Personal Hotspot on, the phone unlocked; tap Trust when it asks.' },
     { vicon: 'android', title: 'Android phone', text: 'Cable it to a USB port, then on the phone: Settings > Network > Hotspot & tethering > USB tethering on.' },
     { vicon: 'lteStick', title: 'USB LTE stick', text: 'A USB LTE stick with a SIM card that has mobile data (e.g. Huawei E3372h), in a USB port in the car.' }
 ];
-const INTERNET_STEPS = 'Within a minute this page says Connected. No internet at all? Apps on a USB stick show under USB.';
+const INTERNET_STEPS = 'Within a minute this page says Connected. No internet at all? Apps on a USB stick show in Settings, under USB.';
 
 function internetView(m) {
     const online = !!(m.connected && m.st && m.st.online);
@@ -867,7 +869,8 @@ function view(m) {
     case 'proxy': values = proxyView(m); break;
     default: screen = 'store'; values = storeView(m);
     }
-    values.nav = nav(m, tabSel);
+    // the Wi-Fi page lights its menu item; USB is Settings' (Access)
+    values.nav = nav(m, screen === 'wifi' ? TABS.indexOf('wifi') : screen === 'usb' ? TABS.indexOf('settings') : tabSel);
     if (values.back === undefined) {
         values.back = { act: { do: 'back' } };
     }

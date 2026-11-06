@@ -55,7 +55,7 @@ process.umask(0o022);
 
 /* deploy/component.json's version; bumped when a file under deploy/unit/
  * changes. */
-var VERSION = '0.8.3';
+var VERSION = '0.8.4';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -4140,6 +4140,11 @@ function installApp(a, state, decision) {
     }
     if (!state.apps || typeof state.apps !== 'object') state.apps = {};
     state.apps[a.id] = { uid: uid, version: a.version };
+    /* a rollback cut short that this install finishes */
+    if (state.reinstall && state.reinstall[a.id] && !(state.reinstall[a.id].boot === bootId() && state.reinstall[a.id].pid === process.pid)) {
+        delete state.reinstall[a.id];
+        if (!Object.keys(state.reinstall).length) delete state.reinstall;
+    }
 }
 
 /* ---- apps after a firmware update (iDrive 7) ------------------------------- */
@@ -4265,9 +4270,16 @@ function reinstallApp(app, file, again, version) {
     /* a name of its own beside the folders kept from earlier runs */
     while (lstatOrNull(stash)) stash = path.join(CFG.oap, '.mgu-deploy-data-' + id + '-' + process.pid + '-' + n++);
     var oldGid = (lstatOrNull(data) || {}).gid;
-    if (fs.existsSync(data)) fs.renameSync(data, stash);
+    /* on disk before anything moves: a run cut short (the head unit off between the uninstall and the install) is
+     * finished by the updater at the next start, which installs the target again (lostApps) with the data kept */
+    markReinstall(id, version, file);
+    if (fs.existsSync(data)) {
+        fs.renameSync(data, stash);
+        keepStash(id, stash, app.uid, oldGid);
+    }
     var putBack = function () {
-        if (!carryData(id, stash, app.uid, oldGid, true)) keepStash(id, stash, app.uid, oldGid);
+        if (carryData(id, stash, app.uid, oldGid, true)) dropStashRecord(id, stash);
+        else keepStash(id, stash, app.uid, oldGid);
     };
     /* the install under way: what a trip records when the app is not registered */
     var target = { version: version, file: file };
@@ -4282,10 +4294,15 @@ function reinstallApp(app, file, again, version) {
         try {
             cmdUninstall({ positional: [id], keepPackages: true });
         } catch (e) {
-            if (installedApp(id) && fs.existsSync(stash) && !fs.existsSync(data)) fs.renameSync(stash, data);
-            else keepStash(id, stash, app.uid, oldGid);
+            if (installedApp(id) && fs.existsSync(stash) && !fs.existsSync(data)) {
+                fs.renameSync(stash, data);
+                dropStashRecord(id, stash);
+            } else keepStash(id, stash, app.uid, oldGid);
+            if (installedApp(id)) unmarkReinstall(id);
             throw e;
         }
+        /* the test root's power-off between the two: the run dies as the head unit going to standby kills it */
+        if (FAKE && process.env.MGU_DEPLOY_FAKE_DIE_AFTER === 'uninstall') process.kill(process.pid, 'SIGKILL');
         var err = null;
         try {
             cmdInstall({ artifacts: [file], positional: [] });
@@ -4300,8 +4317,31 @@ function reinstallApp(app, file, again, version) {
             }
         }
         putBack();
+        if (installedApp(id)) unmarkReinstall(id);
         return err;
     }
+}
+/* state.json reinstall, {<id>: {version, file, sha256, pid, boot}}: an app rollback under way, from before its
+ * uninstall until the app is installed again. */
+function markReinstall(id, version, file) {
+    var s = loadState();
+    s.reinstall = Object.assign({}, s.reinstall);
+    s.reinstall[id] = { version: version, file: file, sha256: sha256File(file), pid: process.pid, boot: bootId() };
+    saveState(s);
+}
+function unmarkReinstall(id) {
+    var s = loadState();
+    if (!s.reinstall || !s.reinstall[id]) return;
+    delete s.reinstall[id];
+    if (!Object.keys(s.reinstall).length) delete s.reinstall;
+    saveState(s);
+}
+/* The record of a data folder set aside that went back into the app's home. */
+function dropStashRecord(id, stash) {
+    var s = loadState(), list = stashesOf(s, id).filter(function (d) { return d.path !== stash; });
+    if (!s.data_stash || !s.data_stash[id]) return;
+    if (list.length) s.data_stash[id] = list; else delete s.data_stash[id];
+    saveState(s);
 }
 
 /* ---- uninstall -------------------------------------------------------------- */
@@ -7448,10 +7488,30 @@ function toolPrevious(t) {
 function lostApps(state) {
     var lock = lockState();
     if (isId8() || (!lock.free && lock.live)) return [];
-    return Object.keys(state.apps).map(function (id) {
+    var out = [], has = function (id) { return out.some(function (l) { return l.id === id; }); };
+    /* an app rollback cut short between its uninstall and its install: its target, the package as recorded */
+    Object.keys(state.reinstall || {}).forEach(function (id) {
+        var r = state.reinstall[id];
+        if (!r || lstatOrNull(appEntryFile(id)) || (r.boot === bootId() && pidAlive(r.pid))) return;
+        if (!r.file || !fs.existsSync(r.file) || sha256File(r.file) !== r.sha256) {
+            process.stderr.write('warning: ' + id + ': its rollback was cut short, and the package it went back to is not as recorded (' +
+                r.file + '); not installed again\n');
+            return;
+        }
+        out.push({ id: id, version: r.version, package: r.file, rollback: true });
+    });
+    Object.keys(state.apps).forEach(function (id) {
         var v = state.apps[id] && state.apps[id].version;
-        return !lstatOrNull(appEntryFile(id)) && v && fs.existsSync(keptFile(id, v)) ? { id: id, version: v, package: keptFile(id, v) } : null;
-    }).filter(Boolean);
+        if (!has(id) && !lstatOrNull(appEntryFile(id)) && v && fs.existsSync(keptFile(id, v))) out.push({ id: id, version: v, package: keptFile(id, v) });
+    });
+    /* the Store never stays removed while a package of it is kept (its removal on purpose drops them): its
+     * recorded version's, else the newest */
+    if (!has(FIRST_APP) && !lstatOrNull(appEntryFile(FIRST_APP))) {
+        var kv = keptVersions(FIRST_APP).sort(semverCmp), rec = state.apps[FIRST_APP] && state.apps[FIRST_APP].version;
+        var v = rec && kv.indexOf(rec) >= 0 ? rec : kv[kv.length - 1];
+        if (v) out.push({ id: FIRST_APP, version: v, package: keptFile(FIRST_APP, v) });
+    }
+    return out;
 }
 /* The manager takes no older package for an installed app, so an app goes
  * back by uninstall and install. The packages for that are kept here, the

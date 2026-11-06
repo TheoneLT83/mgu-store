@@ -177,8 +177,13 @@ function selfVersion() {
  * only while it is root's own regular file; anything else at that name but
  * a folder is removed first (a folder there leaves the journal alone). */
 const LOG_MAX_BYTES = 128 * 1024;
+/* The same lines kept across a restart of the head unit (/tmp is not): state_dir/updater.log on /var/opt, renamed
+ * to updater.log.1 past 64 KiB, so a failed Store trial or rollback can be explained afterwards. */
+const KEPT_LOG = 'updater.log';
+const KEPT_LOG_MAX_BYTES = 64 * 1024;
 
-function fileLog(file) {
+function fileLog(file, max) {
+    const limit = max || LOG_MAX_BYTES;
     let fd = null;
     let bytes = 0;
     const own = (st) => st.isFile() && st.uid === process.getuid() && st.nlink === 1;
@@ -211,7 +216,7 @@ function fileLog(file) {
             if (fd === null) {
                 open();
             }
-            if (bytes > LOG_MAX_BYTES) {
+            if (bytes > limit) {
                 try {
                     fs.renameSync(file, `${file}.1`);
                     fs.closeSync(fd);
@@ -238,17 +243,26 @@ function fileLog(file) {
     };
 }
 
-/* console.log and console.error, each line also to log_file */
-function logToFile(file) {
-    if (!file) {
+/* console.log and console.error, each line also to log_file and to the log kept in state_dir */
+function logToFile(file, stateDir) {
+    const writes = [];
+    if (file) {
+        writes.push(fileLog(file));
+    }
+    if (stateDir) {
+        try {
+            mkdirp(stateDir, 0o755);
+            writes.push(fileLog(path.join(stateDir, KEPT_LOG), KEPT_LOG_MAX_BYTES));
+        } catch (e) { /* the journal still has it */ }
+    }
+    if (!writes.length) {
         return;
     }
-    const write = fileLog(file);
     ['log', 'error'].forEach((k) => {
         const orig = console[k].bind(console);
         console[k] = (...args) => {
             orig(...args);
-            util.format(...args).split('\n').forEach(write);
+            util.format(...args).split('\n').forEach((line) => writes.forEach((w) => w(line)));
         };
     });
 }
@@ -4210,7 +4224,7 @@ function cli(argv) {
     const conf = loadConf();
     const [cmd, arg] = argv;
     if (cmd === 'daemon') {
-        logToFile(conf.log_file);
+        logToFile(conf.log_file, conf.state_dir);
         new Updater(conf).run().catch((err) => {
             console.error(`cannot start: ${err.message}`);
             process.exit(1);
@@ -4274,6 +4288,6 @@ if (require.main === module) {
     cli(process.argv.slice(2));
 }
 
-module.exports = { Updater, Fetcher, loadConf, installedApp, installedTool, fileLog,
+module.exports = { Updater, Fetcher, loadConf, installedApp, installedTool, fileLog, logToFile,
     // tests: a stand-in phone page
     _setWeb: (w) => { web = w; } };

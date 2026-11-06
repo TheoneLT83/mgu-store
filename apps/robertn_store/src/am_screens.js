@@ -756,10 +756,26 @@ const SCREENS = {
      }
     },
     {
+     "name": "back",
+     "rtype": "gpu",
+     "gpu": "vbutton",
+     "x": 480,
+     "y": 138,
+     "w": 96,
+     "h": 96,
+     "opts": {
+      "text": "",
+      "vicon": "back",
+      "style": "round",
+      "color": "#f4f7fb"
+     },
+     "onTap": "event:back"
+    },
+    {
      "name": "title",
      "rtype": "gpu",
      "gpu": "text",
-     "x": 480,
+     "x": 610,
      "y": 138,
      "w": 1200,
      "h": 90,
@@ -775,7 +791,7 @@ const SCREENS = {
      "name": "subtitle",
      "rtype": "gpu",
      "gpu": "text",
-     "x": 480,
+     "x": 610,
      "y": 227,
      "w": 1300,
      "h": 43,
@@ -940,7 +956,8 @@ const SCREENS = {
      "h": 260,
      "opts": {
       "items": [],
-      "rowH": 120
+      "rowH": 120,
+      "scrollbar": true
      }
     },
     {
@@ -1040,7 +1057,7 @@ const SCREENS = {
      "w": 300,
      "h": 726,
      "opts": {
-      "items": "Store, grid\nInstalled, check\nUSB, usb\nSettings, gear",
+      "items": "Store, grid\nInstalled, check\nWi-Fi, wifi\nSettings, gear",
       "sel": 0
      }
     },
@@ -1224,7 +1241,7 @@ const SCREENS = {
      "w": 300,
      "h": 726,
      "opts": {
-      "items": "Store, grid\nInstalled, check\nUSB, usb\nSettings, gear",
+      "items": "Store, grid\nInstalled, check\nWi-Fi, wifi\nSettings, gear",
       "sel": 0
      }
     },
@@ -1338,7 +1355,7 @@ const SCREENS = {
      "w": 300,
      "h": 726,
      "opts": {
-      "items": "Store, grid\nInstalled, check\nUSB, usb\nSettings, gear",
+      "items": "Store, grid\nInstalled, check\nWi-Fi, wifi\nSettings, gear",
       "sel": 0
      }
     },
@@ -1421,7 +1438,7 @@ const SCREENS = {
      "w": 300,
      "h": 726,
      "opts": {
-      "items": "Store, grid\nInstalled, check\nUSB, usb\nSettings, gear",
+      "items": "Store, grid\nInstalled, check\nWi-Fi, wifi\nSettings, gear",
       "sel": 0
      }
     },
@@ -1550,7 +1567,7 @@ const SCREENS = {
      "w": 300,
      "h": 726,
      "opts": {
-      "items": "Store, grid\nInstalled, check\nUSB, usb\nSettings, gear",
+      "items": "Store, grid\nInstalled, check\nWi-Fi, wifi\nSettings, gear",
       "sel": 0
      }
     },
@@ -1677,7 +1694,7 @@ const SCREENS = {
      "w": 300,
      "h": 726,
      "opts": {
-      "items": "Store, grid\nInstalled, check\nUSB, usb\nSettings, gear",
+      "items": "Store, grid\nInstalled, check\nWi-Fi, wifi\nSettings, gear",
       "sel": 0
      }
     },
@@ -1781,7 +1798,7 @@ const SCREENS = {
    "bg": "theme",
    "components": [
     { "name": "nav", "rtype": "gpu", "gpu": "sideNav", "x": 126, "y": 114, "w": 300, "h": 726,
-      "opts": { "items": "Store, grid\nInstalled, check\nUSB, usb\nSettings, gear", "sel": 3 } },
+      "opts": { "items": "Store, grid\nInstalled, check\nWi-Fi, wifi\nSettings, gear", "sel": 3 } },
     { "name": "back", "rtype": "gpu", "gpu": "vbutton", "x": 480, "y": 138, "w": 96, "h": 96,
       "opts": { "text": "", "vicon": "back", "style": "round", "color": "#f4f7fb" }, "onTap": "event:back" },
     { "name": "title", "rtype": "gpu", "gpu": "text", "x": 610, "y": 138, "w": 1200, "h": 90,
@@ -1807,7 +1824,7 @@ const SCREENS = {
      "w": 300,
      "h": 726,
      "opts": {
-      "items": "Store, grid\nInstalled, check\nUSB, usb\nSettings, gear",
+      "items": "Store, grid\nInstalled, check\nWi-Fi, wifi\nSettings, gear",
       "sel": 0
      }
     },
@@ -1887,7 +1904,7 @@ const SCREENS = {
      "w": 300,
      "h": 726,
      "opts": {
-      "items": "Store, grid\nInstalled, check\nUSB, usb\nSettings, gear",
+      "items": "Store, grid\nInstalled, check\nWi-Fi, wifi\nSettings, gear",
       "sel": 0
      }
     },
@@ -2104,7 +2121,7 @@ const SCREENS = {
      "w": 300,
      "h": 726,
      "opts": {
-      "items": "Store, grid\nInstalled, check\nUSB, usb\nSettings, gear",
+      "items": "Store, grid\nInstalled, check\nWi-Fi, wifi\nSettings, gear",
       "sel": 0
      }
     },
@@ -2187,7 +2204,7 @@ const SCREENS = {
      "w": 300,
      "h": 726,
      "opts": {
-      "items": "Store, grid\nInstalled, check\nUSB, usb\nSettings, gear",
+      "items": "Store, grid\nInstalled, check\nWi-Fi, wifi\nSettings, gear",
       "sel": 0
      }
     },
@@ -2259,7 +2276,8 @@ const SCREENS = {
  ]
 };
 
-/* Settings: the access list over the head-unit lines (Information has them); Internet: the ways as cards, its note
+/* Settings: the access list over the head-unit lines (Information has them), rows of a list's height, scrolled, its bar
+ * saying where; Internet: the ways as cards, its note
  * under them; Information: changelog's page. */
 (function () {
     const by = (n) => SCREENS.screens.find((x) => x.name === n);
@@ -2267,7 +2285,7 @@ const SCREENS = {
     const set = by('settings');
     const access = comp(set, 'access'), check = comp(set, 'checkNow');
     access.h = check.y - 30 - access.y;
-    access.opts.rowH = Math.min(120, Math.floor(access.h / 5));
+    access.opts.rowH = 104;
     set.components = set.components.filter((c) => c.name !== 'unit' && c.name !== 'versions');
     const net = by('internet');
     const steps = comp(net, 'steps');

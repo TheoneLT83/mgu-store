@@ -218,6 +218,12 @@ function appList(cv, t, b, o) {
     });
     cv.noclip();
     if (!v.all.length && o.empty) mid(cv, o.empty, b.x + b.w / 2, b.y + b.h / 2, 36, t.dim, { align: 'center' });
+    // o.scrollbar: while it holds more rows than show, a thin bar at its right edge says where the rows shown are
+    if (o.scrollbar && v.max > 0) {
+        const bw = Math.max(4, Math.round(6 * (o.ctlK || 1))), bx = b.x + b.w - bw, th = Math.max(bw * 4, b.h * v.n / v.all.length);
+        cv.roundRect(bx, b.y, bw, b.h, bw / 2, withAlpha('#ffffff', 0.12));
+        cv.roundRect(bx, b.y + (b.h - th) * (v.top / v.max), bw, th, bw / 2, withAlpha('#ffffff', 0.55));
+    }
 }
 
 // ---- side menu with vector icons and count badges ------------------------------------------------------------

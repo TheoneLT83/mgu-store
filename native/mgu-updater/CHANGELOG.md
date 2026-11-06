@@ -1,5 +1,13 @@
 # Updater changelog
 
+## 0.8.31
+
+- Every line the daemon logs is also kept across a restart of the head unit, in `state_dir/updater.log` on
+  `/var/opt` (renamed to `updater.log.1` past 64 KiB), the Store trial's reason line (`<id>@<version>: <why>`) and
+  the rollback it starts among them: `/tmp/mgu-updater.log` goes with the restart.
+- With mgu-deploy 0.8.4 an app rollback cut short by the head unit going off, and an unregistered Store with a
+  package kept, are in the deploy tool's `lost_apps`: installed again at the next start, the Store first.
+
 ## 0.8.30
 
 robertnisipeanu/mgu-store's 0.8.28 to 0.8.30 with this repository's updater:

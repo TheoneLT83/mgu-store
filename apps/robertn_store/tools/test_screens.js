@@ -78,7 +78,7 @@ Object.keys(UNITS).forEach((unit) => ['id7', 'id8'].forEach((look) => fixture.sc
 
 // the Store tab: side menu, filters, a tile per component with its state
 let f = screen('store');
-eq(f.labels.slice(0, 8), ['Store', 'Installed', 'USB', 'Settings', 'Restart now', 'All', 'Apps', 'Tools']);
+eq(f.labels.slice(0, 8), ['Store', 'Installed', 'Wi-Fi', 'Settings', 'Restart now', 'All', 'Apps', 'Tools']);
 eq(f.labels.length, 8 + fixture.state().components.length - 1, 'a tile per component but the one for another head unit only');
 ok(f.labels.indexOf('Car Data') < 0, 'Car Data (iDrive 8 only, not installed) is not listed');
 // what is not on the car first
@@ -87,7 +87,8 @@ ok(f.values.grid.items.findIndex((t) => t.badge === 'installed') > f.values.grid
 const subs = f.values.grid.items.map((t) => t.sub);
 ['Downloading 42 %', 'Update 1.2.0', 'Waiting', 'Restart pending', 'Failed', 'Installed', '2.1.0 · 402 KB']
     .forEach((s) => ok(subs.indexOf(s) >= 0, `a tile says ${s}`));
-eq(f.values.nav.items.map((i) => i.badge), ['', '3', '1', ''], 'badges: updates, new on the stick (not one for another head unit)');
+eq(f.values.nav.items.map((i) => i.badge), ['', '3', '', '1'], 'badges: updates; new on the stick on Settings, where USB is (not one for another head unit)');
+eq(f.values.nav.items[2].act, { do: 'open', page: { name: 'wifi' }, root: true }, 'Wi-Fi in the menu opens the Wi-Fi page');
 eq(f.values.online.items[0].text, 'Online');
 eq(text(f, 'subtitle'), 'Downloading 42 % · DOOM');
 ok(screen('store-apps').values.grid.items.every((t) => t.kind === 'app'), 'Apps leaves the tools out');
@@ -401,15 +402,18 @@ Object.keys(UNITS).forEach((unit) => {
     ok(/^c.*…\/idrive7-apps$/.test(texts.find((t) => /idrive7/.test(t.str)).str), `${unit}: ${texts.map((t) => t.str)}`);
 });
 
-// USB: the stick's components
+// USB, a page of Settings' Access: the stick's components, and Back
 f = screen('usb');
-eq(f.labels.slice(4), ['Drive Recorder', 'GPU renderer'], 'not the one for another head unit only');
+eq(f.labels.slice(0, 3), ['Drive Recorder', 'GPU renderer', 'Back'], 'not the one for another head unit only');
+eq(f.values.nav.sel, 3, 'Settings lit');
 eq(text(f, 'subtitle'), 'USB STICK · 2 packages');
 
-// Settings: sources, Add source, Wi-Fi, Accounts, Phone access, the unit; no restart while busy
+// Settings: sources, Add source, Internet, Accounts, Proxy, Phone access, USB, the unit; no restart while busy
 f = screen('settings');
 eq(f.labels.slice(4), ['iDrive 7', 'iDrive 8', 'TheoneLT83/mgu-store', 'TheoneLT83/idrive7-apps', 'IterioDev/car-apps', 'USB STICK',
-    'Add source', 'Wi-Fi', 'Internet', 'Accounts', 'Proxy', 'Phone access', 'Information', 'Check now']);
+    'Add source', 'Internet', 'Accounts', 'Proxy', 'Phone access', 'USB', 'Information', 'Check now']);
+eq([f.values.access.scrollbar, f.values.access.items.find((r) => r.id === 'usb').act], [true, { do: 'open', page: { name: 'usb' } }],
+    'Access: USB opens its page; a bar shows where the rows shown are');
 // the look: the head unit's own until one is picked; each pick is a press
 eq(f.items.filter((i) => /^iDrive/.test(i.label)).map((i) => i.act), [{ do: 'look', look: 'id7' }, { do: 'look', look: 'id8' }]);
 eq(view(fixture.model({ tab: 'settings' })).look, 'id7', 'an iDrive 7 unit: the iDrive 7 look');
@@ -580,41 +584,19 @@ const near = { name: 'type', text: '', max: 10 };
 typeOn('iDrive 8', near, ['a', 'github.com/', '.com', 'b']);
 eq(near.text, 'a.comb', 'a key that would go past max types nothing');
 
-// Wi-Fi (the uplink's, state.uplink.wifi): Settings' row with its state, only with the uplink's Wi-Fi
+// Wi-Fi (the uplink's, state.uplink.wifi): the menu's Wi-Fi opens its page, which says its state
 f = screen('settings');
-eq([f.values.access.items[0].title, f.values.access.items[0].sub], ['Wi-Fi', 'Online · Mario iPhone']);
-eq(f.items.find((i) => i.label === 'Wi-Fi').act, { do: 'open', page: { name: 'wifi' } });
-ok(screen('settings', {}, { uplink: null }).labels.indexOf('Wi-Fi') < 0, 'no Wi-Fi without the uplink (an updater before 0.8.0)');
-ok(screen('settings', {}, { uplink: { device: null, state: 'searching', error: null, preferred: '', wifi: null } }).labels.indexOf('Wi-Fi') < 0,
-    'nor with an uplink without Wi-Fi (before 0.7.0, or not on auto)');
-const wifiSub = (w) => screen('settings', {}, { uplink: Object.assign({}, fixture.state().uplink, { wifi: Object.assign({}, fixture.state().uplink.wifi, w) }) })
-    .values.access.items[0].sub;
+eq([f.items.find((i) => i.label === 'Wi-Fi').act, f.values.access.items.some((r) => r.id === 'wifi')],
+    [{ do: 'open', page: { name: 'wifi' }, root: true }, false], 'Wi-Fi in the menu, not in Access');
+const wifiPage = (w) => screen('wifi', {}, { uplink: Object.assign({}, fixture.state().uplink, { wifi: Object.assign({}, fixture.state().uplink.wifi, w) }) });
 eq([{ link: 'connected' }, { link: 'connecting', ssid: 'Cafe' }, { enabled: false, link: 'off', ssid: '' },
     { link: 'unavailable', ssid: '', error: 'wlan1 is in access point mode' },
     { link: 'failed', ssid: '', error: 'wpa_supplicant ended (exit status 1)' }, { link: 'idle', ssid: '', error: 'could not join Cafe' },
-    { link: 'idle', ssid: '' }].map(wifiSub),
+    { link: 'idle', ssid: '' }].map((w) => text(wifiPage(w), 'state')),
 ['Connected · Mario iPhone', 'Connecting · Cafe', 'Not used', 'Unavailable', 'Failed', 'Error', 'Not connected']);
-// wireless CarPlay or Android Auto keeps the uplink from searching: said while not joined
-eq([{ link: 'idle', ssid: '', paused: 'carplay' }, { link: 'scanning', ssid: '', paused: 'android-auto' },
-    { link: 'online', paused: 'carplay' }, { enabled: false, link: 'off', ssid: '', paused: 'carplay' }, { link: 'idle', ssid: '', paused: 'other' }].map(wifiSub),
-['Paused for wireless CarPlay', 'Paused for wireless Android Auto', 'Online · Mario iPhone', 'Not used', 'Not connected']);
-eq(screen('settings-wifi-paused').values.access.items[0].sub, 'Paused for wireless CarPlay');
-// the band of the access point joined (mgu-uplink 0.7.5's wifi.freq), only while joined and known
-eq([{ freq: 5745 }, { link: 'connected', freq: 2437 }, { freq: 2484 }, { freq: 5180 }, { freq: 5825 }].map(wifiSub),
-    ['Online · Mario iPhone · 5 GHz', 'Connected · Mario iPhone · 2.4 GHz', 'Online · Mario iPhone · 2.4 GHz', 'Online · Mario iPhone · 5 GHz',
-        'Online · Mario iPhone · 5 GHz']);
-eq([{}, { freq: undefined }, { freq: 0 }, { freq: null }, { freq: '5745' }, { freq: 60480 }, { freq: -1 }, { freq: NaN }].map(wifiSub),
-    ['Online · Mario iPhone', 'Online · Mario iPhone', 'Online · Mario iPhone', 'Online · Mario iPhone', 'Online · Mario iPhone',
-        'Online · Mario iPhone', 'Online · Mario iPhone', 'Online · Mario iPhone'], 'no band without a frequency it knows (an older uplink, a read that failed)');
-eq([{ link: 'connecting', ssid: 'Cafe', freq: 5745 }, { link: 'idle', ssid: '', freq: 5745 }, { enabled: false, link: 'off', ssid: '', freq: 5745 },
-    { link: 'unavailable', ssid: '', error: 'no Wi-Fi radio (wlan1)', freq: 2437 }, { link: 'idle', ssid: '', paused: 'carplay', freq: 2437 }].map(wifiSub),
-['Connecting · Cafe', 'Not connected', 'Not used', 'Unavailable', 'Paused for wireless CarPlay'], 'nor while not joined');
-eq(screen('settings', {}, { uplink: { device: { kind: 'usbecm', name: 'HUAWEI' }, state: 'online', error: null, preferred: 'usb', wifi: null } })
-    .labels.indexOf('Wi-Fi'), -1, 'a USB uplink without Wi-Fi: no row');
-eq(screen('settings', {}, { uplink: Object.assign({}, fixture.state().uplink, { device: { kind: 'usbecm', name: 'HUAWEI' },
-    wifi: Object.assign({}, fixture.state().uplink.wifi, { link: 'connected', freq: 5745 }) }) }).values.access.items[0].sub,
-'Connected · Mario iPhone · 5 GHz', 'joined while a USB stick is the uplink');
-eq(screen('settings-wifi-band').values.access.items[0].sub, 'Online · Mario iPhone · 5 GHz');
+// wireless CarPlay or Android Auto keeps the uplink from searching: the page's line says so while not joined
+eq([{ link: 'idle', ssid: '', paused: 'carplay' }, { link: 'idle', ssid: '', paused: 'android-auto' }].map((w) => text(wifiPage(w), 'subtitle')),
+    ['Paused for wireless CarPlay', 'Paused for wireless Android Auto']);
 eq(screen('wifi-band').values.networks.items.map((n) => n.sub).slice(0, 2), ['Online · Strong · 2.4 GHz', 'Secured · Strong'],
     'the page: on the joined network\'s row');
 eq(screen('wifi').values.networks.items[0].sub, 'Online · Strong', 'the page without a frequency: as before');
@@ -682,13 +664,13 @@ eq([text(f, 'state'), text(f, 'note'), f.values.networks.empty, f.values.scan.di
 
 // the proxy (an updater from 0.8.28): a row in Settings' access card; its page turns it on or off and sets its address
 f = screen('settings');
-eq(f.values.access.items.map((i) => [i.title, i.sub]), [['Wi-Fi', 'Online · Mario iPhone'], ['Internet', 'Online'], ['Accounts', '2 accounts'], ['Proxy', 'Off'],
-    ['Phone access', 'Off'], ['Information', 'iDrive 7 · BMW MGU P18_23w44.2-1-3 mgu-high']]);
+eq(f.values.access.items.map((i) => [i.title, i.sub]), [['Internet', 'Online'], ['Accounts', '2 accounts'], ['Proxy', 'Off'],
+    ['Phone access', 'Off'], ['USB', 'USB STICK'], ['Information', 'iDrive 7 · BMW MGU P18_23w44.2-1-3 mgu-high']]);
 eq(f.items.find((i) => i.label === 'Proxy').act, { do: 'open', page: { name: 'proxy' } });
 ok(screen('settings', {}, { proxy: undefined }).labels.indexOf('Proxy') < 0, 'no Proxy row with an updater before 0.8.27');
-eq(screen('settings-proxy-on').values.access.items[3].sub, '192.168.8.1:7891');
+eq(screen('settings-proxy-on').values.access.items[2].sub, '192.168.8.1:7891');
 eq([screen('proxy-error').values.access, screen('settings', {}, { proxy: { on: true, kind: 'http', address: '10.0.0.1:3128', error: 'x' } })
-    .values.access.items[3].sub], [undefined, 'Error']);
+    .values.access.items[2].sub], [undefined, 'Error']);
 f = screen('proxy');
 eq([own(f), f.values.rows.items.map((i) => [i.title, i.sub, i.right]), text(f, 'error')],
     [['Proxy', 'Address', 'Back'], [['Proxy', '', 'toggle:off'], ['Address', 'None', 'chevron']], '']);

@@ -831,7 +831,9 @@ what it started, and fails), `deploy_tool`, `uplink_tool`, `bootstrap_check_s`, 
 
 **Log.** Every line the daemon logs goes to the journal and, with its UTC
 time, to `log_file` (`/tmp/mgu-updater.log`, 0644; past 128 KiB it moves to
-`mgu-updater.log.1`). Each source read logs its layout, commit and
+`mgu-updater.log.1`) and, kept across a restart of the head unit, to
+`state_dir/updater.log` (past 64 KiB it moves to `updater.log.1`): a failed
+Store trial's reason (`<id>@<version>: <why>`) can be read there afterwards. Each source read logs its layout, commit and
 components (`source <id> (<channel>): …`); each install its phases
 (`<id>@<v>: download from <source>`, `verify`, `install`), a build's
 output as `build <id>: …` lines, the deploy tool's output as `deploy: …`

@@ -116,7 +116,7 @@ function screens() {
         // nothing installing, a restart pending: Restart now on Store and Installed (with a tool that does not work)
         ['store-restart', { tab: 'store', stack: main }, idleSt(st)],
         ['installed-restart', { tab: 'installed', stack: main }, failedSt(idleSt(st), 'mgu-uplink', { repair: 'installed under firmware 23-07' })],
-        ['usb', { tab: 'usb', stack: main }],
+        ['usb', { tab: 'settings', stack: main.concat([{ name: 'usb' }]) }],
         ['settings', { tab: 'settings', stack: main }],
         ['confirm-restart', { tab: 'settings', stack: main.concat([{ name: 'confirm', kind: 'restart' }]), focus: 0 }, idleSt(st)],
         ['source', { tab: 'settings', stack: main.concat([{ name: 'source', id: 'idrive7-apps' }]) }],

@@ -998,6 +998,65 @@ function testGuardNested() {
         st.lost_apps.length === 0, `${r.out}\n${JSON.stringify(root.state())}`);
 }
 
+/* An app rollback cut short between its uninstall and its install (the head unit off: the run killed, no handler
+ * runs) leaves its target recorded: at the next start it is lost, at the version the rollback went to, its package
+ * as recorded, and the updater's install of it finishes the rollback with the data carried over. A kept package
+ * changed since is not offered. The Store is never left removed while a package of it is kept. */
+function testRollbackCutShort() {
+    const cut = () => {
+        const root = fakeRoot();
+        root.run(['install', '--artifact', privacyArtifact(), '--yes']);
+        root.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
+        const up = root.run(['install', '--artifact', appArtifact('fixture_app', '1.1.0', true), '--yes']);
+        if (up.status !== 0) throw new Error(up.out);
+        write(path.join(root.home(readJson(root.entry('fixture_app')).userId), 'data', 'note.txt'), 'kept data\n');
+        const r = root.run(['rollback', 'fixture_app', '--yes'], { MGU_DEPLOY_FAKE_DIE_AFTER: 'uninstall' });
+        root.cut = r;
+        // the next start
+        root.reboot(Math.floor(Date.now() / 1000) - 100);
+        root.setManagerStart(Date.now() / 1000 - 90);
+        return root;
+    };
+    let root = cut();
+    let st = root.status();
+    const rec = (root.state().reinstall || {}).fixture_app;
+    check('rollback cut short: the app is gone, the rollback recorded with the version it went to',
+        root.cut.status !== 0 && !fs.existsSync(root.entry('fixture_app')) && rec && rec.version === '1.0.0', `${root.cut.out}\n${JSON.stringify(root.state())}`);
+    check('rollback cut short: at the next start the app is lost at that version, from its kept package',
+        st.lost_apps.length === 1 && st.lost_apps[0].id === 'fixture_app' && st.lost_apps[0].version === '1.0.0' &&
+        fs.existsSync(st.lost_apps[0].package), JSON.stringify(st.lost_apps));
+    const copy = path.join(fs.mkdtempSync(path.join(T, 'cut-')), 'fixture_app@1.0.0.tgz');
+    fs.copyFileSync(st.lost_apps[0].package, copy);
+    const r = root.run(['install', '--artifact', copy, '--yes']);
+    const e = readJsonOrNull(root.entry('fixture_app'));
+    const note = e && path.join(root.home(e.userId), 'data', 'note.txt');
+    check('rollback cut short: the updater\'s install of it finishes the rollback, the data carried over, nothing left recorded',
+        r.status === 0 && e && readJson(path.join(root.home(e.userId), 'source/package.json')).version === '1.0.0' &&
+        note && fs.existsSync(note) && fs.readFileSync(note, 'utf8') === 'kept data\n' && !root.state().reinstall &&
+        !(root.state().data_stash || {}).fixture_app && root.status().lost_apps.length === 0, `${r.out}\n${JSON.stringify(root.state())}`);
+
+    // the kept package changed since the rollback recorded it
+    root = cut();
+    const kept = root.p('var/opt/mgu-deploy/kept/fixture_app/fixture_app@1.0.0.tgz');
+    fs.appendFileSync(kept, 'x');
+    st = root.status();
+    check('rollback cut short: a kept package that is not as recorded is not offered', st.lost_apps.length === 0, JSON.stringify(st.lost_apps));
+
+    // the Store removed (not on purpose) with packages of it kept
+    root = fakeRoot();
+    root.run(['install', '--artifact', privacyArtifact(), '--yes']);
+    root.run(['install', '--artifact', appArtifact('robertn_store', '1.0.0', true), '--yes']);
+    const s2 = root.run(['install', '--artifact', appArtifact('robertn_store', '1.1.0', true), '--yes']);
+    if (s2.status !== 0) throw new Error(s2.out);
+    fs.unlinkSync(root.entry('robertn_store'));
+    const state = root.state();
+    delete state.apps.robertn_store;
+    write(root.p('var/opt/mgu-deploy/state.json'), JSON.stringify(state));
+    st = root.status();
+    check('the Store removed without its record, packages of it kept: it is lost at the newest kept version',
+        st.lost_apps.some((l) => l.id === 'robertn_store' && l.version === '1.1.0'), JSON.stringify(st.lost_apps));
+}
+
 /* The data folders reinstalls set aside and did not put back stay
  * recorded, every one of them: the app registered again takes the newest
  * into an empty data folder, never over data of its own nor through a link,
@@ -9012,6 +9071,7 @@ const SUITES = [
     testGuardNested,
     testGuardEdges,
     testGuardStash,
+    testRollbackCutShort,
     testGuardBookkeeping,
     testGuardCopy,
     testNoManagerInstall,

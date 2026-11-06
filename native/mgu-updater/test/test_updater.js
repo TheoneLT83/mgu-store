@@ -1469,6 +1469,25 @@ function testFileLog() {
     const size = fs.statSync(file).size;
     ok('log: with a folder at <log>.1 it starts over past 128 KiB and keeps logging',
         size < 64 * 1024 && /Z last\n$/.test(fs.readFileSync(file, 'utf8')), `size ${size}`);
+
+    // the lines also kept in state_dir, across a restart of the head unit: a failed Store trial's reason among them
+    const { logToFile } = require('../js/updater');
+    const kept = path.join(dir, 'state');
+    const orig = { log: console.log, error: console.error };
+    console.log = () => {};
+    console.error = () => {};
+    logToFile(path.join(dir, 'tmp.log'), kept);
+    console.log('robertn_store@0.9.52: 0.9.51 did not start');
+    for (let i = 0; i < 80; i += 1) {
+        console.log('y'.repeat(1024));
+    }
+    console.log('after');
+    Object.assign(console, orig);
+    const keptLog = path.join(kept, 'updater.log');
+    ok('log: kept in state_dir too, the Store trial\'s reason line in it, past 64 KiB renamed to updater.log.1',
+        fs.existsSync(keptLog) && /Z after\n$/.test(fs.readFileSync(keptLog, 'utf8')) &&
+        /robertn_store@0\.9\.51: 0\.9\.51 did not start/.test(fs.readFileSync(`${keptLog}.1`, 'utf8')) &&
+        /Z after\n$/.test(fs.readFileSync(path.join(dir, 'tmp.log'), 'utf8')), fs.readdirSync(kept).join());
 }
 
 function testDaemon(certs, pubDir) {
@@ -4360,8 +4379,9 @@ function testSelfRepair() {
         })
         .then(() => idle('repaired in the next start'))
         .then(() => {
-            ok('self-repair: the next start installs them again',
-                installs().length === 6 && fs.existsSync(reg('robertn_store')) && fs.existsSync(reg('cat_app')), installs().join('\n'));
+            ok('self-repair: the next start installs them again, the Store (missing at the start, its package kept) first',
+                installs().length === 6 && fs.existsSync(reg('robertn_store')) && fs.existsSync(reg('cat_app')) &&
+                /verified\/robertn_store@0\.9\.0\.tgz --yes$/.test(installs()[4]), installs().join('\n'));
             ok('tile: the next start clears the tile line, and an install without a restart of the app manager sets none',
                 comp('cat_app').installed === '1.1.0' && comp('cat_app').tileHidden === false, JSON.stringify(comp('cat_app')));
             // going back stopped by the guard: the version it goes to comes back at the next start
