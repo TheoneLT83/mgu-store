@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.53
+
+robertnisipeanu/mgu-store's 0.9.28 with this repository's Store: a tool whose install step waits after a firmware
+update (mgu-updater 0.8.33's `needsSetup`) shows **Needs setup**, and its page has **Set up**, which runs the step; a
+press on its row on the widget screens does the same, and after a Set up that failed, Try again sets it up again.
+Both in every language.
+
 ## 0.9.52
 
 - The menu: Store, Installed, **Wi-Fi** and Settings. Wi-Fi opens the Wi-Fi page (a scan starts, as before), back
