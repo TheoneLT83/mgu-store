@@ -11,6 +11,7 @@ It installs:
 - the **deploy tool**, which performs and can roll back every install;
 - **app privacy**, which keeps installed apps out of the head unit's reports to BMW;
 - the **renderer**, which draws the Store and other apps' graphics;
+- the **controller gate**, which lets apps the renderer draws have the iDrive controller (iDrive 7);
 - **Python**, for apps the head unit builds from source;
 - the **internet uplink**, for internet through a USB adapter, an LTE stick, a tethered phone or Wi-Fi.
 

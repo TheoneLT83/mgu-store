@@ -1,0 +1,25 @@
+{
+  "id": "mgu-inputgate",
+  "kind": "tool",
+  "version": "1.0.0",
+  "title": "Controller gate",
+  "description": "Lets apps drawn by a renderer have the iDrive controller (tabs, page buttons, settings); loads into the HMI at the next start",
+  "mguHmi": ["ID7"],
+  "requires": { "mgu-deploy": "0.6.10" },
+  "uninstallable": true,
+  "build": ["make", "target"],
+  "files": [
+    { "path": "mgu-inputgate.so", "from": "build/target/mgu-inputgate.so", "mode": "0755" },
+    { "path": "guard.sh", "from": "kit/guard.sh", "mode": "0755" }
+  ],
+  "units": [
+    { "name": "mgu-inputgate-guard.service", "from": "kit/mgu-inputgate-guard.service" },
+    { "name": "mgu-inputgate-check.service", "from": "kit/mgu-inputgate-check.service" }
+  ],
+  "dropins": [
+    { "unit": "hmi.service", "name": "zz-mgu-inputgate.conf", "from": "kit/zz-mgu-inputgate.conf" }
+  ],
+  "enable": [],
+  "recmgr": [],
+  "restart": []
+}

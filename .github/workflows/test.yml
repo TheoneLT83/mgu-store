@@ -30,3 +30,6 @@ jobs:
       - name: Renderer
         working-directory: native/mgu-render
         run: make check-target && make test
+      - name: Controller gate
+        working-directory: native/mgu-inputgate
+        run: make target && make test

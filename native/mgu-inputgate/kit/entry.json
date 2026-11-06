@@ -1,0 +1,12 @@
+{
+  "id": "mgu-inputgate",
+  "title": "Controller gate",
+  "preload": {
+    "library": "mgu-inputgate.so",
+    "unit": "hmi.service",
+    "process": "HmiMain3D",
+    "strikes": 2,
+    "checkAfterSeconds": 120,
+    "healthySeconds": 60
+  }
+}
