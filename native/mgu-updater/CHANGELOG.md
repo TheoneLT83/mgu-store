@@ -1,5 +1,17 @@
 # Updater changelog
 
+## 0.8.30
+
+robertnisipeanu/mgu-store's 0.8.28 to 0.8.30 with this repository's updater:
+
+- An app of ours MainApp's registry no longer has while the deploy tool keeps its package (its `status --json` `lost_apps`, as oapcontroller's wipe leaves them) is installed again from that package, the Store first, once per start of the head unit (`state/boot.json`, by the new `boot_id` setting), and not while the deploy tool's MainApp guard holds app changes back. Our installed apps are looked at every 15 s. An app removed through the Store, the deploy tool's uninstall or its restore has no kept package and stays removed.
+- After an install that restarted the app manager (the deploy tool's `last_bounce_at` moved), an installed app of ours whose tile does not show (`tile_visible` false, and not hidden by provisioning's own flags, `tile_withheld`) has `tileHidden` in its row until the next start of the head unit.
+- The state has `mainappGuard`: why app changes wait for the next start of the head unit (the deploy tool's `mainapp_guard`), else null.
+- A deploy tool run its MainApp guard stopped (exit 3) is neither an error nor checked, rolled back or tried again: what it changed stays for the next start, and a Store update's trial ends. Going back the guard stopped says which version comes back at the next start.
+- The updater requires mgu-deploy 0.8.3.
+- Downloads work on Node 8.9.4 (2019 MGU, firmware `D_19w31.3`): a download whose answer came whole is kept when that Node reports it aborted, as it does when the server closes the connection while the file is still being written.
+- `{"op":"wifi-5ghz","on":true|false}` (privileged) is relayed to the uplink as it is: Allow 5 GHz for the Store's Wi-Fi (mgu-uplink 0.7.6).
+
 ## 0.8.29
 
 - A check asked for while one runs (the Store's Check now during an automatic check) runs once more after it, so it reads what changed meanwhile; the running check alone answered it before.
@@ -7,6 +19,8 @@
 ## 0.8.28
 
 robertnisipeanu/mgu-store's 0.8.27 with this repository's sources.
+
+## 0.8.27
 
 - An optional proxy for every download: `proxy = http://host:port` or `proxy = socks5://host:port` (a user name and password as `user:pass@`) in `updater.local.conf`, or set from the Store or the phone page. GitHub, catalogs, packages, pictures and every redirect go through it, as do the downloads of a build on the unit. TLS stays end to end with the same certificate checks; the proxy gets only its own user name and password, never a token. The proxy looks up the names of what is downloaded.
 - A proxy that is down or refuses shows as `proxy <host:port>: <why>` in the source's or the download's error.

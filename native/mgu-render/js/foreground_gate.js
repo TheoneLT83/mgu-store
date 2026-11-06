@@ -20,7 +20,8 @@
  * entry while the app's screen is in front. Installed apps live in
  * <apps>/oap_<uid>/, which only the app manager creates, with the RHMI uuid in
  * rhmiData/application.json. The app may rewrite that file, so a uuid that
- * more than one app claims is ignored, and the file is read only if it is a
+ * more than one folder claims goes to the one the app manager has registered
+ * and is ignored without exactly one, and the file is read only if it is a
  * regular file of at most 64 KiB. Each change prints one line:
  *
  *   foreground [uid ...]

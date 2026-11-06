@@ -140,7 +140,7 @@ const logged = [];                      // what the app logged
 const quiet = { info(l) { logged.push(String(l)); }, warn(l) { logged.push(String(l)); }, error(l) { logged.push(String(l)); } };
 const WIFI_PSK = 'p@ss "w0rd\\ {x}';
 // the uplink's Wi-Fi: a secured network not saved, an open one
-const WIFI = { enabled: true, link: 'idle', saved: [], scanning: false, error: null,
+const WIFI = { enabled: true, link: 'idle', saved: [], scanning: false, error: null, allow5ghz: false,
     networks: [{ ssid: 'Home', signal: -50, secure: true, saved: false, current: false }, { ssid: 'Cafe', signal: -70, secure: false }] };
 /* mgu-render's client: what the Store asks of it. */
 const gpuLog = [];
@@ -1448,8 +1448,8 @@ function runDrawn() {
         app._states[host(3)].emit('visible', { visible: false });
         app._states[host(2)].emit('focus', { focus: true });
         reset();
-        ["Don't use Wi-Fi", 'Scan'].forEach(tap);
-        eq(sent.map(secretless), [{ op: 'wifi-enable', on: false }, { op: 'wifi-scan' }]);
+        ["Don't use Wi-Fi", 'Scan', 'Allow 5 GHz'].forEach(tap);
+        eq(sent.map(secretless), [{ op: 'wifi-enable', on: false }, { op: 'wifi-scan' }, { op: 'wifi-5ghz', on: true }]);
         // the uplink's refusal shows on the page
         app._client.emit('reply-error', 'Wi-Fi needs uplink = auto', 'wifi-scan');
         eq(app._drawnModel().uplinkNote, 'Wi-Fi needs uplink = auto');

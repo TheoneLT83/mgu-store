@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.9.50
+
+robertnisipeanu/mgu-store's 0.9.25 to 0.9.27 with this repository's Store:
+
+- The status line says **Restart head unit to install apps** while the
+  deploy tool holds app changes until the next start (mgu-updater 0.8.30's
+  `mainappGuard`), and **Restart head unit to show** an app whose tile an
+  install that restarted the app manager left hidden (`tileHidden`), in
+  every language, after any install or restart error.
+
+- On the Wi-Fi page, **Allow 5 GHz** has the note `May cause CarPlay
+  issues` under it, and the button that switches Wi-Fi on or off reads as an
+  action in every language (Romanian `Activează Wi-Fi` / `Dezactivează
+  Wi-Fi`). Clearer words on the Wi-Fi page in Finnish, Japanese, Polish,
+  Romanian and Slovenian.
+
+- The Wi-Fi page has **Allow 5 GHz** (mgu-uplink 0.7.6), off by default:
+  the uplink then joins a network seen on 2.4 GHz there only, which keeps
+  5 GHz to wireless CarPlay and Android Auto. Joined on 5 GHz to a network
+  without 2.4 GHz, the page says `This network is 5 GHz only: CarPlay
+  audio may drop`, or for an iPhone's hotspot `On the iPhone, turn on
+  Maximize Compatibility`. Requires mgu-updater 0.8.30, which relays the
+  setting.
+
 ## 0.9.49
 
 robertnisipeanu/mgu-store's 0.9.24 with this repository's Store.
