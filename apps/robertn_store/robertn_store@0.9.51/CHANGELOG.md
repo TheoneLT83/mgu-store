@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.51
+
+- What cannot be installed (Not installable, Not for this head unit) is at
+  the end of the Store's grid, after what is installed.
+- A component's page shows why it cannot be installed in full, wrapped over
+  as many lines as it takes, as it does every other note in its panel.
+
 ## 0.9.50
 
 robertnisipeanu/mgu-store's 0.9.25 to 0.9.27 with this repository's Store:

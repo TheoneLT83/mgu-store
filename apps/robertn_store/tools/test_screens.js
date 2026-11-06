@@ -139,12 +139,12 @@ eq([text(f, 'title'), f.labels], ['Back to Network driver 0.3.2?', ['Cancel', 'U
 eq(f.items[1].act, { do: 'undo', id: 'mgu-uplink' });
 f = screen('app-incompatible');
 eq(own(f), ['Back'], 'not for this unit: nothing to press but its changelog');
-eq([text(f, 'note1'), text(f, 'note2')], ['Not for this head unit', 'For iDrive 8']);
+eq(text(f, 'notes'), 'Not for this head unit\nFor iDrive 8');
 // an installed component whose new version is not for this unit: installed, no update offered, Remove stays
 const st = Object.assign(fixture.state(), { busy: null });
 st.components = [Object.assign({}, st.components[1], { compat: 'no', mguHmi: ['ID8'] })];
 f = frame(fixture.model({ stack: [{ name: 'main' }, { name: 'app', id: 'doom' }] }, st), { textScale: 1, focus: 0, scroll: {} });
-eq([f.items.map((i) => i.label).slice(0, -4).filter(notVersion), text(f, 'note1')], [['Remove', 'Back'], 'Not for this head unit']);
+eq([f.items.map((i) => i.label).slice(0, -4).filter(notVersion), text(f, 'notes')], [['Remove', 'Back'], 'Not for this head unit\nFor iDrive 8']);
 f = frame(fixture.model({}, st), { textScale: 1, focus: 0, scroll: {} });
 eq([f.values.grid.items[0].sub, f.values.grid.items[0].badge, f.values.nav.items[1].badge], ['Not for this head unit', 'installed', ''],
     'says so, installed, not counted as an update');
@@ -161,7 +161,7 @@ Object.keys(UNITS).forEach((unit) => {
 });
 // its page, open while it is removed, stays on it
 f = frame(fixture.model({ stack: [{ name: 'main' }, { name: 'app', id: 'doom' }] }, gone), { textScale: 1, focus: 0, scroll: {} });
-eq([text(f, 'name'), text(f, 'note1')], ['DOOM', 'Not for this head unit']);
+eq([text(f, 'name'), text(f, 'notes')], ['DOOM', 'Not for this head unit\nFor iDrive 8']);
 // an app installed beside another source's app of its id shows the id it has; one built elsewhere cannot install
 const two = Object.assign(fixture.state(), { busy: null });
 two.components = [Object.assign({}, two.components[1], { id: 'doom2', listedId: 'doom', installAs: 'doom2', status: 'available', installed: null,
@@ -176,10 +176,15 @@ const page = (id) => {
 f = page('doom2');
 ok(f.values.facts.items.some((c) => c.text === 'Id doom2') && own(f)[0] === 'Install', 'doom2: its id, and Install');
 f = page('doom@iterio');
-eq([own(f), text(f, 'note1')], [['Back'], 'doom is already installed from robertnisipeanu/mgu-apps'], 'blocked: why, nothing to press');
+eq([own(f), text(f, 'notes')], [['Back'], 'doom is already installed from robertnisipeanu/mgu-apps'], 'blocked: why, nothing to press');
 ok(!f.values.facts.items.some((c) => /^Id /.test(c.text)), 'blocked: no id of its own');
 f = frame(fixture.model({}, two), { textScale: 1, focus: 0, scroll: {} });
 eq(f.values.grid.items[1].sub, 'Not installable');
+// what cannot be installed after the rest, the installed ones included
+f = frame(fixture.model({}, Object.assign({}, two, { components: [two.components[1], fixture.state().components[0], two.components[0]] })),
+    { textScale: 1, focus: 0, scroll: {} });
+eq(f.values.grid.items.map((t) => t.id).slice(-1), ['doom@iterio'], 'Not installable last');
+eq(f.values.grid.items[0].id, 'doom2', 'what can be installed first');
 // two sources' Doom: two tiles, each named with its source's author; a page follows its row when the install gives it another id
 two.sources = [{ id: 'idrive7-apps', label: 'cauliflowermossgrape/idrive7-apps' }, { id: 'iterio', label: 'https://apps.example.org/index.json' }];
 eq(frame(fixture.model({}, two), { textScale: 1, focus: 0, scroll: {} }).values.grid.items.map((t) => [t.title, t.src]),
@@ -226,12 +231,12 @@ eq(text(followed, 'instValue'), two.components[1].version, 'the page shows the r
 f = screen('app-renderer');
 eq(own(f), ['Install', 'Back'], 'a second renderer installs beside the first');
 eq(f.items[0].act, { do: 'install', id: 'mgu-render' });
-eq([text(f, 'note1'), f.values.facts.items.map((c) => c.text).pop()], ['', 'renderer']);
+eq([text(f, 'notes'), f.values.facts.items.map((c) => c.text).pop()], ['', 'renderer']);
 const broken = fixture.state();
 broken.components = broken.components.map((c) => c.id === 'mgu-render' ? Object.assign({}, c, { installed: '0.1.0', status: 'installed',
     problem: 'In-page drawing unavailable: no identifier table in HmiMain3D' }) : c);
 f = screen('app-renderer', {}, broken);
-eq([text(f, 'problem'), text(f, 'note1')], ['In-page drawing unavailable: no identifier table in HmiMain3D', ''], 'an installed tool\'s problem');
+eq([text(f, 'problem'), text(f, 'notes')], ['In-page drawing unavailable: no identifier table in HmiMain3D', ''], 'an installed tool\'s problem');
 f = screen('app-downloading');
 eq(own(f), ['Back'], 'nothing to press while it downloads');
 eq([f.values.progress.label, f.values.progress.right, f.values.icon.progress], ['Downloading', '42 %', 0.42]);
@@ -240,7 +245,7 @@ const later = Object.assign(fixture.state(), { busy: null });
 later.components = [Object.assign({}, later.components[3], { pendingReboot: true }), Object.assign({}, later.components[1], { pendingReboot: true })];
 const laterOf = (over) => frame(fixture.model(over, later), { textScale: 1, focus: 0, scroll: {} });
 f = laterOf({ stack: [{ name: 'main' }, { name: 'app', id: 'car_vitals' }] });
-eq([f.items.map((i) => i.label).slice(0, -4).filter(notVersion), text(f, 'note1')], [['Restart head unit', 'Back'], 'Restart pending'], 'first install');
+eq([f.items.map((i) => i.label).slice(0, -4).filter(notVersion), text(f, 'notes')], [['Restart head unit', 'Back'], 'Restart pending'], 'first install');
 eq(laterOf({ stack: [{ name: 'main' }, { name: 'app', id: 'doom' }] }).items.map((i) => i.label).slice(0, -4).filter(notVersion),
     ['Restart head unit', 'Remove', 'Back'], 'update of an installed app');
 f = laterOf({});
@@ -301,7 +306,7 @@ Object.keys(UNITS).forEach((unit) => {
     };
     let e = shown('app-failed');
     ok(e.texts.indexOf(`Failed: ${LONG}`) >= 0, `${unit}: the page's failure in full (${e.texts})`);
-    eq([text(e, 'note1'), e.items[0].label], ['', 'Try again'], `${unit}: not cut into the panel's notes`);
+    eq([text(e, 'notes'), e.items[0].label], ['', 'Try again'], `${unit}: not cut into the panel's notes`);
     e = shown('source-failed');
     ok(e.texts.indexOf(LONG) >= 0, `${unit}: the source's error in full (${e.texts})`);
 });

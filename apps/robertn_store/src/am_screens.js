@@ -335,51 +335,20 @@ const SCREENS = {
      }
     },
     {
-     "name": "note1",
+     "name": "notes",
      "rtype": "gpu",
      "gpu": "text",
      "x": 2140,
-     "y": 364,
+     "y": 350,
      "w": 660,
-     "h": 40,
+     "h": 200,
      "opts": {
       "text": "",
       "size": 32,
       "font": "label",
       "align": "left",
-      "color": "dim"
-     }
-    },
-    {
-     "name": "note2",
-     "rtype": "gpu",
-     "gpu": "text",
-     "x": 2140,
-     "y": 410,
-     "w": 660,
-     "h": 40,
-     "opts": {
-      "text": "",
-      "size": 32,
-      "font": "label",
-      "align": "left",
-      "color": "dim"
-     }
-    },
-    {
-     "name": "note3",
-     "rtype": "gpu",
-     "gpu": "text",
-     "x": 2140,
-     "y": 474,
-     "w": 660,
-     "h": 40,
-     "opts": {
-      "text": "",
-      "size": 32,
-      "font": "label",
-      "align": "left",
-      "color": "#ffb020"
+      "color": "#ffb020",
+      "wrap": true
      }
     },
     {

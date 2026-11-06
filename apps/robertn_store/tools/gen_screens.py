@@ -41,7 +41,11 @@ restart_now(st, 'filter', 936, 134, 84, {}); screens.append(st)
 st = copy.deepcopy(S['app']); get(st, 'desc')['h'] = 104
 st['components'].insert(st['components'].index(get(st, 'desc')) + 1,
     comp('history', 'appList', 480, 590, 1560, 132, {'items': [], 'rowH': 108, 'empty': ''}))
-st['components'].append(text('problem', 480, 730, 1560, 90, '', 36, 'label', '#ffb020', wrap=True)); screens.append(st)
+st['components'].append(text('problem', 480, 730, 1560, 90, '', 36, 'label', '#ffb020', wrap=True))
+# his three note lines one text, wrapped down to the progress bar's place: why it cannot be installed in full
+i = next(k for k, c in enumerate(st['components']) if c['name'] == 'note1')
+drop(st, 'note1', 'note2', 'note3')
+st['components'].insert(i, text('notes', 2140, 350, 660, 200, '', 32, 'label', '#ffb020', wrap=True)); screens.append(st)
 # confirm: his restart sheet, for every confirm step, its line wrapped over two; under it Remove all, shown while an app's removal may take tools along
 st = copy.deepcopy(S['restart']); st['name'] = 'confirm'
 # Cancel on the left, the action on the right: the controller turned right goes from Cancel (focused first) to it

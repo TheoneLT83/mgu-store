@@ -159,9 +159,8 @@ function compact(W, H0, look, opts) {
         text('instValue', px + 20, M + 46, 200, 58, '', 46, 'num'),
         text('availLabel', px + 230, M + 16, 220, 28, '', 22, 'label', DIM),
         text('availValue', px + 230, M + 46, 220, 58, '', 46, 'num', BLUE),
-        text('note1', px + 20, M + 118, PW - 40, 32, '', 25, 'label', DIM),
-        text('note2', px + 20, M + 154, PW - 40, 32, '', 25, 'label', DIM),
-        text('note3', px + 20, M + 190, PW - 40, 32, '', 25, 'label', AMBER),
+        // why it cannot be installed and the like, in full, down to the progress bar's place
+        text('notes', px + 20, M + 118, PW - 40, primaryY - 112 - M - 118, '', 25, 'label', AMBER, { wrap: true }),
         el('progress', 'progress', px + 20, primaryY - 104, PW - 40, 90, { label: '', right: '', sub: '', value: 0, percent: false,
             size: 24, hidden: true }),
         button('primary', px + 20, primaryY, PW - 40, 84, '', 'primary', 30, { vicon: 'arrowDown', color: BLUE }),

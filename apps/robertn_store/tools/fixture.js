@@ -181,6 +181,9 @@ function screens() {
         ['installed-offline', { tab: 'installed', stack: main }, { online: false, busy: null }],
         // an error of about 200 characters: on a component's page, a source's page
         ['app-failed', { stack: main.concat([{ name: 'app', id: 'vehicle_control' }]) }, failedSt(st, 'vehicle_control', { error: LONG_ERROR })],
+        // another source holds its id: why, in full
+        ['app-blocked', { stack: main.concat([{ name: 'app', id: 'vehicle_control' }]) }, failedSt(st, 'vehicle_control', { installed: null,
+            status: 'available', error: null, blocked: 'vehicle_control is already installed from TheoneLT83/idrive7-apps; its updates come from there' })],
         ['source-failed', { tab: 'settings', stack: main.concat([{ name: 'source', id: 'car-apps' }]) }, sourceFailed(st)]
     ];
 }

@@ -225,8 +225,9 @@ function storeView(m) {
     // the status line names a row as the tiles tell it apart
     const st = m.st && Object.assign({}, m.st, { components: m.st.components.map((c) => (listed(c) ? Object.assign({}, c, { title: named(m, c) }) : c)) });
     const shown = comps(m).filter((c) => m.filter === 'all' || (m.filter === 'app' ? !isTool(c) : isTool(c)));
-    // what is not on the car yet first, each group in its usual order
-    const list = shown.filter((c) => !c.installed).concat(shown.filter((c) => c.installed));
+    // what is not on the car yet first, then what is, then what cannot be installed; each group in its usual order
+    const cannot = (c) => !c.installed && (c.blocked || notForUnit(c));
+    const list = shown.filter((c) => !c.installed && !cannot(c)).concat(shown.filter((c) => c.installed), shown.filter(cannot));
     const name = sourceNames(list, sources(m));
     const checking = !!(m.connected && m.st && m.st.catalog && m.st.catalog.checking);
     const online = m.connected && m.st && m.st.online;
@@ -405,8 +406,8 @@ function appView(m, page) {
     const c = rowOf(m, page);
     if (!c) {
         return { name: { text: tr("Not listed") }, author: { text: '' }, facts: { items: [] }, desc: { text: '' }, icon: { letter: '?' },
-            instValue: { text: '' }, availLabel: { text: '' }, availValue: { text: '' }, problem: { text: '' }, note1: { text: '' }, note2: { text: '' },
-            note3: { text: '' }, progress: hidden, primary: hidden, secondary: hidden, history: { items: [], empty: '' } };
+            instValue: { text: '' }, availLabel: { text: '' }, availValue: { text: '' }, problem: { text: '' }, notes: { text: '' },
+            progress: hidden, primary: hidden, secondary: hidden, history: { items: [], empty: '' } };
     }
     const busy = busyOf(m);
     const s = tileState(c, busy);
@@ -437,24 +438,23 @@ function appView(m, page) {
     };
     const notes = [];
     if (notForUnit(c)) {
-        notes.push([tr("Not for this head unit"), AMBER]);
+        notes.push(tr("Not for this head unit"));
         if (c.mguHmi && c.mguHmi.length) {
-            notes.push([tr("For {0}", hmiNames(c.mguHmi)), AMBER]);
+            notes.push(tr("For {0}", hmiNames(c.mguHmi)));
         }
     }
     if (c.blocked) {
-        notes.push([c.blocked, AMBER]);
+        notes.push(c.blocked);
     }
     if (c.pendingReboot) {
-        notes.push([tr("Restart pending"), AMBER]);
+        notes.push(tr("Restart pending"));
         const failed = restartFailed(m);
         if (failed) {
-            notes.push([failed, AMBER]);
+            notes.push(failed);
         }
     }
-    ['note1', 'note2', 'note3'].forEach((k, i) => {
-        v[k] = notes[i] ? { text: String(notes[i][0]).slice(0, 80), color: notes[i][1] } : { text: '' };
-    });
+    // in full, each its own line, wrapped
+    v.notes = { text: notes.map(String).join('\n') };
     v.progress = mine ? { hidden: false, label: tr(PHASE[busy.phase] || 'Installing'), value: busy.phase === 'download' ? percent(busy) : 100,
         right: busy.phase === 'download' ? `${percent(busy)} %` : '',
         sub: busy.phase === 'download' && busy.total ? tr("{0} of {1}", size(busy.progress), size(busy.total)) : '' }
