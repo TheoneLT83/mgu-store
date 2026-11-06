@@ -21,7 +21,8 @@ jobs:
       - name: Updater
         run: sh native/mgu-updater/test/run.sh
       - name: Deploy tool
-        run: node deploy/test/run.js
+        # as root, as on the head unit: its tests chown and mount in their fake roots
+        run: sudo -E env "PATH=$PATH" node deploy/test/run.js
       - name: Store
         working-directory: apps/robertn_store
         run: |
