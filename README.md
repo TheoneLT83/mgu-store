@@ -139,9 +139,9 @@ restart (Settings → **Restart head unit**).
 
 The Store comes with these sources: this repository,
 [idrive7-apps](https://github.com/cauliflowermossgrape/idrive7-apps),
-[idrive-apps](https://github.com/robertnisipeanu/idrive-apps) (with the
-renderer that draws on the instrument cluster and the HUD, and the CarPlay
-map on the instrument cluster) and
+[Cluster-apps](https://github.com/TheoneLT83/Cluster-apps) (Cluster
+functions: the CarPlay or Android Auto map on the instrument cluster and the
+HUD, with the renderer that draws there) and
 [car-apps](https://github.com/IterioDev/car-apps) (IterioDev's apps and
 tools, most of them for iDrive 8 only, at its newest x.y.z tag).
 

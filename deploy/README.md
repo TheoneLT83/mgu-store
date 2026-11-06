@@ -156,7 +156,7 @@ The updater reads its sources from `/var/opt/mgu-updater/sources.json`
 (native/mgu-updater/README.md). The installers seed it with
 `deploy/sources.json`, the Store's own source (`mgu-store`, this
 repository's releases), idrive7-apps (`cauliflowermossgrape/idrive7-apps`
-on its default branch), idrive-apps (`robertnisipeanu/idrive-apps`, from
+on its default branch), Cluster-apps (`TheoneLT83/Cluster-apps`, from
 its releases) and car-apps (`IterioDev/car-apps`, at its newest x.y.z
 tag), when the updater is installed and has none: `sh
 mgu-deploy.sh updater-sources < sources.json` writes it, root's, mode 0600,

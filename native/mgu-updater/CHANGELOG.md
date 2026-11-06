@@ -1,5 +1,15 @@
 # Updater changelog
 
+## 0.8.32
+
+- Waze on cluster moved to TheoneLT83/Cluster-apps, where it is Cluster functions (with waze-on-cluster and the
+  cluster renderer): a stored source on `robertnisipeanu/idrive-apps` reads `TheoneLT83/Cluster-apps` (releases)
+  from the next start, under its own id, so what was installed from it updates from there as before, Waze on cluster
+  to Cluster functions included. With a source of Cluster-apps there already, the old source goes and what came
+  from it counts as that one's. One the owner removed brings nothing back.
+- The default sources, and the sources the installers seed, name `TheoneLT83/Cluster-apps` in place of
+  `robertnisipeanu/idrive-apps`.
+
 ## 0.8.31
 
 - Every line the daemon logs is also kept across a restart of the head unit, in `state_dir/updater.log` on

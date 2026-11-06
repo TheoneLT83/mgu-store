@@ -66,6 +66,11 @@ const STORE_HELLO_SINCE = '0.9.39';
 const STORE_REBOOT_SECRET_SINCE = '0.9.41';
 // How long a started Store has to say hello before its update counts as failed.
 const STORE_HELLO_MS = Number(process.env.MGU_UPDATER_STORE_HELLO_MS || 120000);
+/* Repositories that moved (lower case): a stored source on the old one reads the new one from the next start (moveSources). */
+const MOVED_SOURCES = {
+    // Waze on cluster became Cluster functions in TheoneLT83/Cluster-apps (with waze-on-cluster and the cluster renderer)
+    'robertnisipeanu/idrive-apps': { repo: 'TheoneLT83/Cluster-apps', channel: 'releases' }
+};
 // The uplink takes up a new fetch uid within its 5 s rescan of uids.d.
 const UPLINK_RESCAN_MS = Number(process.env.MGU_UPDATER_UPLINK_RESCAN_MS || 6000);
 
@@ -1116,6 +1121,7 @@ class Updater {
         } catch (e) { /* none */ }
         if (conf.sources) {
             this.loadSources();
+            this.moveSources();
             this.addDefaultSources();
             // the per-source tokens of an earlier version, as tokens
             const was = this.tokens.convert(this.stored, (l) => console.log(l));
@@ -1150,6 +1156,81 @@ class Updater {
         }
         this.stored = list;
         list.forEach((def) => this.addRuntime(def));
+    }
+
+    /* MOVED_SOURCES: a stored source on a repository that moved reads the new one, under its own id, so what was
+     * installed from it (origins.json) updates from the new one as it did from the old (Waze on cluster to Cluster
+     * functions included, whose title changed); its listing is read afresh. With a source of the new repository there
+     * already, the old one goes and what came from it counts as that one's. One the owner removed brings nothing
+     * back: the new repository is not added as a default source in its place. */
+    moveSources() {
+        if (this.sourcesError) {
+            return;
+        }
+        const lower = (r) => String(r || '').toLowerCase();
+        const ofRepo = (list, r) => list.find((d) => d.type === 'github' && lower(d.repo) === lower(r));
+        let list = this.stored;
+        let moved = false;
+        let originsMoved = false;
+        Object.keys(MOVED_SOURCES).forEach((old) => {
+            const to = MOVED_SOURCES[old];
+            const was = ofRepo(list, old);
+            if (!was) {
+                this.defaultAddedLike(old, to.repo);
+                return;
+            }
+            const there = ofRepo(list, to.repo);
+            if (there) {
+                list = list.filter((d) => d !== was);
+                Object.keys(this.origins).forEach((id) => {
+                    if (this.origins[id] && this.origins[id].source === was.id) {
+                        this.origins[id].source = there.id;
+                        originsMoved = true;
+                    }
+                });
+                console.log(`source ${was.id}: ${was.repo} moved to ${to.repo}, which source ${there.id} reads; ${was.id} removed, what came from it updates from ${there.id}`);
+            } else {
+                const def = Object.assign({}, was, { repo: to.repo });
+                if (to.channel) {
+                    def.channel = to.channel;
+                }
+                list = list.map((d) => (d === was ? def : d));
+                rmIfThere(this.cacheFile(was.id));
+                console.log(`source ${was.id}: ${was.repo} moved to ${to.repo}; read from there from now on`);
+            }
+            moved = true;
+        });
+        if (!moved) {
+            return;
+        }
+        try {
+            this.saveSources(list);
+        } catch (e) {
+            console.log(`moving sources: ${e.message}`);
+            return;
+        }
+        if (originsMoved) {
+            this.saveOrigins();
+        }
+        this.src = new Map();
+        list.forEach((def) => this.addRuntime(def));
+    }
+
+    /* A default source the owner removed: a repository it moved to counts as added too (state/default-sources.json). */
+    defaultAddedLike(old, repo) {
+        const file = path.join(this.conf.state_dir, 'default-sources.json');
+        let added = [];
+        try {
+            added = readJson(file).added || [];
+        } catch (e) {
+            return;
+        }
+        if (added.indexOf(old) < 0 || added.indexOf(repo.toLowerCase()) >= 0) {
+            return;
+        }
+        try {
+            writeAtomic(file, JSON.stringify({ added: added.concat([repo.toLowerCase()]) }, null, 1));
+        } catch (e) { /* asked again at the next start */ }
     }
 
     /* A source id from want (a repo's name) when it is free, else s-<random>. */

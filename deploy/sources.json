@@ -3,6 +3,6 @@
   "sources": [
     { "id": "mgu-store", "type": "github", "repo": "TheoneLT83/mgu-store", "builtin": true },
     { "id": "idrive7-apps", "type": "github", "repo": "TheoneLT83/idrive7-apps", "channel": "branch" },
-    { "id": "idrive-apps", "type": "github", "repo": "robertnisipeanu/idrive-apps", "channel": "releases" }
+    { "id": "cluster-apps", "type": "github", "repo": "TheoneLT83/Cluster-apps", "channel": "releases" }
   ]
 }

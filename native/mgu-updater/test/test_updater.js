@@ -5433,6 +5433,7 @@ function testFirstStart() {
     ok('default sources: none added while sources.json cannot be read', u.stored.length === 1 &&
         fs.readFileSync(path.join(D, 'sources.json'), 'utf8') === newer && !fs.existsSync(path.join(D, 'state', 'default-sources.json')));
     testDefaultSources();
+    testMovedSources();
     testConversion();
     return Promise.resolve();
 }
@@ -5488,6 +5489,52 @@ function testDefaultSources() {
     u = new Updater(conf());
     ok('default sources: without sources.json, written with the built-in source first', stored().map((s) => `${s.id}:${s.repo}`).join() ===
         'mgu-store:TheoneLT83/mgu-store,idrive7-apps:TheoneLT83/idrive7-apps', JSON.stringify(stored()));
+}
+
+/* A source on a repository that moved (MOVED_SOURCES): robertnisipeanu/idrive-apps reads TheoneLT83/Cluster-apps
+ * under its own id, so Waze on cluster's origin updates it to Cluster functions; with Cluster-apps there already the
+ * old source goes and its origins move to that one; one the owner removed brings nothing back. */
+function testMovedSources() {
+    const { Updater } = require('../js/updater');
+    const D = path.join(T, 'moved');
+    mkdirp(path.join(D, 'state'));
+    const file = path.join(D, 'sources.json');
+    const conf = () => ({ state_dir: path.join(D, 'state'), sources: file, credentials_dir: path.join(D, 'cred'),
+        default_sources: 'TheoneLT83/idrive7-apps:branch TheoneLT83/Cluster-apps:releases' });
+    const stored = () => JSON.parse(fs.readFileSync(file, 'utf8')).sources;
+    const origins = (o) => (o === undefined ? JSON.parse(fs.readFileSync(path.join(D, 'state', 'origins.json'), 'utf8'))
+        : fs.writeFileSync(path.join(D, 'state', 'origins.json'), JSON.stringify(o)));
+    const added = (a) => fs.writeFileSync(path.join(D, 'state', 'default-sources.json'), JSON.stringify({ added: a }));
+    const store = { id: 'mgu-store', type: 'github', repo: 'TheoneLT83/mgu-store', builtin: true };
+    const seven = { id: 'idrive7-apps', type: 'github', repo: 'TheoneLT83/idrive7-apps', channel: 'branch' };
+    // Robert's source, Waze on cluster installed from it
+    fs.writeFileSync(file, JSON.stringify({ schema: 1, sources: [store, seven,
+        { id: 'idrive-apps', type: 'github', repo: 'robertnisipeanu/idrive-apps', channel: 'releases' }] }));
+    origins({ robertn_waze_cluster: { source: 'idrive-apps' }, 'waze-on-cluster': { source: 'idrive-apps' } });
+    added(['theonelt83/idrive7-apps', 'robertnisipeanu/idrive-apps']);
+    let u = new Updater(conf());
+    ok('moved: Robert\'s source reads TheoneLT83/Cluster-apps under its own id; what came from it keeps it as its origin, not doubled',
+        JSON.stringify(stored()[2]) === JSON.stringify({ id: 'idrive-apps', type: 'github', repo: 'TheoneLT83/Cluster-apps', channel: 'releases' }) &&
+        stored().length === 3 && u.src.get('idrive-apps').def.repo === 'TheoneLT83/Cluster-apps' &&
+        origins().robertn_waze_cluster.source === 'idrive-apps', JSON.stringify(stored()));
+    u = new Updater(conf());
+    ok('moved: once', stored().length === 3 && u.stored.length === 3, JSON.stringify(stored()));
+    // both there: the owner added Cluster-apps beside Robert's
+    fs.writeFileSync(file, JSON.stringify({ schema: 1, sources: [store, seven,
+        { id: 'idrive-apps', type: 'github', repo: 'robertnisipeanu/idrive-apps', channel: 'releases' },
+        { id: 'cluster-apps', type: 'github', repo: 'TheoneLT83/Cluster-apps', channel: 'releases' }] }));
+    origins({ robertn_waze_cluster: { source: 'idrive-apps' }, 'cluster-render': { source: 'cluster-apps' } });
+    u = new Updater(conf());
+    ok('moved: with Cluster-apps there already, Robert\'s source goes and what came from it counts as Cluster-apps\'s',
+        stored().map((d) => d.id).join() === 'mgu-store,idrive7-apps,cluster-apps' && !u.src.has('idrive-apps') &&
+        origins().robertn_waze_cluster.source === 'cluster-apps' && origins()['cluster-render'].source === 'cluster-apps',
+        JSON.stringify([stored(), origins()]));
+    // removed by the owner: nothing comes back, Cluster-apps not added as a default source in its place
+    fs.writeFileSync(file, JSON.stringify({ schema: 1, sources: [store, seven] }));
+    added(['theonelt83/idrive7-apps', 'robertnisipeanu/idrive-apps']);
+    u = new Updater(conf());
+    ok('moved: Robert\'s source removed by the owner: Cluster-apps is not added in its place',
+        stored().map((d) => d.id).join() === 'mgu-store,idrive7-apps', JSON.stringify(stored()));
 }
 
 /* A default source of a repo whose catalog release is read through the API,

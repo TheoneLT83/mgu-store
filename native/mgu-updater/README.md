@@ -65,9 +65,16 @@ them:
   folder (tests, the emulator).
 - `builtin`: the Store's own source (`builtin_repo`, id `mgu-store`),
   always there and not removable.
+- **Moved repositories** (`MOVED_SOURCES`): a stored source on a repository
+  that moved reads the new one from the next start, under its own id, so what
+  was installed from it updates from the new one as before:
+  `robertnisipeanu/idrive-apps` reads `TheoneLT83/Cluster-apps` (releases),
+  where Waze on cluster is Cluster functions. With a source of the new one
+  there already, the old one goes and what came from it counts as that
+  one's. One the owner removed brings nothing back.
 - **Default sources** (`default_sources`: `<owner>/<repo>[:<channel>]`
   separated by spaces; `TheoneLT83/idrive7-apps:branch
-  robertnisipeanu/idrive-apps:releases`): each is
+  TheoneLT83/Cluster-apps:releases`): each is
   added once, at the first start of an updater that names it, unless a
   source of that repo is there already (the installers seed it too,
   `deploy/sources.json`). `state/default-sources.json` (`{"added":
