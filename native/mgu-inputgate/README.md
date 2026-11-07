@@ -28,7 +28,7 @@ while an app holds the controller; a renderer gone leaves it stale, and the HMI 
 |---|---|
 | `/var/opt/mgu-inputgate/<version>/mgu-inputgate.so`, `guard.sh` | the library and its boot guard |
 | `mgu-inputgate-guard.service` | before `hmi.service`: writes `/run/mgu-inputgate.env` (`LD_PRELOAD`, the unit's other preloads kept) unless the HMI failed to come up healthy with the library twice in a row |
-| `mgu-inputgate-check.service` | after `hmi.service`: once `HmiMain3D` has run with it 60 s (checked 120 s after the start), the count starts again |
+| `mgu-inputgate-check.service` | after `hmi.service`: once `HmiMain3D` has run with it 60 s (checked 120 s after the start), the count starts again; so it does at a normal shutdown while the `HmiMain3D` that first loaded it still runs it, so a start ended within those minutes is no failure |
 | `hmi.service.d/zz-mgu-inputgate.conf` | pulls both in and reads the env file |
 
 Nothing restarts at the install: the HMI loads it at the next start of the head unit. A version installed since the

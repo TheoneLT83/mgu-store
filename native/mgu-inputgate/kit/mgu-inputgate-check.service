@@ -8,3 +8,5 @@ RequiresMountsFor=/var/opt/mgu-inputgate
 # runs on after the check (never exits): a service that stops makes the head unit reboot
 Type=simple
 ExecStart=/bin/sh /var/opt/mgu-inputgate/current/guard.sh check
+# a normal shutdown stops it before hmi.service (After=): a start that ends while the process runs is healthy
+ExecStop=/bin/sh /var/opt/mgu-inputgate/current/guard.sh stop

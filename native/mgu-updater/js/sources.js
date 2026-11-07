@@ -649,6 +649,9 @@ function packService(entry, byPath) {
  * `strikes` starts in a row; <id>-check.service after the unit, which
  * resets the count once the process has run with the library for
  * `healthySeconds`, `checkAfterSeconds` after the start, and never exits;
+ * stopped at a normal shutdown while the process that first loaded the
+ * library still runs it, it resets the count too, so a start the head unit
+ * ends before the timed check is no failure;
  * and the unit's drop-in zz-<id>.conf that pulls both in and reads the env
  * file. Nothing starts now: the unit loads it at the next head-unit start.
  * A new version starts the count again; so does removing and installing. */
@@ -662,7 +665,7 @@ function preloadFiles(entry) {
     const guardSh = `#!/bin/sh
 # ${title} (${id}): boot guard for ${pl.library} in ${pl.unit}, from its repository's
 # mgu-repo.json, installed by mgu-deploy (after idrive7-apps' deploy/mgu-app-install.sh inputgate).
-D=${D}; SO=$D/current/${pl.library}; RUN=/run/${id}.env; N=$D/strikes; MAX=${pl.strikes}
+D=${D}; SO=$D/current/${pl.library}; RUN=/run/${id}.env; PID=/run/${id}.pid; N=$D/strikes; MAX=${pl.strikes}
 n=$(cat "$N" 2>/dev/null); case "$n" in ''|*[!0-9]*) n=0;; esac
 # a version installed since the count was kept starts it again
 v=$(readlink "$D/current" 2>/dev/null)
@@ -691,7 +694,14 @@ boot)
     echo "LD_PRELOAD=\${other:+$other }$SO" > "$RUN"
     ;;
 check)   # (${check}, after ${pl.unit}) the process has run with the library long enough
-    sleep ${pl.checkAfterSeconds}
+    # the first process seen with the library, for the stop: one that crashed and came back is another
+    rm -f "$PID"; t=0
+    while [ $t -lt ${pl.checkAfterSeconds} ]; do
+        p=$(pidof ${pl.process} 2>/dev/null | cut -d' ' -f1)
+        if [ -n "$p" ] && grep -q "${pl.library}" "/proc/$p/maps" 2>/dev/null; then echo "$p" > "$PID"; break; fi
+        sleep 5; t=$((t + 5))
+    done
+    [ $t -lt ${pl.checkAfterSeconds} ] && sleep $((${pl.checkAfterSeconds} - t))
     p=$(pidof ${pl.process} 2>/dev/null | cut -d' ' -f1)
     if [ -n "$p" ] && grep -q "${pl.library}" "/proc/$p/maps" 2>/dev/null && systemctl is-active -q ${pl.unit}; then
         up=$(cut -d. -f1 /proc/uptime); st=$(cut -d')' -f2 "/proc/$p/stat" | awk '{print $20}')
@@ -699,6 +709,12 @@ check)   # (${check}, after ${pl.unit}) the process has run with the library lon
     fi
     # never exit: the head unit's lifecycle reboots the unit when a service stops
     while :; do sleep 86400; done
+    ;;
+stop)   # (${check} stopped, at a normal shutdown, before ${pl.unit}) that process still runs with the library
+    p=$(cat "$PID" 2>/dev/null)
+    if [ -n "$p" ] && grep -q "${pl.library}" "/proc/$p/maps" 2>/dev/null && systemctl is-active -q ${pl.unit}; then
+        echo 0 > "$N"; sync; echo "${id}: ${pl.process} ran with it until the shutdown"
+    fi
     ;;
 esac
 exit 0
@@ -727,6 +743,8 @@ RequiresMountsFor=${D}
 # runs on after the check (never exits): a service that stops makes the head unit reboot
 Type=simple
 ExecStart=/bin/sh ${D}/current/guard.sh check
+# a normal shutdown stops it before ${pl.unit} (After=): a start that ends while the process runs is healthy
+ExecStop=/bin/sh ${D}/current/guard.sh stop
 `;
     const dropin = `# ${title} (${id}): ${pl.library} in ${pl.unit}, loaded only if ${guard} puts /run/${id}.env there
 [Unit]
