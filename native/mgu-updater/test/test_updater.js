@@ -4992,7 +4992,7 @@ function testPythonRepo() {
                 why === null && comp('gate').status === 'installed' && fs.readFileSync(path.join(dir, 'gate.so'), 'utf8') === 'ELF stand-in\n' &&
                 JSON.stringify(c.units) === '[{"name":"gate-guard.service"},{"name":"gate-check.service"}]' &&
                 JSON.stringify(c.dropins) === '[{"unit":"hmi.service","name":"zz-gate.conf"}]' && JSON.stringify(c.restart) === '[]' &&
-                JSON.stringify(c.recmgr) === '[]' && guard.indexOf('SO=$D/current/gate.so') >= 0 && /MAX=2/.test(guard) && /sleep 120/.test(guard) &&
+                JSON.stringify(c.recmgr) === '[]' && guard.indexOf('SO=$D/current/gate.so') >= 0 && /MAX=2/.test(guard) && /while \[ \$t -lt 120 \]/.test(guard) &&
                 f.dropin.indexOf('EnvironmentFile=-/run/gate.env') >= 0 && f.dropin.indexOf('Wants=gate-guard.service gate-check.service') >= 0 &&
                 f.guardUnit.indexOf('Before=hmi.service') >= 0 && f.checkUnit.indexOf('After=hmi.service') >= 0, JSON.stringify([why, comp('gate'), c]));
             const sh = cp.spawnSync('sh', ['-n', path.join(dir, 'guard.sh')], { encoding: 'utf8' });
