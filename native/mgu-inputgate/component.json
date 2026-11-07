@@ -1,7 +1,7 @@
 {
   "id": "mgu-inputgate",
   "kind": "tool",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "title": "Controller gate",
   "description": "Lets apps drawn by a renderer have the iDrive controller (tabs, page buttons, settings); loads into the HMI at the next start",
   "mguHmi": ["ID7"],

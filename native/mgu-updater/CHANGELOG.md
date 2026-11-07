@@ -1,11 +1,15 @@
 # Updater changelog
 
-## 0.8.34
+## 0.8.35
 
 robertnisipeanu/mgu-store's 0.8.32 with this repository's updater:
 
 - `{"op":"usb-phone","on":true|false}` (privileged) is relayed to the uplink as it is: phones over USB used or left alone (mgu-uplink 0.7.7).
 - The state's `uplink` has `usbPhone` while the uplink's `status.json` says it.
+
+## 0.8.34
+
+- A preload tool's guard (the controller gate's, from a repository's `mgu-repo.json`) counts a start as failed only when the process did not run it through: its check service, stopped at a normal shutdown while the process that first loaded the library still runs it, sets the count back to 0. A head unit switched off or restarted within 3 minutes of its start no longer counts against the library, and two such starts in a row no longer leave the controller gate out.
 
 ## 0.8.33
 
