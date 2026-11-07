@@ -1910,7 +1910,29 @@ function runAbsentContext() {
     });
 }
 
-run().then(runWidgetsExtra).then(runLanguage).then(runAbsentContext).then(runDrawn).then(runTiming).then(() => {
+/* The tile keeps the name and icon the app manager gave it: the app maps its
+ * state and enables it, and never points it at the app's own bundles. */
+function runEntryPoint() {
+    const calls = [];
+    const record = (name) => (v) => { calls.push(v === undefined ? name : `${name} ${v}`); return Promise.resolve(); };
+    const description = { name: 'robertn_store', uuid: 'tile-uuid', textId: 'SID_STORE_TITLE', icon: 'store_icon.png' };
+    const tile = {
+        getDescription: () => description,
+        init: record('init'),
+        setAvailability: record('availability'),
+        entryPoint: { setText: record('text'), setIcon: record('icon') }
+    };
+    app.appDescription = { application: { entryPoints: [description] } };
+    app.getEntryPoints = () => [tile];
+    states.length = 0;
+    return app._registerEntryPoints().then(() => {
+        eq(calls, ['init', 'availability ENABLED'], 'the tile: enabled, its name and icon left to the app manager');
+        eq(states.length, 1, 'the tile opens the root screen');
+        eq(app._entryUuid, 'tile-uuid', 'the tile is remembered');
+    });
+}
+
+run().then(runWidgetsExtra).then(runLanguage).then(runAbsentContext).then(runEntryPoint).then(runDrawn).then(runTiming).then(() => {
     cleanUp();
     console.log(`store: ${checks} checks pass`);
     process.exit(0);

@@ -1469,11 +1469,11 @@ class Store extends OnlineApp {
         }
     }
 
-    /* The app manager inserts the public tile from application.json and hands
-     * it to the app at start; the SDK emits 'entryPointExecute' on a tap. The
-     * tile keeps the name and icon the manager gave it: a text set here is a
-     * string id the HMI looks up again and at times finds nothing for, which
-     * left the tile without its name. */
+    /* The app manager inserts the public tile from application.json, with its
+     * name and icon from the manager's own bundles, and hands it to the app at
+     * start; the SDK emits 'entryPointExecute' on a tap. The app leaves the
+     * name and icon alone: its own bundles end with its process, and a tile
+     * pointing at them shows no name once the manager stops the app. */
     _registerEntryPoints() {
         const descriptions = (this.appDescription &&
             this.appDescription.application.entryPoints) || [];
