@@ -1,5 +1,9 @@
 # mgu-render changelog
 
+## 0.6.19
+
+- 0.6.18 built again: a change to its car-test tool, since taken back, gave 0.6.18's tree a newer date, and a release publishes no other content under a published version.
+
 ## 0.6.18
 
 - robertnisipeanu/mgu-store's 0.6.12 with this repository's renderer: the foreground gate maps an RHMI uuid that more than one `oap_<uid>` folder claims (an earlier install's folder left behind) to the install the app manager has registered (`oap_12201/data/apps/<id>.json`), when exactly one of them is registered; otherwise the uuid stays unmapped, so an app still cannot take another app's uuid. A left-behind folder of the Store kept it out of front for good, and its page stayed black under the HMI's title.
