@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.54
+
+robertnisipeanu/mgu-store's 0.9.29 with this repository's Store: the tile keeps the name and icon the app manager
+gives it, also after the manager stops the Store; a test checks the Store never sets them.
+
 ## 0.9.53
 
 robertnisipeanu/mgu-store's 0.9.28 with this repository's Store: a tool whose install step waits after a firmware
