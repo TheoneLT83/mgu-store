@@ -93,7 +93,6 @@
     "Phone access": "Acces din telefon",
     "Preferred connection": "Conexiune preferată",
     "Preferred": "Preferată",
-    "Preferred: {0}": "Preferată: {0}",
     "Rejected": "Respins",
     "Releases": "Lansări",
     "Remove": "Eliminare",
@@ -194,6 +193,7 @@
     "Changelog": "Modificări",
     "Internet": "Internet",
     "Information": "Informații",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Phone over USB": "Telefon prin USB"
   }
 }

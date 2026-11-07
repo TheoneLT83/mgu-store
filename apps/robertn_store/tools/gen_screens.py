@@ -159,7 +159,6 @@ st['components'] += [copy.deepcopy(BACK),
     text('note', 2140, 336, 660, 130, '', 32, 'label', '#ffb020', wrap=True),
     comp('power', 'vbutton', 2140, 496, 660, 96, {'text': '', 'vicon': 'wifi', 'style': 'outline'}, 'event:power'),
     comp('scan', 'vbutton', 2140, 608, 660, 96, {'text': 'Scan', 'vicon': 'refresh', 'style': 'outline'}, 'event:scan'),
-    comp('prefer', 'vbutton', 2140, 720, 660, 96, {'text': '', 'vicon': 'route', 'style': 'outline'}, 'event:prefer'),
 ]
 screens.append(st)
 # the uplink's preferred connection
@@ -167,7 +166,8 @@ st = base('prefer')
 st['components'] += [copy.deepcopy(BACK),
     text('title', 610, 138, 1600, 90, 'Preferred connection', 72, 'bold'),
     text('status', 610, 227, 1600, 43, '', 34, 'label', 'dim'),
-    comp('list', 'appList', 610, 292, 1500, 540, {'items': [], 'rowH': 108, 'empty': ''}),
+    comp('list', 'appList', 610, 292, 1500, 432, {'items': [], 'rowH': 108, 'empty': ''}),
+    comp('usbPhone', 'appList', 610, 732, 1500, 108, {'items': [], 'rowH': 108, 'empty': ''}),
 ]
 screens.append(st)
 # the proxy downloads go through: on or off, and its address

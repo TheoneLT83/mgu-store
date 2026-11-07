@@ -93,7 +93,6 @@
     "Phone access": "Πρόσβαση από κινητό",
     "Preferred connection": "Προτιμώμενη σύνδεση",
     "Preferred": "Προτίμηση",
-    "Preferred: {0}": "Προτίμηση: {0}",
     "Rejected": "Απορρίφθηκε",
     "Releases": "Εκδόσεις",
     "Remove": "Κατάργηση",
@@ -194,6 +193,7 @@
     "Changelog": "Αλλαγές",
     "Internet": "Internet",
     "Information": "Πληροφορίες",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Phone over USB": "Τηλέφωνο μέσω USB"
   }
 }

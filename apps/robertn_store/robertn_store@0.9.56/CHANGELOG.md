@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.56
+
+robertnisipeanu/mgu-store's 0.9.30 with this repository's Store: Settings' Access has **Preferred connection**
+(after Accounts, with an uplink that has Wi-Fi), and its page has **Phone over USB** (mgu-uplink 0.7.7): off, the
+uplink leaves a phone plugged in over USB alone. The Wi-Fi page's Preferred button is that row now. Requires
+mgu-updater 0.8.34, which relays the switch.
+
 ## 0.9.55
 
 The Wi-Fi page takes the controller as a tab does: the menu first, then the page's rows and buttons, Back last.

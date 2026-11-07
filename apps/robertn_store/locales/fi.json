@@ -93,7 +93,6 @@
     "Phone access": "Puhelinkäyttö",
     "Preferred connection": "Ensisijainen yhteys",
     "Preferred": "Ensisijainen",
-    "Preferred: {0}": "Ensisijainen: {0}",
     "Rejected": "Hylätty",
     "Releases": "Julkaisut",
     "Remove": "Poista",
@@ -194,6 +193,7 @@
     "Changelog": "Muutokset",
     "Internet": "Internet",
     "Information": "Tiedot",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Phone over USB": "Puhelin USB:n kautta"
   }
 }

@@ -93,7 +93,6 @@
     "Phone access": "Přístup z telefonu",
     "Preferred connection": "Preferované připojení",
     "Preferred": "Preferováno",
-    "Preferred: {0}": "Preferováno: {0}",
     "Rejected": "Odmítnuto",
     "Releases": "Vydání",
     "Remove": "Odebrat",
@@ -194,6 +193,7 @@
     "Changelog": "Seznam změn",
     "Internet": "Internet",
     "Information": "Informace",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Phone over USB": "Telefon přes USB"
   }
 }

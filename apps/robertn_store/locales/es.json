@@ -93,7 +93,6 @@
     "Phone access": "Acceso móvil",
     "Preferred connection": "Conexión preferida",
     "Preferred": "Preferida",
-    "Preferred: {0}": "Preferida: {0}",
     "Rejected": "Rechazada",
     "Releases": "Versiones",
     "Remove": "Eliminar",
@@ -194,6 +193,7 @@
     "Changelog": "Cambios",
     "Internet": "Internet",
     "Information": "Información",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Phone over USB": "Móvil por USB"
   }
 }

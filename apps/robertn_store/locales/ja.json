@@ -93,7 +93,6 @@
     "Phone access": "スマホからアクセス",
     "Preferred connection": "優先接続",
     "Preferred": "優先",
-    "Preferred: {0}": "優先：{0}",
     "Rejected": "拒否されました",
     "Releases": "リリース",
     "Remove": "削除",
@@ -194,6 +193,7 @@
     "Changelog": "変更履歴",
     "Internet": "インターネット",
     "Information": "情報",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Phone over USB": "USB接続のスマートフォン"
   }
 }

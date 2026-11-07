@@ -274,7 +274,7 @@ function compact(W, H0, look, opts) {
         el('keyboard', 'keyboard', X, keysY, CW, B - keysY, { shift: false })
     ]);
     // Wi-Fi: the networks on the left, the state and its buttons in the panel on the right
-    const wbY = (k) => B - 14 - (3 - k) * BTN_H - (2 - k) * 12;      // the panel's k-th button (0, 1, 2)
+    const wbY = (k) => B - 14 - (3 - k) * BTN_H - (2 - k) * 12;      // the panel's k-th button slot (0, 1, 2; 2 is empty)
     const wifi = screen('wifi', 3, [
         back(),
         title('Wi-Fi', titleX),
@@ -287,14 +287,15 @@ function compact(W, H0, look, opts) {
         text('info', px + 132, M + 72, PW - 152, 30, '', 23, 'label', DIM),
         text('note', px + 20, M + 132, PW - 40, wbY(0) - 12 - M - 132, '', 23, 'label', AMBER, { wrap: true }),
         button('power', px + 20, wbY(0), PW - 40, BTN_H, '', 'outline', 28, { vicon: 'wifi' }),
-        button('scan', px + 20, wbY(1), PW - 40, BTN_H, 'Scan', 'outline', 28, { vicon: 'refresh' }),
-        button('prefer', px + 20, wbY(2), PW - 40, BTN_H, '', 'outline', 28, { vicon: 'route' })
+        button('scan', px + 20, wbY(1), PW - 40, BTN_H, 'Scan', 'outline', 28, { vicon: 'refresh' })
     ]);
     const prefer = screen('prefer', 3, [
         back(),
         title('Preferred connection', titleX),
         status('status', R - 420, 420),
-        list('list', X, HEAD + 14, Math.min(1100, CW), B - HEAD - 14, { empty: '' })
+        // the ways (4 rows, fewer shown where the box is low: the list scrolls), then Phone over USB, above the menu
+        list('list', X, HEAD + 14, Math.min(1100, CW), Math.min(4 * LIST.rowH, B - HEAD - 22 - LIST.rowH), { empty: '' }),
+        list('usbPhone', X, HEAD + 22 + Math.min(4 * LIST.rowH, B - HEAD - 22 - LIST.rowH), Math.min(1100, CW), LIST.rowH, { empty: '' })
     ]);
     const proxyW = Math.min(1100, CW);
     const proxy = screen('proxy', 3, [

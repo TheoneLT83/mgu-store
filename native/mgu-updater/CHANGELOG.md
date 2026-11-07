@@ -1,5 +1,12 @@
 # Updater changelog
 
+## 0.8.34
+
+robertnisipeanu/mgu-store's 0.8.32 with this repository's updater:
+
+- `{"op":"usb-phone","on":true|false}` (privileged) is relayed to the uplink as it is: phones over USB used or left alone (mgu-uplink 0.7.7).
+- The state's `uplink` has `usbPhone` while the uplink's `status.json` says it.
+
 ## 0.8.33
 
 robertnisipeanu/mgu-store's 0.8.31 with this repository's updater:

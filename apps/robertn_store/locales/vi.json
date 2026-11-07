@@ -93,7 +93,6 @@
     "Phone access": "Truy cập từ điện thoại",
     "Preferred connection": "Kết nối ưu tiên",
     "Preferred": "Ưu tiên",
-    "Preferred: {0}": "Ưu tiên: {0}",
     "Rejected": "Bị từ chối",
     "Releases": "Bản phát hành",
     "Remove": "Xóa",
@@ -194,6 +193,7 @@
     "Changelog": "Nhật ký thay đổi",
     "Internet": "Internet",
     "Information": "Thông tin",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Phone over USB": "Điện thoại qua USB"
   }
 }

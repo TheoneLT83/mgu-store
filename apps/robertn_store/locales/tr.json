@@ -93,7 +93,6 @@
     "Phone access": "Telefondan erişim",
     "Preferred connection": "Tercih edilen bağlantı",
     "Preferred": "Tercih edilen",
-    "Preferred: {0}": "Tercih edilen: {0}",
     "Rejected": "Reddedildi",
     "Releases": "Sürümler",
     "Remove": "Kaldır",
@@ -194,6 +193,7 @@
     "Changelog": "Değişiklikler",
     "Internet": "İnternet",
     "Information": "Bilgi",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Phone over USB": "USB üzerinden telefon"
   }
 }

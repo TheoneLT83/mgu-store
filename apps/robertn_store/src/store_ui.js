@@ -29,7 +29,7 @@ const { t: tr } = require('./i18n.js');
  * { do: 'add-token' }, { do: 'sign-in' }, { do: 'sign-in-cancel' }, { do: 'phone' },
  * { do: 'pick', channel }, { do: 'pick-retry' }, { do: 'pick-add-token' }, { do: 'key', key } (typeKey),
  * { do: 'wifi-power' }, { do: 'wifi-5ghz' }, { do: 'wifi-scan' }, { do: 'wifi-join', ssid }, { do: 'wifi-password', ssid },
- * { do: 'wifi-forget', ssid }, { do: 'uplink-prefer', kind }, { do: 'proxy-toggle' }, { do: 'proxy-edit' }.
+ * { do: 'wifi-forget', ssid }, { do: 'uplink-prefer', kind }, { do: 'usb-phone' }, { do: 'proxy-toggle' }, { do: 'proxy-edit' }.
  *
  * The type page ({ name: 'type', title, text, shift, sym, layout, symbols,
  * go, secret, max, min, label }) is text typed on the drawn keyboard: layout 'url'
@@ -322,9 +322,15 @@ function settingsView(m) {
         access.push({ id: 'internet', title: 'Internet', sub: st.online ? 'Online' : 'Offline', subColor: st.online ? GREEN : AMBER,
             plain: true, vicon: 'tether', iconColor: 'text', right: 'chevron', act: { do: 'open', page: { name: 'internet' } } });
     }
+    // the preferred connection (and Phone over USB on its page), with an uplink that has Wi-Fi
+    const prefer = wifiOf(m) ? { id: 'prefer', title: tr("Preferred connection"), sub: groupLabel(m.st.uplink.preferred || ''), plain: true,
+        vicon: 'route', iconColor: 'text', right: 'chevron', act: { do: 'open', page: { name: 'prefer' } } } : null;
     if (toks) {
         access.push({ id: 'accounts', title: tr("Accounts"), sub: accountsState(toks), plain: true, vicon: 'lock', iconColor: 'text',
             right: 'chevron', act: { do: 'open', page: { name: 'accounts' } } });
+    }
+    if (prefer) {
+        access.push(prefer);
     }
     const px = proxyOf(m);
     if (px) {
@@ -812,7 +818,6 @@ function wifiView(m) {
     const nets = wifiNets(w);
     const scanning = scanningOf(w);
     const dbm = typeof w.signal === 'number' ? `${w.signal} dBm` : '';
-    const preferred = (m.st && m.st.uplink && m.st.uplink.preferred) || '';
     return {
         subtitle: { text: !w.enabled || w.link === 'unavailable' || w.link === 'failed' ? '' : scanning ? tr("Scanning")
             : pausedLine(w) || plural(nets.length, 'network') },
@@ -828,9 +833,7 @@ function wifiView(m) {
         power: w.enabled ? button(tr("Don't use Wi-Fi"), { do: 'wifi-power' }, { vicon: 'wifi', style: 'outline' })
             : button(tr("Use Wi-Fi"), { do: 'wifi-power' }, { vicon: 'wifi', style: 'primary', color: GREEN, disabled: waiting }),
         scan: button(scanning ? tr("Scanning") : tr("Scan"), { do: 'wifi-scan' }, { vicon: 'refresh', style: 'outline',
-            disabled: !w.enabled || scanning || w.link === 'unavailable' || w.link === 'failed' }),
-        prefer: button(tr("Preferred: {0}", groupLabel(preferred)), { do: 'open', page: { name: 'prefer' } }, { vicon: 'route', style: 'outline',
-            disabled: waiting })
+            disabled: !w.enabled || scanning || w.link === 'unavailable' || w.link === 'failed' })
     };
 }
 
@@ -845,7 +848,10 @@ function preferView(m) {
         list: { items: GROUPS.map(([group, label]) => ({ id: group || 'auto', title: tr(label), sub: group && group === using ? tr("In use") : '', plain: true,
             vicon: { '': 'route', usb: 'usb', wifi: 'wifi' }[group] || 'phone', iconColor: 'text',
             right: group === preferred ? 'chip:' + tr('Preferred') : '', chipColor: GREEN,
-            act: group === preferred ? null : { do: 'uplink-prefer', kind: group } })), empty: '' }
+            act: group === preferred ? null : { do: 'uplink-prefer', kind: group } })), empty: '' },
+        // Phone over USB, with an uplink that has it (mgu-uplink 0.7.7's usbPhone)
+        usbPhone: { items: typeof u.usbPhone === 'boolean' ? [{ id: 'usbPhone', title: tr("Phone over USB"), plain: true,
+            vicon: 'usb', iconColor: 'text', right: `toggle:${u.usbPhone ? 'on' : 'off'}`, act: { do: 'usb-phone' } }] : [] }
     };
 }
 

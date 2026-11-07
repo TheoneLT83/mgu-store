@@ -97,7 +97,6 @@ module.exports = [
    "Phone access": "الوصول من الهاتف",
    "Preferred connection": "الاتصال المفضل",
    "Preferred": "مفضل",
-   "Preferred: {0}": "المفضل: {0}",
    "Rejected": "مرفوض",
    "Releases": "الإصدارات",
    "Remove": "إزالة",
@@ -198,7 +197,8 @@ module.exports = [
    "Changelog": "سجل التغييرات",
    "Internet": "الإنترنت",
    "Information": "معلومات",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "الهاتف عبر USB"
   }
  },
  {
@@ -297,7 +297,6 @@ module.exports = [
    "Phone access": "Přístup z telefonu",
    "Preferred connection": "Preferované připojení",
    "Preferred": "Preferováno",
-   "Preferred: {0}": "Preferováno: {0}",
    "Rejected": "Odmítnuto",
    "Releases": "Vydání",
    "Remove": "Odebrat",
@@ -398,7 +397,8 @@ module.exports = [
    "Changelog": "Seznam změn",
    "Internet": "Internet",
    "Information": "Informace",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "Telefon přes USB"
   }
  },
  {
@@ -497,7 +497,6 @@ module.exports = [
    "Phone access": "Telefonadgang",
    "Preferred connection": "Foretrukken forbindelse",
    "Preferred": "Foretrukken",
-   "Preferred: {0}": "Foretrukken: {0}",
    "Rejected": "Afvist",
    "Releases": "Udgivelser",
    "Remove": "Fjern",
@@ -598,7 +597,8 @@ module.exports = [
    "Changelog": "Ændringslog",
    "Internet": "Internet",
    "Information": "Information",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "Telefon via USB"
   }
  },
  {
@@ -697,7 +697,6 @@ module.exports = [
    "Phone access": "Telefonzugriff",
    "Preferred connection": "Bevorzugte Verbindung",
    "Preferred": "Bevorzugt",
-   "Preferred: {0}": "Bevorzugt: {0}",
    "Rejected": "Abgelehnt",
    "Releases": "Releases",
    "Remove": "Entfernen",
@@ -798,7 +797,8 @@ module.exports = [
    "Changelog": "Änderungen",
    "Internet": "Internet",
    "Information": "Informationen",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "Telefon über USB"
   }
  },
  {
@@ -897,7 +897,6 @@ module.exports = [
    "Phone access": "Πρόσβαση από κινητό",
    "Preferred connection": "Προτιμώμενη σύνδεση",
    "Preferred": "Προτίμηση",
-   "Preferred: {0}": "Προτίμηση: {0}",
    "Rejected": "Απορρίφθηκε",
    "Releases": "Εκδόσεις",
    "Remove": "Κατάργηση",
@@ -998,7 +997,8 @@ module.exports = [
    "Changelog": "Αλλαγές",
    "Internet": "Internet",
    "Information": "Πληροφορίες",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "Τηλέφωνο μέσω USB"
   }
  },
  {
@@ -1097,7 +1097,6 @@ module.exports = [
    "Phone access": "Acceso por teléfono",
    "Preferred connection": "Conexión preferida",
    "Preferred": "Preferida",
-   "Preferred: {0}": "Preferida: {0}",
    "Rejected": "Rechazada",
    "Releases": "Versiones",
    "Remove": "Eliminar",
@@ -1198,7 +1197,8 @@ module.exports = [
    "Changelog": "Cambios",
    "Internet": "Internet",
    "Information": "Información",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "Teléfono por USB"
   }
  },
  {
@@ -1297,7 +1297,6 @@ module.exports = [
    "Phone access": "Acceso móvil",
    "Preferred connection": "Conexión preferida",
    "Preferred": "Preferida",
-   "Preferred: {0}": "Preferida: {0}",
    "Rejected": "Rechazada",
    "Releases": "Versiones",
    "Remove": "Eliminar",
@@ -1398,7 +1397,8 @@ module.exports = [
    "Changelog": "Cambios",
    "Internet": "Internet",
    "Information": "Información",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "Móvil por USB"
   }
  },
  {
@@ -1497,7 +1497,6 @@ module.exports = [
    "Phone access": "Puhelinkäyttö",
    "Preferred connection": "Ensisijainen yhteys",
    "Preferred": "Ensisijainen",
-   "Preferred: {0}": "Ensisijainen: {0}",
    "Rejected": "Hylätty",
    "Releases": "Julkaisut",
    "Remove": "Poista",
@@ -1598,7 +1597,8 @@ module.exports = [
    "Changelog": "Muutokset",
    "Internet": "Internet",
    "Information": "Tiedot",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "Puhelin USB:n kautta"
   }
  },
  {
@@ -1697,7 +1697,6 @@ module.exports = [
    "Phone access": "Accès par cellulaire",
    "Preferred connection": "Connexion préférée",
    "Preferred": "Préférée",
-   "Preferred: {0}": "Préférée : {0}",
    "Rejected": "Refusé",
    "Releases": "Versions",
    "Remove": "Supprimer",
@@ -1798,7 +1797,8 @@ module.exports = [
    "Changelog": "Changements",
    "Internet": "Internet",
    "Information": "Informations",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "Cellulaire par USB"
   }
  },
  {
@@ -1897,7 +1897,6 @@ module.exports = [
    "Phone access": "Accès par téléphone",
    "Preferred connection": "Connexion préférée",
    "Preferred": "Préférée",
-   "Preferred: {0}": "Préférée : {0}",
    "Rejected": "Refusé",
    "Releases": "Versions",
    "Remove": "Supprimer",
@@ -1998,7 +1997,8 @@ module.exports = [
    "Changelog": "Changements",
    "Internet": "Internet",
    "Information": "Informations",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "Téléphone par USB"
   }
  },
  {
@@ -2097,7 +2097,6 @@ module.exports = [
    "Phone access": "גישה מהטלפון",
    "Preferred connection": "חיבור מועדף",
    "Preferred": "מועדף",
-   "Preferred: {0}": "מועדף: {0}",
    "Rejected": "נדחה",
    "Releases": "גרסאות",
    "Remove": "הסרה",
@@ -2198,7 +2197,8 @@ module.exports = [
    "Changelog": "יומן שינויים",
    "Internet": "אינטרנט",
    "Information": "מידע",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "טלפון דרך USB"
   }
  },
  {
@@ -2297,7 +2297,6 @@ module.exports = [
    "Phone access": "Telefonos hozzáférés",
    "Preferred connection": "Elsődleges kapcsolat",
    "Preferred": "Elsődleges",
-   "Preferred: {0}": "Elsődleges: {0}",
    "Rejected": "Elutasítva",
    "Releases": "Kiadások",
    "Remove": "Eltávolítás",
@@ -2398,7 +2397,8 @@ module.exports = [
    "Changelog": "Változások",
    "Internet": "Internet",
    "Information": "Információ",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "Telefon USB-n keresztül"
   }
  },
  {
@@ -2497,7 +2497,6 @@ module.exports = [
    "Phone access": "Akses ponsel",
    "Preferred connection": "Koneksi utama",
    "Preferred": "Utama",
-   "Preferred: {0}": "Utama: {0}",
    "Rejected": "Ditolak",
    "Releases": "Rilis",
    "Remove": "Hapus",
@@ -2598,7 +2597,8 @@ module.exports = [
    "Changelog": "Log perubahan",
    "Internet": "Internet",
    "Information": "Informasi",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "Ponsel lewat USB"
   }
  },
  {
@@ -2697,7 +2697,6 @@ module.exports = [
    "Phone access": "Accesso da telefono",
    "Preferred connection": "Connessione preferita",
    "Preferred": "Preferita",
-   "Preferred: {0}": "Preferita: {0}",
    "Rejected": "Rifiutato",
    "Releases": "Release",
    "Remove": "Rimuovi",
@@ -2798,7 +2797,8 @@ module.exports = [
    "Changelog": "Novità",
    "Internet": "Internet",
    "Information": "Informazioni",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "Telefono tramite USB"
   }
  },
  {
@@ -2897,7 +2897,6 @@ module.exports = [
    "Phone access": "スマホからアクセス",
    "Preferred connection": "優先接続",
    "Preferred": "優先",
-   "Preferred: {0}": "優先：{0}",
    "Rejected": "拒否されました",
    "Releases": "リリース",
    "Remove": "削除",
@@ -2998,7 +2997,8 @@ module.exports = [
    "Changelog": "変更履歴",
    "Internet": "インターネット",
    "Information": "情報",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "USB接続のスマートフォン"
   }
  },
  {
@@ -3097,7 +3097,6 @@ module.exports = [
    "Phone access": "휴대폰 액세스",
    "Preferred connection": "우선 연결",
    "Preferred": "우선",
-   "Preferred: {0}": "우선: {0}",
    "Rejected": "거부됨",
    "Releases": "릴리스",
    "Remove": "제거",
@@ -3198,7 +3197,8 @@ module.exports = [
    "Changelog": "변경 내역",
    "Internet": "인터넷",
    "Information": "정보",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "USB로 연결한 휴대폰"
   }
  },
  {
@@ -3297,7 +3297,6 @@ module.exports = [
    "Phone access": "Telefontilgang",
    "Preferred connection": "Foretrukket tilkobling",
    "Preferred": "Foretrukket",
-   "Preferred: {0}": "Foretrukket: {0}",
    "Rejected": "Avvist",
    "Releases": "Utgivelser",
    "Remove": "Fjern",
@@ -3398,7 +3397,8 @@ module.exports = [
    "Changelog": "Endringslogg",
    "Internet": "Internett",
    "Information": "Informasjon",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "Telefon via USB"
   }
  },
  {
@@ -3499,7 +3499,6 @@ module.exports = [
    "Phone access": "Telefoontoegang",
    "Preferred connection": "Voorkeursverbinding",
    "Preferred": "Voorkeur",
-   "Preferred: {0}": "Voorkeur: {0}",
    "Rejected": "Geweigerd",
    "Releases": "Releases",
    "Remove": "Verwijderen",
@@ -3600,7 +3599,8 @@ module.exports = [
    "Changelog": "Wijzigingen",
    "Internet": "Internet",
    "Information": "Informatie",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "Telefoon via USB"
   }
  },
  {
@@ -3699,7 +3699,6 @@ module.exports = [
    "Phone access": "Dostęp z telefonu",
    "Preferred connection": "Preferowane połączenie",
    "Preferred": "Preferowane",
-   "Preferred: {0}": "Preferowane: {0}",
    "Rejected": "Odrzucono",
    "Releases": "Wydania",
    "Remove": "Usuń",
@@ -3800,7 +3799,8 @@ module.exports = [
    "Changelog": "Lista zmian",
    "Internet": "Internet",
    "Information": "Informacje",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "Telefon przez USB"
   }
  },
  {
@@ -3899,7 +3899,6 @@ module.exports = [
    "Phone access": "Acesso pelo celular",
    "Preferred connection": "Conexão preferida",
    "Preferred": "Preferida",
-   "Preferred: {0}": "Preferida: {0}",
    "Rejected": "Rejeitada",
    "Releases": "Versões",
    "Remove": "Remover",
@@ -4000,7 +3999,8 @@ module.exports = [
    "Changelog": "Novidades",
    "Internet": "Internet",
    "Information": "Informações",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "Celular via USB"
   }
  },
  {
@@ -4099,7 +4099,6 @@ module.exports = [
    "Phone access": "Acesso por telemóvel",
    "Preferred connection": "Ligação preferida",
    "Preferred": "Preferida",
-   "Preferred: {0}": "Preferida: {0}",
    "Rejected": "Rejeitada",
    "Releases": "Versões",
    "Remove": "Remover",
@@ -4200,7 +4199,8 @@ module.exports = [
    "Changelog": "Novidades",
    "Internet": "Internet",
    "Information": "Informações",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "Telemóvel por USB"
   }
  },
  {
@@ -4299,7 +4299,6 @@ module.exports = [
    "Phone access": "Acces din telefon",
    "Preferred connection": "Conexiune preferată",
    "Preferred": "Preferată",
-   "Preferred: {0}": "Preferată: {0}",
    "Rejected": "Respins",
    "Releases": "Lansări",
    "Remove": "Eliminare",
@@ -4400,7 +4399,8 @@ module.exports = [
    "Changelog": "Modificări",
    "Internet": "Internet",
    "Information": "Informații",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "Telefon prin USB"
   }
  },
  {
@@ -4499,7 +4499,6 @@ module.exports = [
    "Phone access": "Доступ с телефона",
    "Preferred connection": "Основное подключение",
    "Preferred": "Приоритет",
-   "Preferred: {0}": "Приоритет: {0}",
    "Rejected": "Отклонён",
    "Releases": "Релизы",
    "Remove": "Удалить",
@@ -4600,7 +4599,8 @@ module.exports = [
    "Allow 5 GHz": "Разрешить 5 ГГц",
    "May cause CarPlay issues": "Возможны проблемы с CarPlay",
    "On the iPhone, turn on Maximize Compatibility": "На iPhone включите «Максимальная совместимость»",
-   "This network is 5 GHz only: CarPlay audio may drop": "Эта сеть только 5 ГГц: звук CarPlay может прерываться"
+   "This network is 5 GHz only: CarPlay audio may drop": "Эта сеть только 5 ГГц: звук CarPlay может прерываться",
+   "Phone over USB": "Телефон через USB"
   }
  },
  {
@@ -4699,7 +4699,6 @@ module.exports = [
    "Phone access": "Prístup z telefónu",
    "Preferred connection": "Preferované pripojenie",
    "Preferred": "Preferované",
-   "Preferred: {0}": "Preferované: {0}",
    "Rejected": "Odmietnuté",
    "Releases": "Vydania",
    "Remove": "Odstrániť",
@@ -4800,7 +4799,8 @@ module.exports = [
    "Changelog": "Zoznam zmien",
    "Internet": "Internet",
    "Information": "Informácie",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "Telefón cez USB"
   }
  },
  {
@@ -4899,7 +4899,6 @@ module.exports = [
    "Phone access": "Dostop s telefona",
    "Preferred connection": "Prednostna povezava",
    "Preferred": "Prednostno",
-   "Preferred: {0}": "Prednostno: {0}",
    "Rejected": "Zavrnjeno",
    "Releases": "Izdaje",
    "Remove": "Odstrani",
@@ -5000,7 +4999,8 @@ module.exports = [
    "Changelog": "Spremembe",
    "Internet": "Internet",
    "Information": "Informacije",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "Telefon prek USB"
   }
  },
  {
@@ -5099,7 +5099,6 @@ module.exports = [
    "Phone access": "Telefonåtkomst",
    "Preferred connection": "Föredragen anslutning",
    "Preferred": "Föredragen",
-   "Preferred: {0}": "Föredragen: {0}",
    "Rejected": "Avvisad",
    "Releases": "Utgåvor",
    "Remove": "Ta bort",
@@ -5200,7 +5199,8 @@ module.exports = [
    "Changelog": "Ändringslogg",
    "Internet": "Internet",
    "Information": "Information",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "Telefon via USB"
   }
  },
  {
@@ -5299,7 +5299,6 @@ module.exports = [
    "Phone access": "เข้าถึงจากโทรศัพท์",
    "Preferred connection": "การเชื่อมต่อที่ต้องการ",
    "Preferred": "ที่ต้องการ",
-   "Preferred: {0}": "ที่ต้องการ: {0}",
    "Rejected": "ถูกปฏิเสธ",
    "Releases": "รุ่นที่เผยแพร่",
    "Remove": "ลบ",
@@ -5400,7 +5399,8 @@ module.exports = [
    "Changelog": "บันทึกการเปลี่ยนแปลง",
    "Internet": "อินเทอร์เน็ต",
    "Information": "ข้อมูล",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "โทรศัพท์ผ่าน USB"
   }
  },
  {
@@ -5499,7 +5499,6 @@ module.exports = [
    "Phone access": "Telefondan erişim",
    "Preferred connection": "Tercih edilen bağlantı",
    "Preferred": "Tercih edilen",
-   "Preferred: {0}": "Tercih edilen: {0}",
    "Rejected": "Reddedildi",
    "Releases": "Sürümler",
    "Remove": "Kaldır",
@@ -5600,7 +5599,8 @@ module.exports = [
    "Changelog": "Değişiklikler",
    "Internet": "İnternet",
    "Information": "Bilgi",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "USB üzerinden telefon"
   }
  },
  {
@@ -5699,7 +5699,6 @@ module.exports = [
    "Phone access": "Доступ із телефона",
    "Preferred connection": "Пріоритетне з'єднання",
    "Preferred": "Пріоритет",
-   "Preferred: {0}": "Пріоритет: {0}",
    "Rejected": "Відхилено",
    "Releases": "Релізи",
    "Remove": "Видалити",
@@ -5800,7 +5799,8 @@ module.exports = [
    "Allow 5 GHz": "Дозволити 5 ГГц",
    "May cause CarPlay issues": "Можливі проблеми з CarPlay",
    "On the iPhone, turn on Maximize Compatibility": "На iPhone увімкніть «Максимальна сумісність»",
-   "This network is 5 GHz only: CarPlay audio may drop": "Ця мережа лише 5 ГГц: звук CarPlay може перериватися"
+   "This network is 5 GHz only: CarPlay audio may drop": "Ця мережа лише 5 ГГц: звук CarPlay може перериватися",
+   "Phone over USB": "Телефон через USB"
   }
  },
  {
@@ -5899,7 +5899,6 @@ module.exports = [
    "Phone access": "Truy cập từ điện thoại",
    "Preferred connection": "Kết nối ưu tiên",
    "Preferred": "Ưu tiên",
-   "Preferred: {0}": "Ưu tiên: {0}",
    "Rejected": "Bị từ chối",
    "Releases": "Bản phát hành",
    "Remove": "Xóa",
@@ -6000,7 +5999,8 @@ module.exports = [
    "Changelog": "Nhật ký thay đổi",
    "Internet": "Internet",
    "Information": "Thông tin",
-   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+   "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+   "Phone over USB": "Điện thoại qua USB"
   }
  },
  {
@@ -6101,7 +6101,6 @@ module.exports = [
    "Phone access": "手机访问",
    "Preferred connection": "首选连接",
    "Preferred": "首选",
-   "Preferred: {0}": "首选：{0}",
    "Rejected": "已拒绝",
    "Releases": "发布版本",
    "Remove": "移除",
@@ -6202,7 +6201,8 @@ module.exports = [
    "No internet": "无网络连接",
    "No internet: Settings > Internet shows how to connect the car": "无网络连接：设置 > 互联网 中说明如何为车辆联网",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "new build": "新构建"
+   "new build": "新构建",
+   "Phone over USB": "通过 USB 连接手机"
   }
  },
  {
@@ -6303,7 +6303,6 @@ module.exports = [
    "Phone access": "手機存取",
    "Preferred connection": "偏好連線",
    "Preferred": "偏好",
-   "Preferred: {0}": "偏好：{0}",
    "Rejected": "遭拒絕",
    "Releases": "發行版本",
    "Remove": "移除",
@@ -6404,7 +6403,8 @@ module.exports = [
    "Allow 5 GHz": "允許 5 GHz",
    "May cause CarPlay issues": "可能導致 CarPlay 出現問題",
    "On the iPhone, turn on Maximize Compatibility": "請在 iPhone 上開啟「最大相容性」",
-   "This network is 5 GHz only: CarPlay audio may drop": "此網路僅支援 5 GHz：CarPlay 音訊可能中斷"
+   "This network is 5 GHz only: CarPlay audio may drop": "此網路僅支援 5 GHz：CarPlay 音訊可能中斷",
+   "Phone over USB": "透過 USB 使用手機"
   }
  }
 ];

@@ -95,7 +95,6 @@
     "Phone access": "Telefoontoegang",
     "Preferred connection": "Voorkeursverbinding",
     "Preferred": "Voorkeur",
-    "Preferred: {0}": "Voorkeur: {0}",
     "Rejected": "Geweigerd",
     "Releases": "Releases",
     "Remove": "Verwijderen",
@@ -196,6 +195,7 @@
     "Changelog": "Wijzigingen",
     "Internet": "Internet",
     "Information": "Informatie",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Phone over USB": "Telefoon via USB"
   }
 }

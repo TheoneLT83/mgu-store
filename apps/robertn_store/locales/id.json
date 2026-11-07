@@ -93,7 +93,6 @@
     "Phone access": "Akses ponsel",
     "Preferred connection": "Koneksi utama",
     "Preferred": "Utama",
-    "Preferred: {0}": "Utama: {0}",
     "Rejected": "Ditolak",
     "Releases": "Rilis",
     "Remove": "Hapus",
@@ -194,6 +193,7 @@
     "Changelog": "Log perubahan",
     "Internet": "Internet",
     "Information": "Informasi",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Phone over USB": "Ponsel lewat USB"
   }
 }

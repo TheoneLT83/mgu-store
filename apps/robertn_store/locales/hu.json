@@ -93,7 +93,6 @@
     "Phone access": "Telefonos hozzáférés",
     "Preferred connection": "Elsődleges kapcsolat",
     "Preferred": "Elsődleges",
-    "Preferred: {0}": "Elsődleges: {0}",
     "Rejected": "Elutasítva",
     "Releases": "Kiadások",
     "Remove": "Eltávolítás",
@@ -194,6 +193,7 @@
     "Changelog": "Változások",
     "Internet": "Internet",
     "Information": "Információ",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Phone over USB": "Telefon USB-n keresztül"
   }
 }

@@ -93,7 +93,6 @@
     "Phone access": "Telefonåtkomst",
     "Preferred connection": "Föredragen anslutning",
     "Preferred": "Föredragen",
-    "Preferred: {0}": "Föredragen: {0}",
     "Rejected": "Avvisad",
     "Releases": "Utgåvor",
     "Remove": "Ta bort",
@@ -194,6 +193,7 @@
     "Changelog": "Ändringslogg",
     "Internet": "Internet",
     "Information": "Information",
-    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8"
+    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
+    "Phone over USB": "Telefon via USB"
   }
 }
