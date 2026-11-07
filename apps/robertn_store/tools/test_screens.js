@@ -34,7 +34,8 @@ function screen(name, over, stOver) {
 }
 // a component page's version chip (it opens the changelog) is checked on its own
 const notVersion = (l) => !/^Version /.test(l);
-const own = (f) => f.labels.slice(0, -4).filter(notVersion);      // a page's items before its side menu
+// a page's items without its side menu (after them; before them on the menu's own page, Wi-Fi)
+const own = (f) => (f.screen === 'wifi' ? f.labels.slice(4) : f.labels.slice(0, -4)).filter(notVersion);
 const text = (f, el) => (f.values[el] || {}).text;
 
 const I8 = UNITS['iDrive 8'];
@@ -613,6 +614,9 @@ eq([{ link: 'idle', ssid: '', paused: 'carplay' }, { link: 'idle', ssid: '', pau
 eq(screen('wifi-band').values.networks.items.map((n) => n.sub).slice(0, 2), ['Online · Strong · 2.4 GHz', 'Secured · Strong'],
     'the page: on the joined network\'s row');
 eq(screen('wifi').values.networks.items[0].sub, 'Online · Strong', 'the page without a frequency: as before');
+f = screen('wifi');
+eq([f.labels.slice(0, 4), f.labels[f.labels.length - 1]], [['Store', 'Installed', 'Wi-Fi', 'Settings'], 'Back'],
+    'the menu\'s Wi-Fi page: in focus order as a tab, the menu first, Back last');
 f = screen('wifi-paused');
 eq([text(f, 'subtitle'), text(f, 'state'), own(f).indexOf('Scan') >= 0], ['Paused for wireless Android Auto', 'Not connected', true],
     'paused: the page says so; Scan stays');
@@ -622,11 +626,11 @@ f = screen('wifi');
 eq(own(f), ['Allow 5 GHz', 'Forget', 'FRITZ!Box 7590 XY', 'Cafe Free WiFi', 'Telekom_FON', 'Forget', "Don't use Wi-Fi", 'Scan', 'Preferred: Wi-Fi', 'Back']);
 eq(f.values.networks.items.map((n) => n.sub), ['Online · Strong', 'Secured · Strong', 'Open · Good', 'Open · Weak', 'Saved · not in range']);
 eq([text(f, 'subtitle'), text(f, 'state'), text(f, 'info')], ['5 networks', 'Online · Mario iPhone', 'IP 172.20.10.3 · -52 dBm']);
-eq([f.items[0].act, f.values.allow5.items[0].right], [{ do: 'wifi-5ghz' }, 'toggle:off'], 'Allow 5 GHz: a switch, off');
-eq(f.items.slice(1, 6).map((i) => i.act), [{ do: 'open', page: { name: 'confirm', kind: 'wifi-forget', ssid: 'Mario iPhone' } },
+eq([f.items[4].act, f.values.allow5.items[0].right], [{ do: 'wifi-5ghz' }, 'toggle:off'], 'Allow 5 GHz: a switch, off');
+eq(f.items.slice(5, 10).map((i) => i.act), [{ do: 'open', page: { name: 'confirm', kind: 'wifi-forget', ssid: 'Mario iPhone' } },
     { do: 'wifi-password', ssid: 'FRITZ!Box 7590 XY' }, { do: 'wifi-join', ssid: 'Cafe Free WiFi' }, { do: 'wifi-join', ssid: 'Telekom_FON' },
     { do: 'open', page: { name: 'confirm', kind: 'wifi-forget', ssid: 'Home' } }]);
-eq(f.items.slice(6, 9).map((i) => i.act), [{ do: 'wifi-power' }, { do: 'wifi-scan' }, { do: 'open', page: { name: 'prefer' } }]);
+eq(f.items.slice(10, 13).map((i) => i.act), [{ do: 'wifi-power' }, { do: 'wifi-scan' }, { do: 'open', page: { name: 'prefer' } }]);
 eq(screen('wifi', {}, { uplink: Object.assign({}, fixture.state().uplink, { wifi: Object.assign({}, fixture.state().uplink.wifi,
     { allow5ghz: true }) }) }).values.allow5.items[0].right, 'toggle:on');
 eq(screen('wifi', {}, { uplink: Object.assign({}, fixture.state().uplink, { wifi: Object.assign({}, fixture.state().uplink.wifi,
@@ -647,7 +651,7 @@ f = screen('wifi', {}, { uplink: null });
 eq([text(f, 'state'), f.values.networks.empty, own(f)], ['Waiting', 'Waiting', ['Back']]);
 f = screen('wifi-failed');
 eq([text(f, 'state'), text(f, 'note')], ['Error', 'could not join "FRITZ!Box 7590 XY" (wrong password, or out of range)']);
-eq(f.items[1].act, { do: 'wifi-join', ssid: 'Mario iPhone' }, 'a saved network not joined: a tap joins it');
+eq(f.items[5].act, { do: 'wifi-join', ssid: 'Mario iPhone' }, 'a saved network not joined: a tap joins it');
 eq(text(screen('wifi', { uplinkNote: 'needs mgu-uplink 0.7.0 or newer, running' }), 'note'), 'needs mgu-uplink 0.7.0 or newer, running',
     'the updater\'s or uplink\'s refusal');
 ok(own(screen('wifi', {}, { uplink: Object.assign({}, fixture.state().uplink, { wifi: Object.assign({}, fixture.state().uplink.wifi,

@@ -69,8 +69,12 @@ function placement(w, h, full) {
         oy: Math.round((h - VIEWPORT.h * scale) / 2 - VIEWPORT.y * scale), viewport: VIEWPORT, layout: null };
 }
 
+/* The pages the side menu opens (Wi-Fi): in focus order as a tab is. */
+const MENU_PAGES = ['wifi'];
+
 /* The components in focus order: on a tab its side menu first; on a page
- * its own items, then Back, then the side menu; a confirm step only its
+ * its own items, then Back, then the side menu, and on a page of the side
+ * menu the menu first, then its own items and Back; a confirm step only its
  * buttons, Cancel first. */
 function ordered(st, page) {
     const cs = st.components;
@@ -83,7 +87,8 @@ function ordered(st, page) {
     const by = (n) => cs.filter((c) => c.name === n);
     // a page's own buttons first, then its chips (the version: its changelog), Back and the side menu
     const rest = cs.filter((c) => c.name !== 'nav' && c.name !== 'back');
-    return rest.filter((c) => c.gpu !== 'chips').concat(rest.filter((c) => c.gpu === 'chips'), by('back'), by('nav'));
+    const own = rest.filter((c) => c.gpu !== 'chips').concat(rest.filter((c) => c.gpu === 'chips'), by('back'));
+    return MENU_PAGES.indexOf(st.name) >= 0 ? by('nav').concat(own) : own.concat(by('nav'));
 }
 
 function itemsOf(st, page, look) {

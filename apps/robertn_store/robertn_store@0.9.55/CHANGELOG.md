@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.55
+
+The Wi-Fi page takes the controller as a tab does: the menu first, then the page's rows and buttons, Back last.
+Turning left from its first row reaches the menu, and turning right from the menu its rows.
+
 ## 0.9.54
 
 robertnisipeanu/mgu-store's 0.9.29 with this repository's Store: the tile keeps the name and icon the app manager
