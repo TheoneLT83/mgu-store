@@ -85,7 +85,8 @@ static int rule_in(void)
     snprintf(check, sizeof check, "nft list table %s >/dev/null 2>&1", table);
     return nft(s) == 0 && system(check) == 0 ? 0 : -1;
 }
-static void rule_out(void) { char s[160]; snprintf(s, sizeof s, "table %s\ndelete table %s\n", table, table); nft(s); }
+/* taking the rule out goes straight to nft (no file): removal must work with /tmp full, and an absent table is no error */
+static void rule_out(void) { char cmd[96]; snprintf(cmd, sizeof cmd, "nft delete table %s >/dev/null 2>&1", table); if (system(cmd)) {} }
 
 int touch_ports(int in_port, const char *name)
 {

@@ -1,5 +1,9 @@
 # mgu-render changelog
 
+## 0.6.20
+
+- robertnisipeanu/mgu-store's touch-divert fix with this repository's renderer: the rule is removed with `nft delete table` straight (no file), so it comes out even when /tmp is full, and an absent table is not an error. The rule still goes to nft in a file and counts only when its table is there afterwards.
+
 ## 0.6.19
 
 - 0.6.18 built again: a change to its car-test tool, since taken back, gave 0.6.18's tree a newer date, and a release publishes no other content under a published version.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.57
+
+robertnisipeanu/mgu-store's 0.9.31/0.9.32 with this repository's Store: the checked time shows in the head
+unit's time zone (the clock offset read from the cluster, KombiIF statusShowTimeDate), not the PC's.
+
 ## 0.9.56
 
 robertnisipeanu/mgu-store's 0.9.30 with this repository's Store: Settings' Access has **Preferred connection**

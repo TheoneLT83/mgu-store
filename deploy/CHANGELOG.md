@@ -1,5 +1,9 @@
 # Deploy tool changelog
 
+## 0.8.6
+
+- The app manager (MainApp, iDrive 7) is restarted only once its install worker has been idle for 5 s (up to 3 minutes). Still busy then, it is not restarted: what needs the restart is left pending for the next head-unit start, and an app install or update that needed it fails and is rolled back. This stops a mid-install restart from losing an app's registry entry (which made MainApp reinstall it under a new uid).
+
 ## 0.8.5
 
 robertnisipeanu/mgu-store's 0.8.4 with this repository's deploy tool:
