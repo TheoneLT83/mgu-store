@@ -1,5 +1,10 @@
 # Updater changelog
 
+## 0.8.36
+
+- A branch app of the same version is an update only when its own folder changed: a change to the kit every app is
+  built with (a translation, a font) no longer offers an update of every installed app.
+
 ## 0.8.35
 
 robertnisipeanu/mgu-store's 0.8.32 with this repository's updater:

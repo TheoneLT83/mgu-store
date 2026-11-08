@@ -1931,9 +1931,10 @@ class Updater {
     }
 
     /* Whether a same-version component changed between its commit and the
-     * source's: its own folder, or the build script's folder (the shared code it
-     * is built with) outside the other components' folders. Not asked yet (no
-     * internet): false, it is shown once GitHub says; GitHub couldn't tell: true. */
+     * source's: its own folder only. A change to the code every app is built with
+     * (the kit) alone is no update of each app: an app that needs it changes its
+     * own folder (its version). Not asked yet (no internet): false, it is shown
+     * once GitHub says; GitHub couldn't tell: true. */
     touched(entry, source, commit) {
         const rt = this.src.get(source), files = rt && rt.changes ? rt.changes[commit] : undefined;
         if (files === undefined) {
@@ -1943,9 +1944,7 @@ class Updater {
             return true;
         }
         const inside = (f, p) => !!p && (f === p || f.startsWith(`${p}/`));
-        const others = (rt.components || []).filter((c) => c.id !== entry.id && c.path).map((c) => c.path);
-        const shared = sharedPaths(entry);
-        return files.some((f) => inside(f, entry.path) || (shared.some((p) => inside(f, p)) && !others.some((p) => inside(f, p))));
+        return files.some((f) => inside(f, entry.path));
     }
 
     /* Where an entry's icon is kept: <state_dir>/icons/<sha256>.png, named by
