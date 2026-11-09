@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.58
+
+robertnisipeanu/mgu-store's 0.9.33 with this repository's Store: text with ‘ ’ “ ” or a no-break space (an iPhone
+hotspot named Alex’s iPhone) shows plain quotes and a space where the font has no glyph for them, not "?".
+
 ## 0.9.57
 
 robertnisipeanu/mgu-store's 0.9.31/0.9.32 with this repository's Store: the checked time shows in the head
