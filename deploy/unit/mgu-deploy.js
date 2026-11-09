@@ -53,9 +53,8 @@ var cp = require('child_process');
  * their mode. */
 process.umask(0o022);
 
-/* deploy/component.json's version; bumped when a file under deploy/unit/
- * changes. */
-var VERSION = '0.8.6';
+/* deploy/component.json's version; the release sets both. */
+var VERSION = '0.8.9';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -84,6 +83,7 @@ var CFG = {
     bootId: env('MGU_DEPLOY_BOOT_ID', '/proc/sys/kernel/random/boot_id'),
     systemctl: env('MGU_DEPLOY_SYSTEMCTL', 'systemctl'),
     journalctl: env('MGU_DEPLOY_JOURNALCTL', 'journalctl'),
+    logger: env('MGU_DEPLOY_LOGGER', 'logger'),
     mount: env('MGU_DEPLOY_MOUNT', 'mount'),
     umount: env('MGU_DEPLOY_UMOUNT', 'umount'),
     ps: env('MGU_DEPLOY_PS', 'ps'),
@@ -120,6 +120,8 @@ var CFG = {
     migrateSettleMs: Number(env('MGU_DEPLOY_MIGRATE_SETTLE_MS', '45000'))
 };
 var FAKE = process.env.MGU_DEPLOY_FAKE_ROOT === '1';
+/* the owner a folder made by root has (the fake root's tests name their own uid) */
+var ROOT_UID = FAKE ? Number(env('MGU_DEPLOY_FAKE_ROOT_UID', '-1')) : 0;
 // fake root whose rootfs writes still go through the sh window (the tests' power cuts)
 var FAKE_SH_WINDOW = FAKE && process.env.MGU_DEPLOY_FAKE_SH_WINDOW === '1';
 var DEPLOY_DIR = path.join(CFG.varOpt, 'mgu-deploy');
@@ -180,6 +182,14 @@ function mgrHome() { return path.join(CFG.oap, 'oap_' + MGR_UID); }
 function appsDir() { return path.join(mgrHome(), 'data', 'apps'); }
 function customAppsFile() { return path.join(mgrHome(), 'data', 'custom_apps.json'); }
 function localOnlyFile() { return path.join(mgrHome(), 'data', 'local-only-apps.json'); }
+/* The app manager's home and data folder are its own to create, with its
+ * owner and modes (after a factory reset, at its first start): this tool
+ * never creates them, and writes under them only once they are there. */
+function mgrOwnDir(dir) { return dir === mgrHome() || dir === path.join(mgrHome(), 'data'); }
+function mgrDataReady() {
+    var st = statOrNull(path.join(mgrHome(), 'data'));
+    return !!st && st.isDirectory();
+}
 function inplaceStatusFile() { return path.join(mgrHome(), 'data', 'mgu-deploy-inplace.json'); }
 function appEntryFile(id) { return path.join(appsDir(), id + '.json'); }
 function appHome(uid) { return path.join(CFG.oap, 'oap_' + uid); }
@@ -202,6 +212,7 @@ function warn(m) { process.stdout.write('warning: ' + m + '\n'); }
 
 function mkdirp(dir, mode) {
     if (fs.existsSync(dir)) return;
+    if (mgrOwnDir(dir)) throw fail(dir + ' is missing: the app manager creates it at its start');
     mkdirp(path.dirname(dir), 0o755);
     fs.mkdirSync(dir, mode || 0o755);
     try { fs.chmodSync(dir, mode || 0o755); } catch (e) { /* mode set on create */ }
@@ -781,6 +792,53 @@ function syncGuard() {
     var why = guardWhy();
     if (!why || (readGuard().off && !(binds() && (bindMounted(mainJs()) || bindMounted(certManagerJs()))))) return;
     statusStep('guard', function () { guardTrip(why); });
+}
+/* The app manager's home or data folder owned by root, which stops the
+ * manager at its start. */
+function mgrHomeRootOwned() {
+    return [mgrHome(), path.join(mgrHome(), 'data')].some(function (d) {
+        var st = lstatOrNull(d);
+        return !!st && st.isDirectory() && st.uid === ROOT_UID;
+    });
+}
+/* Both given back to the app manager with the owner and modes it creates
+ * them with, and the repair logged. True when it did. */
+function repairMgrHome() {
+    if (!mgrHomeRootOwned()) return false;
+    [[mgrHome(), 0o3770], [path.join(mgrHome(), 'data'), 0o750]].forEach(function (d) {
+        var st = lstatOrNull(d[0]);
+        if (!st || !st.isDirectory()) return;
+        chownMaybe(d[0], MGR_UID, MGR_UID);
+        fs.chmodSync(d[0], d[1]);
+    });
+    var line = mgrHome() + ' and its data folder were owned by root: given back to uid ' + MGR_UID;
+    say(line);
+    run(CFG.logger, ['-t', 'mgu-deploy', line], { allowFail: true });
+    return true;
+}
+var PENDING_HOME_REPAIRED = 'the app manager starts again at the next start (its folders were repaired)';
+/* status, as root: repairMgrHome, then on iDrive 7 the app manager
+ * running again: one oapcontroller starts after the repair, within
+ * bounceTimeoutMs, or else one that started before it restarted by
+ * bounceManager. Otherwise, and on iDrive 8, a restart is pending. */
+function syncMgrHome() {
+    if (!mgrHomeRootOwned()) return;
+    statusStep('app manager folders', function () {
+        if (!repairMgrHome()) return;
+        var at = nowS(), waited = 0, pid = null, started, up = false;
+        while (!isId8() && waited <= CFG.bounceTimeoutMs) {
+            pid = managerPid();
+            started = pid ? processStart(pid) : null;
+            if (pid && started !== null && started >= at) { say('app manager started (pid ' + pid + ')'); return; }
+            sleepMs(1000); waited += 1000;
+        }
+        try { up = !!pid && managerPid() === pid && bounceManager(); }
+        catch (e) { warn(e.message); }
+        if (up) return;
+        var s = loadState();
+        addPending(s, 'mgu-deploy', PENDING_HOME_REPAIRED);
+        saveState(s);
+    });
 }
 /* status, as root: the data folders set aside (settleStashes). */
 function syncStashes() {
@@ -3603,6 +3661,7 @@ function ensurePrivacy() {
  * snapshot: it protects apps other than the one installed, so a rolled-back
  * install keeps it. */
 function ensureLocalOnlyListed() {
+    if (!mgrDataReady()) return;
     var file = localOnlyFile(), cur = readJsonOrNull(file), listed = Array.isArray(cur) ? cur.slice() : [];
     var add = Object.keys(readCustomApps()).filter(function (id) {
         var a = installedApp(id);
@@ -3617,6 +3676,7 @@ function ensureLocalOnlyListed() {
  * start, so a MainApp-21 restarted meanwhile would look it up at the
  * backend: app-privacy's override list keeps it from asking. */
 function listLocalOnly(id) {
+    if (!mgrDataReady()) return;
     var file = localOnlyFile(), cur = readJsonOrNull(file), listed = Array.isArray(cur) ? cur.slice() : [];
     if (listed.indexOf(id) >= 0) return;
     writeAtomic(file, JSON.stringify(listed.concat([id])) + '\n', 0o644);
@@ -3658,21 +3718,27 @@ function readCustomApps() {
     return c && typeof c === 'object' && !Array.isArray(c) ? c : {};
 }
 /* The Store's own app is listed first (provisioning takes the apps in
- * this order). */
+ * this order). False, with nothing written, while the app manager's data
+ * folder is missing: a later install lists the app (on iDrive 8 also status
+ * and the boot unit's relist). */
 var FIRST_APP = 'robertn_store';
 function writeCustomApps(c) {
+    if (!mgrDataReady()) {
+        say(customAppsFile() + ' is written once the app manager has created its data folder');
+        return false;
+    }
     var ordered = {};
     var ids = Object.keys(c);
     ids.filter(function (id) { return id === FIRST_APP; }).concat(ids.filter(function (id) { return id !== FIRST_APP; }))
         .forEach(function (id) { ordered[id] = c[id]; });
-    mkdirp(path.dirname(customAppsFile()));
     writeAtomic(customAppsFile(), JSON.stringify(ordered, null, 2) + '\n', 0o660);
     chownMaybe(customAppsFile(), MGR_UID, MGR_UID);
+    return true;
 }
 function customAppsPut(id, cache, startType) {
     var c = readCustomApps();
     c[id] = Object.assign({}, APP_FLAGS, cache || {}, startType ? { '-appStartType': startType } : {});
-    writeCustomApps(c);
+    return writeCustomApps(c);
 }
 function customAppsRemove(id) {
     var c = readCustomApps();
@@ -5162,7 +5228,7 @@ function id8Unlisted() {
     });
 }
 function relistId8() {
-    var ids = id8Unlisted();
+    var ids = mgrDataReady() ? id8Unlisted() : [];
     ids.forEach(function (id) { customAppsPut(id, dasFlags(id)); });
     return ids;
 }
@@ -5198,6 +5264,7 @@ function syncListingId8() {
         if (!id8Unlisted().length && !fallbackUnitOld()) return { state: 'ok', reason: 'every app of ours is listed' };
         if (!FAKE && process.getuid() !== 0) return { state: 'pending', reason: 'status not run as root' };
         if (!runningInstalled() && !FAKE) return { state: 'pending', reason: 'this deploy tool is not the installed one' };
+        if (!mgrDataReady()) return { state: 'pending', reason: 'the app manager has not created its data folder yet' };
         locked = statusLock();
         if (!locked) return { state: 'pending', reason: 'another mgu-deploy run holds the lock' };
         var ids = relistId8(), done = ids.length ? ['listed ' + ids.join(', ')] : [];
@@ -5227,6 +5294,8 @@ function cmdRelist() {
     if (!isId8()) { say('nothing to list: not iDrive 8'); return 0; }
     if (!statusLock()) { say('another mgu-deploy run holds the lock; status lists them'); return 0; }
     try {
+        repairMgrHome();
+        if (!mgrDataReady()) { say('the app manager has not created its data folder yet; status lists them'); return 0; }
         var ids = relistId8();
         say(ids.length ? 'listed for the provisioning fallback: ' + ids.join(', ') : 'every app of ours is listed');
         return 0;
@@ -6569,7 +6638,7 @@ function cmdStatus(args, crashList, live, limits, listing) {
             s.appmanager.daemon + (s.appmanager.record ? ', adopted' : '') : 'removed'));
     }
     if (s.mainapp_guard) say('no app changes until the next start of the head unit: ' + s.mainapp_guard);
-    s.lost_apps.forEach(function (a) { say('not registered any more: ' + a.id + ' ' + a.version + ' (its package is kept)'); });
+    s.lost_apps.forEach(function (a) { say('not registered: ' + a.id + ' ' + a.version + ' (its package is at ' + a.package + ')'); });
     s.pending_reboot.forEach(function (p) { say('pending reboot: ' + p.id + ' - ' + p.reason); });
     if (s.last_apply) {
         say('last apply at the start (' + s.last_apply.at + '):');
@@ -6914,6 +6983,10 @@ function installRun(args, afresh) {
         if (noOap && validated.some(function (a) {
             return a.kind === 'app' && ['current', 'older'].indexOf(appDecision(a, args.skipOlder).action) < 0;
         })) throw refuse(codingMissing(noOap));
+        if (!mgrDataReady() && validated.some(function (a) { return a.kind === 'app'; })) {
+            throw refuse('the app manager has not created its data folder yet (it does at its first start after a ' +
+                'reset of the head unit); install the app once it runs');
+        }
         validated.forEach(function (a) {
             var foreign = a.kind === 'tool' && (a.service || a.provides || (a.component.dropins || []).length) ? foreignUnit(a.component) : null;
             if (foreign) {
@@ -7647,15 +7720,19 @@ function toolPrevious(t) {
     return others.length === 1 && semverCmp(others[0], cur) < 0 ? others[0] : null;
 }
 
-/* ---- apps: kept packages and rollback (iDrive 7) ------------------------------- */
-/* Apps this tool installed (state.json apps) that MainApp's registry no
- * longer has, with the package kept for them: what oapcontroller's wipe
- * leaves. An uninstall drops both the record and the packages, so an app
- * removed on purpose is never one. None while another run holds the lock:
- * it may be removing one. */
+/* ---- apps: kept packages and rollback (iDrive 7), unregistered apps ----------- */
+/* Apps for the updater to install again from a package on the unit. On
+ * iDrive 7, apps this tool installed (state.json apps) that MainApp's
+ * registry no longer has, with the package kept for them: what
+ * oapcontroller's wipe leaves. An uninstall drops both the record and the
+ * packages, so an app removed on purpose is never one. On iDrive 8,
+ * unprovisionedId8. None while another run holds the lock (it may be
+ * removing one), and none while the app manager has not created its data
+ * folder (after a factory reset). */
 function lostApps(state) {
     var lock = lockState();
-    if (isId8() || (!lock.free && lock.live)) return [];
+    if ((!lock.free && lock.live) || !mgrDataReady()) return [];
+    if (isId8()) return unprovisionedId8();
     var out = [], has = function (id) { return out.some(function (l) { return l.id === id; }); };
     /* an app rollback cut short between its uninstall and its install: its target, the package as recorded */
     Object.keys(state.reinstall || {}).forEach(function (id) {
@@ -7680,6 +7757,25 @@ function lostApps(state) {
         if (v) out.push({ id: FIRST_APP, version: v, package: keptFile(FIRST_APP, v) });
     }
     return out;
+}
+/* iDrive 8: apps placed at a start (their package in preinstalled_apps,
+ * their das lines) that MainApp-21 never installs because Telematics
+ * serves the backend's provisioning, which does not list them: each with
+ * its package, for the updater to install in place once the running
+ * manager runs the hook (as inplaceManager has it). None with a change
+ * queued for it, nor an update applied at the start: confirmId8 puts the
+ * version before back, with its data, at the next one. Not IterioDev's
+ * App Manager, which the Store replaces. */
+function unprovisionedId8() {
+    var hook = readJsonOrNull(inplaceStatusFile()), m = managerStart(), skip = [AM.app];
+    if (!m || m.started === null || !hook || hook.pid !== m.pid || typeof hook.start !== 'number' ||
+        Math.abs(hook.start / 1000 - m.started) >= 5 || bundlesWritten() > m.started || hook.state === 'off') return [];
+    readPending().concat(readUnconfirmed()).forEach(function (c) { skip.push(c.id); });
+    return dasApps().map(function (id) {
+        var pkgs = preinstalledFor(id), v = pkgs.length === 1 && /@(\d+\.\d+\.\d+)\.tgz$/.exec(pkgs[0]);
+        if (!v || skip.indexOf(id) >= 0 || lstatOrNull(appEntryFile(id)) || provisioningNames(id) !== false) return null;
+        return { id: id, version: v[1], package: pkgs[0] };
+    }).filter(Boolean);
 }
 /* The manager takes no older package for an installed app, so an app goes
  * back by uninstall and install. The packages for that are kept here, the
@@ -8013,7 +8109,7 @@ function runCommand() {
         if (args.command === 'help' || args.command === '--help') { say(HELP); return 0; }
         if (args.command === 'check') return cmdCheck(args);
         if (args.command === 'install') return cmdInstall(args);
-        if (args.command === 'status') { syncGuard(); syncStashes(); return cmdStatus(args, syncBootLists(), syncLiveId8(), syncLimits(), syncListingId8()); }
+        if (args.command === 'status') { syncMgrHome(); syncGuard(); syncStashes(); return cmdStatus(args, syncBootLists(), syncLiveId8(), syncLimits(), syncListingId8()); }
         if (args.command === 'relist') {
             if (!FAKE && typeof process.getuid === 'function' && process.getuid() !== 0) throw refuse('run as root');
             return cmdRelist();

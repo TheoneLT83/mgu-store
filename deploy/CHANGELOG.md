@@ -1,5 +1,13 @@
 # Deploy tool changelog
 
+## 0.8.9
+
+robertnisipeanu/mgu-store's 0.8.7 and 0.8.8 with this repository's deploy tool:
+
+- The deploy tool never creates the app manager's home or data folder (`/var/opt/public/oap/oap_12201`, its `data`), which the app manager creates at its first start after a factory reset. While they are missing, `custom_apps.json` and `local-only-apps.json` are not written (on iDrive 8 `relist` and `status` list our apps once the folder is there), app installs are refused, and `status` reports no lost app.
+- `status` (as root) and iDrive 8's `relist` give a home or data folder owned by root back to the app manager (uid 12201, modes 3770 and 0750), and log it to the journal.
+- iDrive 8: an app placed for MainApp-21 at a start that it does not install, because the head unit's provisioning comes from BMW's backend and does not list it, is reported as not registered (`status`), and the updater installs it in place.
+
 ## 0.8.6
 
 - The app manager (MainApp, iDrive 7) is restarted only once its install worker has been idle for 5 s (up to 3 minutes). Still busy then, it is not restarted: what needs the restart is left pending for the next head-unit start, and an app install or update that needed it fails and is rolled back. This stops a mid-install restart from losing an app's registry entry (which made MainApp reinstall it under a new uid).

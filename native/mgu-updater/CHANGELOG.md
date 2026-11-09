@@ -1,5 +1,11 @@
 # Updater changelog
 
+## 0.8.37
+
+robertnisipeanu/mgu-store's 0.8.35 with this repository's updater:
+
+- Lost apps are installed again only while the app manager runs on a data folder of its own: not while it has not started or created its home after a factory reset. The updater looks again when it comes up.
+
 ## 0.8.36
 
 - A branch app of the same version is an update only when its own folder changed: a change to the kit every app is
