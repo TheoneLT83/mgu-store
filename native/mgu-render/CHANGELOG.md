@@ -1,5 +1,12 @@
 # mgu-render changelog
 
+## 0.6.21
+
+- robertnisipeanu/mgu-store's 0.6.16 and 0.6.17 with this repository's renderer (its own touch table and ports kept, `touch_table`, `touch_port`):
+  - The touch divert rule's nft commands run beside the render loop, never in it: the renderer keeps drawing, answering apps and beating to its guard while nft works. An nft run that takes longer than 10 s is stopped and counts as failed. A failed load is logged once and tried again every 5 s (`touch: loading the nft rule failed, touch stays the HMI's; trying again every 5 s`). At exit the guard takes the rule out. A slow nft (over 1.5 s per run) blocked the loop while touch was diverted, so the guard killed the renderer each time an app gave up its touch area; repeated kills hit the service's start limit, and the deploy check after an update failed with `render.sock: EPIPE`.
+  - The car-test guide rehearses on any test head unit reached over SSH.
+  - An idrive7-apps kit app on our socket goes back to the community socket `/run/mgu-renderd/renderd.sock` once another renderer (idrive7-renderd) has listened there for 5 s: its connection is closed, and the kit connects again, to that socket unless an earlier failed try there turned it to ours (`<app>: kit app sent back to /run/mgu-renderd/renderd.sock, which has its own renderer again`). Kit apps came to us whenever idrive7-renderd restarted (each of its updates, a crash) and stayed until mgu-render restarted, drawn for the wrong screen on cars whose display differs. An app that comes back within 60 s is sent again only after 30 s, then 2 min; after a third time it stays. Without another renderer there, and for every app that is not a kit app (the Store included), nothing changes.
+
 ## 0.6.20
 
 - robertnisipeanu/mgu-store's touch-divert fix with this repository's renderer: the rule is removed with `nft delete table` straight (no file), so it comes out even when /tmp is full, and an absent table is not an error. The rule still goes to nft in a file and counts only when its table is there afterwards.
