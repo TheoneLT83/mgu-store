@@ -4667,7 +4667,8 @@ function uninstallApp(id, state, keepPackages) {
  * its uid has a uids.txt line. iDrive 8 has no such homes to look for. */
 function listDir(p) { try { return fs.readdirSync(p); } catch (e) { return []; } }
 function strayHomes() {
-    if (isId8()) return [];
+    // none to tell while the app manager has not made its home yet (after a factory reset)
+    if (isId8() || !mgrDataReady()) return [];
     var cfg = readJsonOrNull(baseJson()), range = cfg && cfg.usableUidsAndGids, listed = {}, registered = {}, taken = {};
     if (!range || typeof range.min !== 'number' || typeof range.max !== 'number') return [];
     var names = listDir(CFG.oap), text;
@@ -4680,7 +4681,11 @@ function strayHomes() {
             registered[n.slice(0, -5)] = e.userId;
             taken[e.userId] = true;
         });
-    } catch (e) { warn('homes left behind not looked for: ' + e.message); return []; }
+    } catch (e) {
+        // the manager's uid list or registry not there yet (its first start after a factory reset): nothing to tell
+        if (e.code !== 'ENOENT') warn('homes left behind not looked for: ' + e.message);
+        return [];
+    }
     text.split('\n').forEach(function (l) { var m = /^(\d+)=/.exec(l); if (m) listed[m[1]] = true; });
     var running = {};
     listDir(CFG.proc).forEach(function (p) {
