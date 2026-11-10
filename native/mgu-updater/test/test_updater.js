@@ -761,6 +761,50 @@ function testRequiredAlone() {
     ok('required alone: an app whose removal waits for the next start (iDrive 8) keeps none of its tools',
         u.keptBy('shared', all, ['shared', 'app']) === null && /^app needs mid$/.test(u.keptBy('mid', all, ['mid']) || ''),
         JSON.stringify([u.keptBy('shared', all, ['shared', 'app']), u.keptBy('mid', all, ['mid'])]));
+
+    // an installed app no source lists any more (its stick out, its source removed): what its install recorded keeps its tools
+    const gone = new Map([['a', 'app', { shared: '1.0.0' }], ['b', 'app', {}], ['shared', 'tool', {}]]
+        .map(([id, kind, requires]) => [id, { entry: { id, kind, title: id, requires } }]));
+    const g = Object.assign(Object.create(Updater.prototype), {
+        installedVersion: () => '1.0.0', removableRow: () => true, providers: {}, nextStart: {}
+    });
+    ok('required alone: without a record, an unlisted app keeps nothing', JSON.stringify(g.requiredAlone('a', gone)) === '["shared"]');
+    g.origins = { b: { source: 'stick', requires: { shared: '1.0.0' } } };
+    ok('required alone: a tool an installed app required at its install stays, though no source lists that app',
+        JSON.stringify(g.requiredAlone('a', gone)) === '[]' && g.keptBy('shared', gone, ['shared', 'a']) === 'b needs shared',
+        JSON.stringify([g.requiredAlone('a', gone), g.keptBy('shared', gone, ['shared', 'a'])]));
+    // recorded from a source listing the version installed, once
+    let saves = 0;
+    Object.assign(g, { aliases: {}, originOf: (x) => x, saveOrigins: () => { saves += 1; },
+        origins: { a: { source: 'src' }, b: { source: 'src', requires: { old: '1.0.0' } }, c: { source: 'other' } },
+        installedVersion: (id) => (id === 'd' ? null : '1.0.0') });
+    g.recordRequires('src', { components: [{ id: 'a', kind: 'app', version: '1.0.0', requires: { shared: '1.0.0' } },
+        { id: 'b', kind: 'app', version: '1.0.0', requires: {} }, { id: 'c', kind: 'app', version: '1.0.0', requires: { x: '1.0.0' } },
+        { id: 'd', kind: 'app', version: '1.0.0', requires: { x: '1.0.0' } }] });
+    ok('required alone: a source listing the installed version records what it requires where its origin has no record',
+        JSON.stringify(g.origins) === JSON.stringify({ a: { source: 'src', requires: { shared: '1.0.0' } }, b: { source: 'src', requires: { old: '1.0.0' } },
+            c: { source: 'other' } }) && saves === 1, JSON.stringify(g.origins));
+
+    // the Store's own tools stay, even where a source marks them uninstallable
+    const store = new Map([['tunnel_app', 'app', { tunnel: '1.0.0' }], ['tunnel', 'tool', { 'mgu-uplink': '1.0.0' }],
+        ['mgu-uplink', 'tool', {}], ['mgu-render', 'tool', {}], ['app-privacy', 'tool', {}]]
+        .map(([id, kind, requires]) => [id, { entry: { id, kind, title: id, requires, uninstallable: true } }]));
+    const s = Object.assign(Object.create(Updater.prototype), {
+        conf: { deploy_tool: 'mgu-deploy', store_app: 'robertn_store', uplink_tool: 'mgu-uplink' },
+        origins: {}, nextStart: {}, providers: {},
+        installedOf: () => true,
+        installedVersion: () => '1.0.0'
+    });
+    ok('required alone: an app\'s removal never takes the Store\'s tools along, nor can they be removed',
+        JSON.stringify(s.requiredAlone('tunnel_app', store)) === '["tunnel"]' &&
+        ['mgu-uplink', 'mgu-render', 'app-privacy'].every((id) => !s.removableRow(id, store.get(id), store)) && s.removableRow('tunnel', store.get('tunnel'), store),
+        JSON.stringify(s.requiredAlone('tunnel_app', store)));
+    // as one a version before queued (handover)
+    let ran = 0;
+    Object.assign(s, { changed: () => {}, deployTool: () => { ran += 1; return Promise.resolve(0); } });
+    return s.uninstall({ op: 'uninstall', id: 'mgu-uplink', along: 'tunnel_app' }).then((done) => {
+        ok('uninstall: a queued removal of the Store\'s tool does not run', done === false && ran === 0, JSON.stringify([done, ran]));
+    });
 }
 
 /* tar.js: what it packs it reads back; links, `..` and oversize archives are refused or left out. */
@@ -2623,7 +2667,8 @@ function testSources(certs) {
             ok('requires: a missing requirement installs first', lines.length === 2 && /base_tool@1\.0\.0/.test(lines[0]) &&
                 /needs_app@1\.0\.0/.test(lines[1]) && comp('base_tool').status === 'installed', JSON.stringify(lines));
             const origins = JSON.parse(fs.readFileSync(path.join(state, 'origins.json'), 'utf8'));
-            ok('origins: the source each was installed from', origins.needs_app.source === 'mgu-store' && origins.base_tool.source === 'mgu-store');
+            ok('origins: the source each was installed from, and what it requires', origins.needs_app.source === 'mgu-store' &&
+                origins.base_tool.source === 'mgu-store' && origins.needs_app.requires.base_tool === '1.0.0', JSON.stringify(origins));
             return ask(sock, { op: 'install', id: 'lonely_app' });
         })
         .then(() => until(st, () => comp('lonely_app').error, 10000, 'the missing requirement'))
@@ -6612,8 +6657,8 @@ function main() {
     testCatalog();
     testCollect();
     testFileLog();
-    testRequiredAlone();
-    return testTar()
+    return Promise.resolve(testRequiredAlone())
+        .then(() => testTar())
         .then(() => testDeployTimeout())
         .then(() => testIndexV1Cache().catch((e) => ok('index v1 cache scenario', false, e.stack)))
         .then(() => testBuildDisk().catch((e) => ok('build folders scenario', false, e.stack)))

@@ -1,5 +1,14 @@
 # Updater changelog
 
+## 0.8.40
+
+robertnisipeanu/mgu-store's 0.8.37/0.8.38 with this repository's updater:
+
+- A tool stays while an installed app or tool still requires it, also when no source lists that app any more: Remove all
+  neither offers nor takes it along, and it can't be removed on its own. The updater records what each component requires.
+- The tools the Store's setup installs (Internet uplink, Renderer, App privacy, Python, the deploy tool and the updater)
+  can't be removed from the Store.
+
 ## 0.8.39
 
 robertnisipeanu/mgu-store's 0.8.36 with this repository's updater:

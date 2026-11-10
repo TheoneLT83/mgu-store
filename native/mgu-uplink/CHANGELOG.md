@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.7.10
+
+- No Remove in the Store: the uplink stays while the Store is installed.
+
 ## 0.7.9
 
 - 0.7.8 built again: its folder's newer date (comment wording only) gives it other content, and a release publishes no other content under a published version. Nothing changes on the car.

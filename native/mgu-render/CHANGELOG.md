@@ -1,5 +1,10 @@
 # mgu-render changelog
 
+## 0.6.23
+
+- robertnisipeanu/mgu-store's 0.6.19 with this repository's renderer: no Remove in the Store, the renderer stays while the
+  Store is installed.
+
 ## 0.6.22
 
 - robertnisipeanu/mgu-store's 0.6.18 with this repository's renderer:
@@ -19,6 +24,10 @@
 ## 0.6.19
 
 - 0.6.18 built again: a change to its car-test tool, since taken back, gave 0.6.18's tree a newer date, and a release publishes no other content under a published version.
+
+## 0.6.19
+
+- No Remove in the Store: the Renderer stays while the Store is installed.
 
 ## 0.6.18
 

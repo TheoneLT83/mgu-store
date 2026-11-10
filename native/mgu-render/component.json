@@ -1,14 +1,13 @@
 {
   "id": "mgu-render",
   "kind": "tool",
-  "version": "0.6.22",
+  "version": "0.6.23",
   "title": "Renderer",
   "description": "Draws apps' screens on the GPU, over the HMI or inside the app's page",
   "mguProvides": "renderer",
   "mguHmi": ["ID7", "ID8"],
   "optional": true,
   "requires": { "mgu-deploy": "0.6.10" },
-  "uninstallable": true,
   "build": ["make", "check-target"],
   "files": [
     { "path": "mgu-render", "from": "build/target/mgu-render", "mode": "0755" },

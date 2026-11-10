@@ -1,5 +1,12 @@
 # Deploy tool changelog
 
+## 0.8.11
+
+robertnisipeanu/mgu-store's 0.8.10 with this repository's deploy tool:
+
+- `status --read-only` prints the same report and changes nothing (the repairs it would make say `pending (read-only)`).
+- `mgu-install.js status` prints the deploy tool's status from the head unit, for users to paste when an app's tile does not show.
+
 ## 0.8.10
 
 robertnisipeanu/mgu-store's 0.8.9 with this repository's deploy tool:

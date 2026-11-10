@@ -38,6 +38,8 @@ const ID = catalogLib.ID;
 
 const HERE = __dirname;
 const SELF = 'mgu-updater';
+// the tools the Store's setup installs: the updater never removes them (the computer's uninstall does)
+const STORE_TOOLS = ['mgu-deploy', 'app-privacy', 'mgu-updater', 'mgu-python', 'mgu-render', 'mgu-uplink'];
 // the deploy tool's exit status when its MainApp guard stopped the run: what it changed stays
 const GUARD_STOPPED = 3;
 const HANDOVER_EXIT = 75;
@@ -1442,10 +1444,17 @@ class Updater {
         });
     }
 
-    /* The ids the updater never removes: itself, the deploy tool, the Store
-     * and what the updater requires. */
+    /* The ids the updater never removes nor takes back to their version
+     * before: itself, the deploy tool, the Store and what the updater
+     * requires. */
     kept() {
         return [SELF, this.conf.deploy_tool, this.conf.store_app].concat(Object.keys(selfComponent().requires || {}));
+    }
+
+    /* The ids the updater never removes: kept, and the other tools the
+     * Store's setup installs. */
+    unremovable() {
+        return this.kept().concat(STORE_TOOLS);
     }
 
     /* The row of an installed component no listing stands for: its id
@@ -1459,7 +1468,7 @@ class Updater {
         try {
             c = i.kind === 'tool' ? readJson(path.join(this.conf.tool_root, id, 'current', 'component.json')) : {};
         } catch (e) { /* none */ }
-        const kept = this.kept();
+        const kept = this.unremovable();
         const requires = c.requires && typeof c.requires === 'object' && !Array.isArray(c.requires) ?
             Object.keys(c.requires).filter((k) => ID.test(k) && k !== id && catalogLib.SEMVER.test(c.requires[k]))
                 .reduce((o, k) => Object.assign(o, { [k]: c.requires[k] }), {}) : {};
@@ -1550,7 +1559,7 @@ class Updater {
         });
         // what the Store and mgu-uplink replace is never installed, from whichever source; an app can
         // be removed whatever its source says, and what the updater never removes cannot
-        const kept = this.kept();
+        const kept = this.unremovable();
         map.forEach((r, key) => {
             const why = REPLACED[r.entry.installAs || r.entry.listedId || r.entry.id];
             const uninstallable = kept.indexOf(r.entry.installAs || r.entry.id) < 0 && (r.entry.kind === 'app' || r.entry.uninstallable === true);
@@ -1897,6 +1906,7 @@ class Updater {
                     `${cat.apiRequests !== undefined ? `; ${cat.apiRequests} GitHub API requests` : ''}`);
                 // in the background: a slow icon host holds up no check
                 this.fetchIcons(rt);
+                this.recordRequires(id, rt);
             }, (err) => {
                 rt.status = err.auth ? 'auth-needed' : 'error';
                 rt.error = err.message;
@@ -1916,6 +1926,26 @@ class Updater {
                 }
             });
         return rt.checking;
+    }
+
+    /* What each component installed from this source requires, recorded in
+     * its origin when the source lists the version installed and the
+     * origin has no record of it: so it keeps its requirements once no
+     * source lists it. */
+    recordRequires(id, rt) {
+        const origin = this.originOf(id);
+        let changed = false;
+        rt.components.forEach((c) => {
+            const unit = this.aliases[`${origin}:${c.id}`] || c.id;
+            const o = this.origins[unit];
+            if (o && o.source === origin && !o.requires && this.installedVersion(unit, c.kind) === c.version) {
+                o.requires = c.requires || {};
+                changed = true;
+            }
+        });
+        if (changed) {
+            this.saveOrigins();
+        }
     }
 
     /* A branch source at a new commit: the files changed since each commit an
@@ -2566,14 +2596,21 @@ class Updater {
 
     /* Whether row r of id (in all, this.resolved()) may remove it: the row
      * of the origin that installed (or queued) it, marked uninstallable,
-     * and id neither the updater, the deploy tool nor what the updater
-     * requires. */
+     * and id none the updater never removes (unremovable). */
     removableRow(id, r, all) {
         const unit = r.entry.installAs || id;
         const rec = this.origins[unit];
         const owner = this.installedOf(unit, r.entry.kind) ? all.get(unit) || r :
             rec ? Array.from(all.values()).find((o) => (o.entry.installAs || o.entry.id) === unit && this.originOf(o.source) === rec.source) || r : r;
-        return owner === r && r.entry.uninstallable && id !== SELF && id !== this.conf.deploy_tool && !(selfComponent().requires || {})[id];
+        return owner === r && r.entry.uninstallable && this.unremovable().indexOf(r.entry.installAs || id) < 0;
+    }
+
+    /* What the component of row o requires: its row's requirements and,
+     * for an installed one, those its origin recorded at its install, which
+     * stand when no source lists it any more. */
+    needs(o) {
+        const rec = this.origins && this.origins[o.entry.installAs || o.entry.id];
+        return rec && rec.requires && typeof rec.requires === 'object' ? Object.assign({}, rec.requires, o.entry.requires) : o.entry.requires;
     }
 
     /* Why installed id stays when it and the ids in along are removed: an
@@ -2583,7 +2620,7 @@ class Updater {
     keptBy(id, all, along) {
         const besides = (o) => along.indexOf(o.entry.id) < 0 && this.installedVersion(o.entry.id, o.entry.kind) &&
             this.nextStart[o.entry.installAs || o.entry.id] !== 'remove';
-        const needs = Array.from(all.values()).find((o) => o.entry.requires[id] && besides(o));
+        const needs = Array.from(all.values()).find((o) => this.needs(o)[id] && besides(o));
         if (needs) {
             return `${needs.entry.title} needs ${id}`;
         }
@@ -2608,7 +2645,7 @@ class Updater {
         while (grew) {
             grew = false;
             all.forEach((t, tid) => {
-                if (set.indexOf(tid) < 0 && t.entry.kind === 'tool' && set.some((s) => all.get(s).entry.requires[tid]) &&
+                if (set.indexOf(tid) < 0 && t.entry.kind === 'tool' && set.some((s) => this.needs(all.get(s))[tid]) &&
                     this.installedVersion(t.entry.installAs || tid, 'tool') && this.removableRow(tid, t, all) && !this.keptBy(tid, all, set.concat([tid]))) {
                     set.push(tid);
                     grew = true;
@@ -2618,7 +2655,7 @@ class Updater {
         const left = set.slice(1);
         const out = [];
         while (left.length) {
-            const i = left.findIndex((t) => !left.some((o) => all.get(o).entry.requires[t]));
+            const i = left.findIndex((t) => !left.some((o) => this.needs(all.get(o))[t]));
             out.push(left.splice(Math.max(i, 0), 1)[0]);
         }
         return out;
@@ -3031,7 +3068,7 @@ class Updater {
                 console.log(stopped ? `${id}@${entry.version}: the deploy tool's MainApp guard stopped it; what it did stays until the next start`
                     : `installed ${id}@${entry.version}`);
                 // installed from a stick's copy of a source: that source is its origin
-                this.origins[id] = { source: this.originOf(item.source), commit: entry.commit || null };
+                this.origins[id] = { source: this.originOf(item.source), commit: entry.commit || null, requires: entry.requires || {} };
                 this.saveOrigins();
                 if (entry.listedId) {
                     this.aliases[`${this.originOf(item.source)}:${entry.listedId}`] = id;
@@ -3077,13 +3114,19 @@ class Updater {
             });
     }
 
-    /* Removes a component through the deploy tool's uninstall. A tool
+    /* Removes a component through the deploy tool's uninstall. One the
+     * updater never removes stays, as one a version before queued; a tool
      * removed along with an app (item.along) stays while anything installed
      * still keeps it, as when the app's removal failed. */
     uninstall(item) {
         // the row's id; the id it is installed (or queued) under
         const key = item.id;
         const id = item.unit || item.id;
+        if (this.unremovable().indexOf(id) >= 0) {
+            console.log(`${id}: not removed: the Store's setup installs it`);
+            this.changed();
+            return Promise.resolve(false);
+        }
         const kept = item.along && this.keptBy(key, this.resolved(), [key]);
         if (kept) {
             console.log(`${id}: not removed with ${item.along}: ${kept}`);
