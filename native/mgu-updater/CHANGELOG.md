@@ -1,5 +1,9 @@
 # Updater changelog
 
+## 0.8.38
+
+- CarTube (`TheoneLT83/CarTube`, Releases) is a default source: added once at this updater's first start, and stays removed if removed.
+
 ## 0.8.37
 
 robertnisipeanu/mgu-store's 0.8.35 with this repository's updater:
