@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.59
+
+robertnisipeanu/mgu-store's 0.9.34/0.9.35 with this repository's Store: a Remove the updater refuses says why on the
+component's page, such as *Needed by Cluster functions* when another installed app needs it.
+
 ## 0.9.58
 
 robertnisipeanu/mgu-store's 0.9.33 with this repository's Store: text with ‘ ’ “ ” or a no-break space (an iPhone

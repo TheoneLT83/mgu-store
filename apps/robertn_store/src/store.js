@@ -74,7 +74,7 @@ const { Drawn, DEPTHS } = require('./store_drawn.js');
 const { typeKey, wifiOf, proxyOf } = require('./store_ui.js');
 const { PHASE, percent, rowState, rowAction, groupState, statusLine, sourceLabel, sourceState,
     sourcesState, sourceActions, sourceChannel, sourceAccount, tokenLabel, tokenState, tokenSources, accountsState,
-    loginStatus, loginCode, phoneState, phoneAddress, parseSource, pickOptions, probeStatus, sourcesMessage, tokenMessage,
+    loginStatus, loginCode, phoneState, phoneAddress, parseSource, pickOptions, probeStatus, neededBy, sourcesMessage, tokenMessage,
     removable, requiredAlone, undoable, withSources, listed, localized, proxyUrlError, setClusterTime } = require('./store_view.js');
 
 const logger = logging.getSDKLogger();
@@ -256,6 +256,7 @@ class Store extends OnlineApp {
         this._uplinkNote = null;        // the refusal of the last Wi-Fi or preferred-connection request
         this._history = null;           // the open app page's update history ({ id, status, items }, the updater's history answer)
         this._proxyNote = null;         // why the last proxy change was refused
+        this._removeNote = null;        // the updater's refusal of the last Remove: { id, error, by }
         this._qr = { login: { key: null, file: null, chain: Promise.resolve() },
             phone: { key: null, file: null, chain: Promise.resolve() }, app: { key: null, file: null, chain: Promise.resolve() } };
         this._hmi = 'ID7';
@@ -344,6 +345,11 @@ class Store extends OnlineApp {
                 this._render();
             } else if (UPLINK_OPS.indexOf(forOp) >= 0) {
                 this._uplinkNote = String(msg);
+                this._render();
+            } else if (forOp === 'uninstall') {
+                // the component that needs it, by the untranslated title the updater names it with
+                const by = (this._stRaw && this._stRaw.components || []).find((c) => c.title === neededBy(msg));
+                this._removeNote = { id: this._removeId, error: String(msg), by: by ? by.id : null };
                 this._render();
             } else if (forOp === 'proxy-set') {
                 this._proxyNote = String(msg);
@@ -717,7 +723,7 @@ class Store extends OnlineApp {
             version: this._version(), note: this._sourcesNote, login: this._login, look: this._look,
             webText: web && web.enabled ? readFile(WEB_URL_FILE) : '', accountsNote: this._accountsNote,
             pick: this._pick && { repo: this._pick.repo, probe: this._pick.probe, tokenNote: !!this._pick.tokenNote },
-            uplinkNote: this._uplinkNote, proxyNote: this._proxyNote, history: this._history, noNet: !!this._noNet, language: i18n.language() };
+            uplinkNote: this._uplinkNote, proxyNote: this._proxyNote, removeNote: this._removeNote, history: this._history, noNet: !!this._noNet, language: i18n.language() };
     }
 
     /* A press on the drawn screens (src/store_ui.js acts). */
@@ -752,8 +758,11 @@ class Store extends OnlineApp {
                 this._removalRefused = false;
             } else if (act.page.name === 'confirm' && act.page.kind === 'account-remove') {
                 this._tokenId = act.page.id;
+            } else if (act.page.name === 'app') {
+                this._removeNote = null;
             } else if (act.page.name === 'confirm' && act.page.kind === 'remove') {
                 this._removeId = act.page.id;
+                this._removeNote = null;
             } else if (act.page.name === 'confirm' && act.page.kind === 'undo') {
                 this._undoId = act.page.id;
             } else if (act.page.name === 'proxy') {

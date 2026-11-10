@@ -1,5 +1,11 @@
 # Updater changelog
 
+## 0.8.39
+
+robertnisipeanu/mgu-store's 0.8.36 with this repository's updater:
+
+- An installed app's icon from its source is fetched too, so a removed app keeps its icon in the Store.
+
 ## 0.8.38
 
 - CarTube (`TheoneLT83/CarTube`, Releases) is a default source: added once at this updater's first start, and stays removed if removed.
