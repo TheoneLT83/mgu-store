@@ -47,6 +47,13 @@ jobs:
         with:
           go-version: 1.27.2
 
+      # Docker's containers resolve names through public DNS servers: the runner's own resolver is not reachable
+      # from them (Nov 2026: "Could not resolve 'archive.ubuntu.com'" in every Ubuntu 18.04 image build)
+      - name: Docker DNS
+        run: |
+          echo '{ "dns": ["1.1.1.1", "8.8.8.8"] }' | sudo tee /etc/docker/daemon.json
+          sudo systemctl restart docker
+
       # No oap-sdk donor here: the Store publishes as its source package,
       # which the head unit builds.
       - name: Publish
