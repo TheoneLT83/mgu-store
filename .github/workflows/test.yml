@@ -20,6 +20,8 @@ jobs:
           node-version: 22.12.0
       - name: Updater
         run: sh native/mgu-updater/test/run.sh
+      - name: Store switch
+        run: node native/store-switch/test/switch_test.js
       - name: Deploy tool
         # as root, as on the head unit: its tests chown and mount in their fake roots
         run: sudo -E env "PATH=$PATH" node deploy/test/run.js
