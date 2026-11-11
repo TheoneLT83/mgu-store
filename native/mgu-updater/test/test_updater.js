@@ -1496,6 +1496,21 @@ function row(st, id) {
 
 /* The log file under /tmp's rules: a FIFO at its name neither blocks nor
  * takes the lines, and a folder at <log>.1 does not stop it past its size. */
+/* store-switch: not offered by this updater (the Store's own source is this repository already), unless installed. */
+function testStoreSwitch() {
+    const { Updater } = require('../js/updater');
+    const u = Object.create(Updater.prototype);
+    let installed = false;
+    u.installedOf = () => installed;
+    u.conf = {};
+    ok('store-switch: not offered with this repository as the Store\'s own source', u.switchedAlready('store-switch') && !u.switchedAlready('mgu-render'));
+    installed = true;
+    ok('store-switch: one installed is listed, to be removed', !u.switchedAlready('store-switch'));
+    installed = false;
+    u.conf = { builtin_repo: 'robertnisipeanu/mgu-store' };
+    ok('store-switch: offered with another Store\'s own source', !u.switchedAlready('store-switch'));
+}
+
 function testFileLog() {
     const { fileLog } = require('../js/updater');
     const dir = path.join(T, 'filelog');
@@ -6657,6 +6672,7 @@ function main() {
     testCatalog();
     testCollect();
     testFileLog();
+    testStoreSwitch();
     return Promise.resolve(testRequiredAlone())
         .then(() => testTar())
         .then(() => testDeployTimeout())

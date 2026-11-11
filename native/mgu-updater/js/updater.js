@@ -878,6 +878,7 @@ class Fetcher {
 /* ---- the daemon ----------------------------------------------------------- */
 
 const SELF_SOURCE_ID = 'mgu-store';
+const STORE_SWITCH = 'store-switch';
 
 /* IterioDev's App Manager and its iPhone tether: the Store and mgu-uplink
  * replace them, so whichever source lists them, they are not installed
@@ -1491,6 +1492,13 @@ class Updater {
      * installing as <id> (installAs), blocked while another origin's <id> is
      * installed. An installed id without an origin, or whose origin lists it
      * no more, is a row of its own (unlisted). */
+    /* store-switch (native/store-switch) makes robertnisipeanu's updater take
+     * this repository as the Store's own source; this updater has it as its
+     * own already, so it is not offered (one installed shows, to be removed). */
+    switchedAlready(id) {
+        return id === STORE_SWITCH && /^theonelt83\/mgu-store$/i.test(this.builtin().repo) && !this.installedOf(id);
+    }
+
     resolved() {
         const online = readLease(this.conf).online;
         const groups = new Map();
@@ -1498,6 +1506,9 @@ class Updater {
         this.defs().forEach((def, order) => {
             const rt = this.src.get(def.id);
             (rt ? rt.components : []).forEach((entry) => {
+                if (this.switchedAlready(entry.id)) {
+                    return;
+                }
                 taken.add(entry.id);
                 const list = groups.get(entry.id) || [];
                 list.push({ entry, source: def.id, origin: this.originOf(def.id), order, usb: def.type === 'usb', reachable: online || !rt.reader.network });

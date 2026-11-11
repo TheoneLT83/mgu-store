@@ -1,5 +1,10 @@
 # Updater changelog
 
+## 0.8.41
+
+- Switch to TheoneLT83's Store (`store-switch`) is not offered: this updater's own source is that repository
+  already. One installed still shows, so it can be removed.
+
 ## 0.8.40
 
 robertnisipeanu/mgu-store's 0.8.37/0.8.38 with this repository's updater:
