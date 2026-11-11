@@ -7,7 +7,7 @@
  *        updates from TheoneLT83/mgu-store, as its versions there are newer, once the updater starts again
  *   off  that line taken out: the updater's own built-in source again
  *
- * Run by the deploy tool as root, the tool's activate (on) and deactivate (off). The rest of the file is kept;
+ * Run by the deploy tool as root, the tool's activate (on) and deactivate (off), on the head unit's Node 8. The rest of the file is kept;
  * root's alone (it can hold a proxy's password) and on disk before it returns, as the updater writes it. The
  * last stdout line asks for the head unit's start that the updater needs to read it.
  */
@@ -21,6 +21,13 @@ function read(file) {
     try { return fs.readFileSync(file, 'utf8').split('\n'); } catch (e) { return []; }
 }
 
+/* The folder and its parents (Node 8, the head unit's: no recursive mkdir). */
+function mkdirs(dir) {
+    if (fs.existsSync(dir)) return;
+    mkdirs(path.dirname(dir));
+    fs.mkdirSync(dir, 0o755);
+}
+
 /* key = value in file (removed when value is empty), the rest kept. Returns whether it changed. */
 function set(file, key, value) {
     const was = read(file);
@@ -29,7 +36,7 @@ function set(file, key, value) {
     if (value) lines.push(key + ' = ' + value);
     const text = lines.length ? lines.join('\n') + '\n' : '';
     if (text === (was.length ? was.join('\n') : '')) return false;
-    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o755 });
+    mkdirs(path.dirname(file));
     const tmp = file + '.tmp';
     try { fs.unlinkSync(tmp); } catch (e) { /* none */ }
     const fd = fs.openSync(tmp, 'wx', 0o600);
