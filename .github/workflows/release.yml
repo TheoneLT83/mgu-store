@@ -56,6 +56,11 @@ jobs:
           COMPONENTS: ${{ inputs.components }}
         run: node release/release.js publish $COMPONENTS
 
+      # a native build that failed: its Ubuntu 18.04 image built again with the whole output (the builds run it quietly)
+      - name: Docker images (on failure)
+        if: failure()
+        run: docker build --progress=plain --platform linux/amd64 native/mgu-inputgate/docker/target 2>&1 | tail -60
+
       - name: Published catalog
         if: always()
         env:
