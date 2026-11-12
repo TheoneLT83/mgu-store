@@ -1,5 +1,9 @@
 # mgu-render changelog
 
+## 0.6.24
+
+- robertnisipeanu/mgu-store's build image tag from the build files' hash (no change on the car).
+
 ## 0.6.23
 
 - robertnisipeanu/mgu-store's 0.6.19 with this repository's renderer: no Remove in the Store, the renderer stays while the
