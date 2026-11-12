@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.62
+
+On a screen smaller than the app area the HMI names (an MGU retrofitted to an NBT Evo display), the Store's page is held
+inside the screen instead of running past its edge.
+
 ## 0.9.61
 
 robertnisipeanu/mgu-store's 0.9.39 with this repository's Store: while the deploy tool's safe mode keeps our tools off
