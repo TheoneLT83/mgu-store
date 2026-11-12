@@ -25,6 +25,9 @@
 
 - 0.6.18 built again: a change to its car-test tool, since taken back, gave 0.6.18's tree a newer date, and a release publishes no other content under a published version.
 
+- Build: the build image's tag is a hash of its definition, so builds from different definitions never share an image.
+No changes.
+
 ## 0.6.19
 
 - No Remove in the Store: the Renderer stays while the Store is installed.

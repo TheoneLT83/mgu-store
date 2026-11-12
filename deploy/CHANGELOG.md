@@ -1,5 +1,17 @@
 # Deploy tool changelog
 
+## 0.8.15
+
+robertnisipeanu/mgu-store's 0.8.11-0.8.14 with this repository's deploy tool:
+
+- On iDrive 7 units whose Telematics reports iDrive 8, apps get their tile (the iDrive 7 UI, texts and images).
+- An app's update removes its earlier bundle's code cache (the head unit's Node took it for any bundle of the same length).
+- On iDrive 7, an app of ours registered without a `custom_apps.json` entry gets its tile again.
+- `--read-only` belongs to `status` alone.
+- `mgu-install.js`: while finding the head unit, a download, or the install or removal on the head unit takes longer than 30 s, a line about every 30 s says it is still going, such as `the head unit is still installing (2 min)`. Ctrl+C (or SIGTERM) prints `stopped; run the same command again to finish` and exits as the signal would.
+- `mgu-install.js` `first-install`, `status`, `uninstall` and `token`: when the head unit was found (its hotspot address answers on port 22 without SSH, or the ENET gateway reports its address) but its SSH does not answer, they say `found the head unit at <address>, but its SSH is closed: enable root SSH first, then run this again`.
+- `mgu-install.js usb-repo` copies each app icon a catalog lists beside the stick's `catalog.json`, checked against its `iconSha256`, so the Store shows it from the stick. An icon that cannot be read or does not match is left out, said, and the stick is written all the same.
+
 ## 0.8.11
 
 robertnisipeanu/mgu-store's 0.8.10 with this repository's deploy tool:

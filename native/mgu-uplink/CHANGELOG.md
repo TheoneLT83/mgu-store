@@ -1,5 +1,9 @@
 # mgu-uplink changelog
 
+## 0.7.12
+
+- robertnisipeanu/mgu-store's 0.7.11: switching Wi-Fi on scans at once, also during wireless CarPlay or Android Auto.
+
 ## Unreleased
 
 ## 0.7.10

@@ -20,7 +20,10 @@
  * draws the focus ring there, a press on one presses the item. Touch in the
  * renderer's claimed area hits the items themselves; a drag scrolls. With
  * the HMI's controller gate (the renderer's `controller`), the dial moves
- * the focus and a push presses; in embed mode without it, FrontCCU does.
+ * the focus, a tilt moves it to the nearest item that way (left with
+ * nothing there closes the page) and a push presses; in embed mode
+ * without it, FrontCCU does, with only the tilts east and south (the HMI
+ * takes north and west itself).
  *
  * Emits 'mode' (null, 'layer' or 'embed') when what the renderer offers
  * changes (null: the widget screens show), and 'page-focus' (the page) when
@@ -32,7 +35,7 @@ const fs = require('fs');
 const kit = require('./kit_record.js');
 const png = require('./kit_png.js');
 const { setPicture } = require('./am_widgets.js');
-const { frame, layoutOf, dragOf, dragFrame, hit, placement } = require('./store_frame.js');
+const { frame, layoutOf, dragOf, dragFrame, hit, placement, toward } = require('./store_frame.js');
 const FULL_X = 84;              // the HMI's back arrow column (x 0..84): kept the HMI's, as the idrive7-apps keep it
 
 const DEPTHS = 3;
@@ -60,10 +63,15 @@ const LONG = ['DREHGEBER_LANG_GEDRUECKT', 2];
 const PUSH_GUARD_MS = 350;
 const RELEASED = ['KEINE_BETAETIGUNG', 0];
 const DIAL_MAX_STEP = 24;
-// the controller pushed (FrontCCU deflection, short or long; by name or number): N up, E right, S down, W left
-const TILT = { 1: 'N', 2: 'N', 4: 'E', 5: 'E', 7: 'S', 8: 'S', 10: 'W', 11: 'W',
-    NORD_KURZ_GEDRUECKT: 'N', NORD_LANG_GEDRUECKT: 'N', OST_KURZ_GEDRUECKT: 'E', OST_LANG_GEDRUECKT: 'E',
-    SUED_KURZ_GEDRUECKT: 'S', SUED_LANG_GEDRUECKT: 'S', WEST_KURZ_GEDRUECKT: 'W', WEST_LANG_GEDRUECKT: 'W' };
+// FrontCCU frontRotaryEncoderDeflection: a short or long tilt north, east, south or west, by name or ordinal
+const TILT = { NORD_KURZ_GEDRUECKT: 'N', NORD_LANG_GEDRUECKT: 'N', OST_KURZ_GEDRUECKT: 'E', OST_LANG_GEDRUECKT: 'E',
+    SUED_KURZ_GEDRUECKT: 'S', SUED_LANG_GEDRUECKT: 'S', WEST_KURZ_GEDRUECKT: 'W', WEST_LANG_GEDRUECKT: 'W',
+    1: 'N', 2: 'N', 4: 'E', 5: 'E', 7: 'S', 8: 'S', 10: 'W', 11: 'W' };
+// centred; any other value not in TILT (invalid, ineffective) keeps the last tilt state
+const CENTRED = ['MITTELSTELLUNG', 0];
+const tiltOf = (v, last) => TILT[v] || (CENTRED.indexOf(v) >= 0 ? null : last);
+// the tilts FrontCCU drives: the HMI gets every tilt too and takes north (its header menu) and west (BACK) itself
+const FRONT_TILTS = ['E', 'S'];
 
 const msNow = () => { const t = process.hrtime(); return t[0] * 1e3 + t[1] / 1e6; };
 const usNow = () => { const t = process.hrtime(); return t[0] * 1e6 + Math.floor(t[1] / 1e3); };   // CLOCK_MONOTONIC, as mgu-render's
@@ -153,7 +161,7 @@ class Drawn extends EventEmitter {
         this.viewport = null;
         this.stack = [{ name: 'main' }];
         this.tab = 'store';
-        this.filter = 'all';
+        this.filter = 'app';
         this.focus = 0;
         this.scroll = {};
         this.items = [];
@@ -948,33 +956,36 @@ class Drawn extends EventEmitter {
      * buttons itself (the emulator's HMI routes them neither focus nor
      * presses). An invalid counter keeps the last valid
      * one; a push value other than pushed or released keeps the last state;
-     * a new sequence number while pushed is a new push, but not the same push
-     * turning from short to long (held a moment: one press, not two). */
+     * a new sequence number while pushed is a new push; a tilt east or south
+     * counts when it starts, the first sample's too, and a value other than
+     * a tilt or centred keeps the last tilt state. */
     frontCcu(s) {
         const last = this.fccu;
         const op = s && s.frontRotaryEncoderOperation;
         const push = s && s.frontRotaryEncoderPushButton;
         const seq = s && s.frontSequenceNumberOperatingElement;
+        const tilt = tiltOf(s && s.frontRotaryEncoderDeflection, last ? last.tilt : null);
         this.fccu = {
             knob: typeof op === 'number' && op !== 0xffff ? op : (last ? last.knob : 0xffff),
             press: PUSHED.indexOf(push) >= 0 ? true : RELEASED.indexOf(push) >= 0 ? false : !!(last && last.press),
-            long: PUSHED.indexOf(push) >= 0 ? LONG.indexOf(push) >= 0 : !!(last && last.long),
             seq: PUSHED.indexOf(push) >= 0 ? seq : last && last.seq,
-            tilt: s && s.frontRotaryEncoderDeflection
+            tilt
         };
-        if (last && this.mode === 'embed' && !this.controller && !this.embedProxies && !this.focusLost) {
-            const longer = last.press && !last.long && this.fccu.long;
-            this._dial(last.knob, this.fccu.knob, PUSHED.indexOf(push) >= 0 &&
-                (!last.press || (seq !== undefined && seq !== last.seq && !longer)));
-            if (TILT[this.fccu.tilt] && TILT[this.fccu.tilt] !== TILT[last.tilt]) {
-                this._tilt(TILT[this.fccu.tilt]);
+        if (this.mode === 'embed' && !this.controller && !this.embedProxies && !this.focusLost) {
+            if (last) {
+                this._dial(last.knob, this.fccu.knob, PUSHED.indexOf(push) >= 0 &&
+                    (!last.press || (seq !== undefined && seq !== last.seq)));
+            }
+            if (FRONT_TILTS.indexOf(tilt) >= 0 && tilt !== (last && last.tilt)) {
+                this._tilt(tilt);
             }
         }
     }
 
     _ccu(e) {
         const last = this.ccu;
-        this.ccu = e;
+        const tilt = tiltOf(e.tilt, last ? last.dir : null);
+        this.ccu = Object.assign({}, e, { dir: tilt });
         if (last) {
             this._dial(last.knob, e.knob, e.press && e.press !== last.press && e.seq !== last.seq);
             if (TILT[e.tilt] && TILT[e.tilt] !== TILT[last.tilt]) {
@@ -1028,6 +1039,24 @@ class Drawn extends EventEmitter {
             this.host.act({ do: 'back' });
         } else {
             this.host.closeState(this.hostOf(1));
+        }
+        if (tilt && tilt !== (last && last.dir)) {
+            this._tilt(tilt);
+        }
+    }
+
+    /* A tilt moves the focus to the nearest item that way (with no focus yet,
+     * to the first); left with nothing there closes the page, as BACK does. */
+    _tilt(dir) {
+        if (!this.on_) {
+            return;
+        }
+        const to = this.focus < 0 ? (this.items.length ? 0 : null) : toward(this.items, this.focus, dir);
+        if (to !== null) {
+            this.focus = to;
+            this.render();
+        } else if (dir === 'W') {
+            this.pop();
         }
     }
 

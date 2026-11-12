@@ -33,6 +33,7 @@ type fakeCar struct {
 	disconnected bool
 	bss          []fakeBSS
 	calls        []string
+	scans        []string // each Scan's arguments
 	state        string
 	groups       map[string]fakeGroup // the P2P group interfaces, by name
 	refuse       string               // a network property Set refuses
@@ -292,6 +293,7 @@ func (f *fakeCar) reply(m dbusMsg) (string, string, []any) {
 		f.current, f.disconnected = "", true
 		return "", "", nil
 	case "Scan":
+		f.scans = append(f.scans, fmt.Sprint(m.body))
 		return "", "", nil
 	}
 	return "org.freedesktop.DBus.Error.UnknownMethod", "", nil
@@ -486,8 +488,10 @@ func TestCarWiFi(t *testing.T) {
 	if v, _ := readSysctl(filepath.Join(p.sys, "wlanc0", "phy80211", "rfkill6", "soft")); v != "0" {
 		t.Fatal("touched the car's rfkill")
 	}
-	if err := p.scan(); err != nil || f.called("Scan") != 1 {
-		t.Fatalf("scan: %v", err)
+	// one scan for switching on, one for the request
+	waitWiFi(t, p, "the switch-on scan", func(wifiStatus) bool { return f.called("Scan") == 1 })
+	if err := p.scan(); err != nil || f.called("Scan") != 2 {
+		t.Fatalf("scan: %v, %d scans", err, f.called("Scan"))
 	}
 
 	if err := p.connect("Robert’s iPhone", "wrongpass9"); err != nil {

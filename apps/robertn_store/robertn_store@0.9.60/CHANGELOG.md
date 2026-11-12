@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.60
+
+robertnisipeanu/mgu-store's 0.9.36/0.9.37 with this repository's Store: tilting the controller right or down moves the
+focus to the nearest item that way (with the controller gate, up and left too; left with nothing further goes back a
+page). Requires the deploy tool released with it (0.8.15).
+
 ## 0.9.59
 
 robertnisipeanu/mgu-store's 0.9.34/0.9.35 with this repository's Store: a Remove the updater refuses says why on the

@@ -45,6 +45,7 @@ var fs = require('fs');
 var path = require('path');
 var crypto = require('crypto');
 var cp = require('child_process');
+var os = require('os');
 
 /* What this tool, and every hook, script and command it runs, creates
  * keeps group and others' read and execute bits, whatever umask the caller
@@ -54,7 +55,7 @@ var cp = require('child_process');
 process.umask(0o022);
 
 /* deploy/component.json's version; the release sets both. */
-var VERSION = '0.8.11';
+var VERSION = '0.8.15';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -2096,7 +2097,8 @@ function validateApp(file, dir, pkgDir) {
     checkPkg(file, pkg);
     var a = { kind: 'app', file: file, dir: dir, pkgDir: pkgDir, pkg: pkg, id: pkg.name, version: pkg.version };
     a.prepare = pkgDir !== dir || pkg.mguLocalOnly !== true || linker().needsSdk(pkgDir) ||
-        linker().needsCertification(pkgDir) || linker().unknownInterfaces(pkgDir, unitInterfaces()).length ? 'package' : null;
+        linker().needsCertification(pkgDir) || linker().unknownInterfaces(pkgDir, unitInterfaces()).length ||
+        id7PartsEdits(pkgDir).length ? 'package' : null;
     appHmi(a, file, pkg.mguHmi, [path.join(pkgDir, 'rhmiData'), path.join(dir, 'rhmiData')]);
     return a;
 }
@@ -2148,6 +2150,244 @@ function incompatible(a) {
     if (!a.hmi || !unit || a.hmi.indexOf(unit) >= 0) return null;
     return a.id + ' ' + a.version + ' is for ' + a.hmi.map(hmiName).join(' and ') +
         (a.hmiFrom === 'rhmiData' ? ' (its rhmiData)' : '') + '; this head unit is ' + hmiName(unit);
+}
+
+/* ---- an app's HMI parts (iDrive 7) ------------------------------------------------ */
+/* At an install MainApp copies, of the app's rhmiData, the first
+ * uiDescriptions entry and the variantGroups whose "hmi" lists the HMI
+ * Telematics reports (provisioningAttributes.hmiVersion: 2 ID7, 3 ID8, any
+ * other ID7), the groups also only for the brand its coding names
+ * (HMI_BRAND: 0 BMW, 1 BMW_I, 2 MINI, 3 RR, any other BMW), into
+ * rhmiData/{uiDescription,strings,resources} of the app's home. Some iDrive 7
+ * units report 3: MainApp then installs an app's iDrive 8 parts, or none
+ * for an app with only iDrive 7 ones, which then has no tile.
+ *
+ * On such a unit (an iDrive 7 MainApp, unitInfo) an app's package lists
+ * the reported HMI in application.json wherever it lists ID7 and nowhere
+ * else before MainApp gets it, so MainApp installs the iDrive 7 parts; and
+ * status puts the package's iDrive 7 parts in place for an installed app
+ * whose installed parts differ from them, which shows from the next start. */
+var HMI_REPORTED = { 2: 'ID7', 3: 'ID8' };
+var HMI_BRANDS = { 0: 'BMW', 1: 'BMW_I', 2: 'MINI', 3: 'RR' };
+var PROVISIONING_JSON = 'de_bmw_infotainment_telematic_provisioning_Provisioning.json';
+/* Prints { hmiVersion, brand } as MainApp reads them: its coding module,
+ * and the Provisioning field over the SOME/IP binding (argv: interface
+ * file, binding, coding module); what it cannot read is left out. */
+var HMI_READER = [
+    "'use strict';",
+    'var a = process.argv, out = {}, done = false;',
+    'function end() { if (done) return; done = true; process.stdout.write("\\n" + JSON.stringify(out) + "\\n"); process.exit(0); }',
+    'setTimeout(end, 5000);',
+    'try { var c = new (require(a[3]).CodingNavigationProxy)(); if (!c.isCodingValid || c.isCodingValid()) out.brand = c.getHMI_BRAND(); } catch (e) {}',
+    'try {',
+    '    var cfg = JSON.parse(require("fs").readFileSync(a[1], "utf8"));',
+    '    require(a[2]).buildProxy(cfg, Object.keys(cfg.instances)[0]).then(function (p) { return p.init().then(function () {',
+    '        p.subscribeToAvailability(function (up) {',
+    '            if (up) p.getValue("provisioningAttributes").then(function (v) { if (v && v.hmiVersion !== undefined) out.hmiVersion = String(v.hmiVersion); end(); }, end);',
+    '        });',
+    '    }); }).catch(end);',
+    '} catch (e) { end(); }'
+].join('\n');
+function hmiReadFile() { return path.join(CFG.run, 'hmi-reported.json'); }
+var HMI_READ;
+/* { hmi, brand } MainApp installs for: hmi null when unread. A read is
+ * kept for the rest of this start of the head unit. */
+function mainappHmi() {
+    if (HMI_READ) return HMI_READ;
+    var raw = { hmiVersion: process.env.MGU_DEPLOY_HMI_VERSION || undefined, brand: process.env.MGU_DEPLOY_HMI_BRAND }, boot = bootId();
+    if (raw.hmiVersion === undefined && !FAKE) {
+        var kept = readJsonOrNull(hmiReadFile());
+        if (kept && kept.boot === boot && typeof kept.hmiVersion === 'string') raw = kept;
+        else {
+            var iface = [path.join(CFG.mainapp, 'src-gen', PROVISIONING_JSON), path.join(CFG.mainapp, 'src-gen', 'someip', PROVISIONING_JSON)]
+                .filter(function (f) { return fs.existsSync(f); })[0];
+            var r = iface ? run(CFG.node, ['-e', HMI_READER, iface, env('MGU_DEPLOY_SOMEIP', '/usr/lib/someip.node'),
+                path.join(CFG.mainapp, 'node_modules', 'codings.node')], { allowFail: true, timeout: 15000 }) : null;
+            raw = (r && lastJsonLine(r.stdout)) || {};
+            if (typeof raw.hmiVersion === 'string' && !statusReadOnly) {
+                try { mkdirp(CFG.run); writeAtomic(hmiReadFile(), JSON.stringify({ boot: boot, hmiVersion: raw.hmiVersion, brand: raw.brand })); }
+                catch (e) { /* read again next time */ }
+            }
+        }
+    }
+    HMI_READ = { hmi: raw.hmiVersion === undefined ? null : HMI_REPORTED[raw.hmiVersion] || 'ID7',
+        brand: HMI_BRANDS[raw.brand] || 'BMW' };
+    return HMI_READ;
+}
+/* The HMI an iDrive 7 unit reports when it is not ID7, else null. */
+function otherHmiReported() {
+    if (unitInfo().hmi !== 'ID7') return null;
+    var h = mainappHmi().hmi;
+    return h && h !== 'ID7' ? h : null;
+}
+function listsId7(e) { return !!e && Array.isArray(e.hmi) && e.hmi.indexOf('ID7') >= 0; }
+/* application.json's text with `as` listed wherever ID7 is and nowhere
+ * else, or null when that changes nothing or it lists no iDrive 7 UI. */
+function id7PartsFor(text, as) {
+    var j, changed = false;
+    try { j = JSON.parse(text); } catch (e) { return null; }
+    var app = j && j.application;
+    if (!app || !Array.isArray(app.uiDescriptions) || !app.uiDescriptions.some(listsId7)) return null;
+    app.uiDescriptions.concat(Array.isArray(app.variantGroups) ? app.variantGroups : []).forEach(function (e) {
+        if (!e || !Array.isArray(e.hmi)) return;
+        var has = e.hmi.indexOf(as) >= 0, id7 = e.hmi.indexOf('ID7') >= 0;
+        if (id7 && !has) { e.hmi = e.hmi.concat([as]); changed = true; }
+        if (!id7 && has) { e.hmi = e.hmi.filter(function (h) { return h !== as; }); changed = true; }
+    });
+    return changed ? JSON.stringify(j, null, 2) + '\n' : null;
+}
+/* The edits that make MainApp install a package tree's iDrive 7 parts on
+ * this unit: [{ file, text }], none where it reports ID7. */
+function id7PartsEdits(tree) {
+    var as = otherHmiReported(), out = [];
+    if (!as) return out;
+    ['rhmiData', 'rhmiDataStartWidget'].forEach(function (d) {
+        var f = path.join(tree, d, 'application.json'), t = null;
+        try { t = id7PartsFor(fs.readFileSync(f, 'utf8'), as); } catch (e) { /* none */ }
+        if (t) out.push({ file: f, text: t });
+    });
+    return out;
+}
+function editId7Parts(a, tree) {
+    var edits = id7PartsEdits(tree);
+    edits.forEach(function (e) { fs.writeFileSync(e.file, e.text); });
+    if (edits.length) say(a.id + ' ' + a.version + ': its iDrive 7 HMI parts listed for ' + otherHmiReported() + ', which this head unit reports');
+}
+/* rel (application.json's "./a/b") inside src, or null. */
+function insideRhmi(src, rel) {
+    var r = typeof rel === 'string' ? path.normalize(rel) : null;
+    return r && safeRel(r) ? path.join(src, r) : null;
+}
+/* The iDrive 7 parts of the rhmiData folder src for brand, as MainApp
+ * merges them: { uiDescription: {name: path}, strings: {name: text},
+ * resources: {name: path} }, regular files inside src only, or null when it
+ * has no iDrive 7 UI there. */
+function id7Parts(src, brand) {
+    var app = (readJsonOrNull(path.join(src, 'application.json')) || {}).application;
+    var ui = app && Array.isArray(app.uiDescriptions) ? app.uiDescriptions.filter(listsId7)[0] : null;
+    var uiFiles = ui ? [insideRhmi(src, ui.applicationFilePath), insideRhmi(src, ui.uiDescriptionFilePath)] : [null];
+    var regular = function (p) { var st = p && lstatOrNull(p); return !!st && st.isFile(); };
+    if (!uiFiles.every(regular)) return null;
+    var out = { uiDescription: {}, strings: {}, resources: {} }, texts = {};
+    uiFiles.forEach(function (p) { out.uiDescription[path.basename(p)] = p; });
+    (Array.isArray(app.variantGroups) ? app.variantGroups : []).forEach(function (g) {
+        if (!listsId7(g) || !Array.isArray(g.brands) || g.brands.indexOf(brand) < 0) return;
+        function each(rel, fn) {
+            var dir = insideRhmi(src, rel);
+            if (!dir) return;
+            try {
+                fs.readdirSync(dir).sort().forEach(function (n) { if (regular(path.join(dir, n))) fn(n, path.join(dir, n)); });
+            } catch (e) { /* none */ }
+        }
+        each(g.stringsPath, function (n, p) { if (/\.json$/.test(n)) (texts[n] = texts[n] || []).push(p); });
+        each(g.resourcesPath, function (n, p) { out.resources[n] = p; });
+    });
+    Object.keys(texts).forEach(function (n) {
+        out.strings[n] = JSON.stringify(Object.assign.apply(null, [{}].concat(texts[n].map(readJson))));
+    });
+    return out;
+}
+var PART_MODES = { uiDescription: 0o644, strings: 0o660, resources: 0o644 };
+function sameJsonFile(p, text) {
+    try { return JSON.stringify(readJson(p)) === text; } catch (e) { return false; }
+}
+/* The installed HMI files of an app, as a signature of names, sizes and times. */
+function partsSignature(uid, pkg) {
+    var dir = path.join(appHome(uid), 'rhmiData'), st = statOrNull(pkg), out = [String(st && st.size), String(st && st.mtime.getTime())];
+    Object.keys(PART_MODES).forEach(function (k) {
+        var names = [];
+        try { names = fs.readdirSync(path.join(dir, k)).sort(); } catch (e) { /* none */ }
+        names.forEach(function (n) {
+            var s = statOrNull(path.join(dir, k, n));
+            out.push(k + '/' + n + ':' + (s ? s.size + ':' + s.mtime.getTime() : '-'));
+        });
+    });
+    return out.join('|');
+}
+/* The installed apps of an iDrive 7 unit whose installed HMI files are not
+ * their kept package's iDrive 7 parts: [{ id, version, uid, package, parts:
+ * [{ dest, from | text, mode }] }]. Those the last look found right and
+ * that have not changed since (state.hmi_parts) are not looked into. */
+function id7PartsOff(state, stage) {
+    if (unitInfo().hmi !== 'ID7' || !mgrDataReady()) return [];
+    var known = state.hmi_parts || {}, seen = {}, todo = [], out = [];
+    installedApps().forEach(function (app) {
+        var pkg = keptFile(app.id, app.version);
+        if (!fs.existsSync(pkg) || !lstatOrNull(path.join(appHome(app.uid), 'rhmiData', 'uiDescription'))) return;
+        var sig = app.version + '|' + app.uid + '|' + partsSignature(app.uid, pkg);
+        if (known[app.id] === sig) seen[app.id] = sig;
+        else todo.push({ app: app, pkg: pkg, sig: sig });
+    });
+    /* only a unit that reports another HMI: one that reports ID7, or whose
+     * report is not read yet, keeps what MainApp installed */
+    if (todo.length && !otherHmiReported()) {
+        /* their records stay as they were: status writes nothing */
+        todo.forEach(function (t) { if (known[t.app.id]) seen[t.app.id] = known[t.app.id]; });
+        todo = [];
+    }
+    todo.forEach(function (t) {
+        var app = t.app, dir = path.join(stage, app.id), parts = [], want = null;
+        try {
+            fs.mkdirSync(dir);
+            if (run(CFG.tar, ['-xzf', t.pkg, '-C', dir], { allowFail: true }).status !== 0) return;
+            var src = ['rhmiData', 'package/rhmiData', 'source/rhmiData'].map(function (r) { return path.join(dir, r); })
+                .filter(function (d) { return fs.existsSync(path.join(d, 'application.json')); })[0];
+            want = src ? id7Parts(src, mainappHmi().brand) : null;
+        } catch (e) {
+            /* stderr: status --json keeps stdout for its JSON */
+            process.stderr.write('warning: ' + app.id + ' ' + app.version + "'s iDrive 7 HMI files are not looked at: " + e.message + '\n');
+            return;
+        }
+        if (want) {
+            Object.keys(PART_MODES).forEach(function (k) {
+                Object.keys(want[k]).forEach(function (n) {
+                    var dest = path.join(appHome(app.uid), 'rhmiData', k, n), v = want[k][n];
+                    if (k === 'strings' ? sameJsonFile(dest, v) : bytesEqualFile(fs.readFileSync(v), dest)) return;
+                    parts.push(k === 'strings' ? { dest: dest, text: v, mode: PART_MODES[k] } : { dest: dest, from: v, mode: PART_MODES[k] });
+                });
+            });
+        }
+        if (parts.length) out.push({ id: app.id, version: app.version, uid: app.uid, package: t.pkg, parts: parts });
+        else seen[app.id] = t.sig;
+    });
+    state.hmi_parts = seen;
+    return out;
+}
+var PENDING_HMI_PARTS = 'its tile shows from the next start (its iDrive 7 HMI files were put in place)';
+/* status, as root: the installed apps' iDrive 7 HMI files put in place. */
+function syncId7Parts() {
+    if (unitInfo().hmi !== 'ID7') return;
+    statusStep('HMI files', function () {
+        var s = loadState(), was = JSON.stringify(s.hmi_parts || {}), stage = stageDir(), off;
+        try {
+            off = id7PartsOff(s, stage);
+            off.forEach(function (app) {
+                app.parts.forEach(function (p) {
+                    var tmp = p.dest + '.tmp-' + process.pid;
+                    fs.writeFileSync(tmp, p.text !== undefined ? p.text : fs.readFileSync(p.from));
+                    fs.chmodSync(tmp, p.mode);
+                    chownMaybe(tmp, MGR_UID, MGR_UID);
+                    fs.renameSync(tmp, p.dest);
+                });
+                say(app.id + ' ' + app.version + ': ' + app.parts.length + ' iDrive 7 HMI file(s) put in place from its package');
+                addPending(s, app.id, PENDING_HMI_PARTS);
+            });
+            if (off.length) { rmrf(stage); fs.mkdirSync(stage); id7PartsOff(s, stage); }
+        } finally { rmrf(stage); }
+        if (off.length || JSON.stringify(s.hmi_parts) !== was) saveState(s);
+    });
+}
+/* The installed apps whose iDrive 7 HMI files are not in place, for
+ * status to report: [{ id, version, files }]. */
+function id7PartsReport() {
+    if (unitInfo().hmi !== 'ID7') return [];
+    var stage = null;
+    try {
+        stage = fs.mkdtempSync(path.join(os.tmpdir(), 'mgu-deploy-parts-'));
+        return id7PartsOff(loadState(), stage).map(function (a) {
+            return { id: a.id, version: a.version, files: a.parts.map(function (p) { return path.relative(appHome(a.uid), p.dest); }) };
+        });
+    } catch (e) { return []; } finally { if (stage) rmrf(stage); }
 }
 
 /* ---- capabilities (mguProvides) --------------------------------------------------- */
@@ -2321,7 +2561,8 @@ function validateSource(file, dir) {
     try { m = linker().readManifest(dir); } catch (e) { throw refuse(file + ': ' + e.message); }
     var pkg = readJson(path.join(dir, m.tree, 'package.json'));
     checkPkg(file, pkg);
-    var a = { kind: 'app', file: file, dir: dir, pkgDir: null, pkg: pkg, id: m.id, version: m.version, prepare: 'build' };
+    var a = { kind: 'app', file: file, dir: dir, pkgDir: null, tree: path.join(dir, m.tree), pkg: pkg, id: m.id, version: m.version,
+        prepare: 'build' };
     var raw = readJsonOrNull(path.join(dir, 'mgu-app.json')) || {};
     appHmi(a, file, raw.mguHmi !== undefined ? raw.mguHmi : pkg.mguHmi, [path.join(dir, m.tree, 'rhmiData')]);
     return a;
@@ -2356,6 +2597,7 @@ function prepareApp(a, stage) {
     if (!a.prepare) return a;
     var out = path.join(stage, 'built-' + a.id + '@' + a.version + '.tgz'), r, link = linker();
     try {
+        editId7Parts(a, a.prepare === 'build' ? a.tree : a.pkgDir);
         if (a.prepare === 'build') {
             r = link.build(a.dir, out, { donors: unitDonors(), workDir: stage, interfaces: unitInterfaces() });
             say('built ' + a.id + ' ' + a.version + ' from its source package (' + r.moduleCount +
@@ -4390,8 +4632,42 @@ function cleanInterrupted(state) {
  * cached: an app provisioning once dropped caches both false, and the
  * manager installs no app the listing disables. */
 function listApp(a, entry) {
-    customAppsPut(a.id, Object.assign({}, entry ? entry.provisioningCache : null, { '-enabled': 'true', '-allowed': 'true' }),
+    return customAppsPut(a.id, Object.assign({}, entry ? entry.provisioningCache : null, { '-enabled': 'true', '-allowed': 'true' }),
         a.pkg.mguAppStartType || 'manually');
+}
+/* The code cache the stock OAP entry point (package.json main, the
+ * firmware's runner.js) keeps of an app's bundle: <data>/<bundle>.bytecode,
+ * both paths from the runnerConfig.json beside the entry point (default
+ * ../../data and ./app.js). The firmware's V8 takes a cache made for any
+ * source of the same length, so a cache another version of the app left
+ * runs that version's code; without it the entry point compiles the
+ * bundle and writes a new cache. The app owns its home: the cache goes
+ * only when the home, its data folder and every folder on the way are real
+ * folders, no links. */
+function clearCodeCache(id, uid) {
+    if (!uid) return;
+    var home = appHome(uid), source = path.join(home, 'source'), data = path.join(home, 'data');
+    var pkg = readJsonOrNull(path.join(source, 'package.json'));
+    var main = pkg && typeof pkg.main === 'string' ? path.join(source, pkg.main) : path.join(source, 'javascript', 'runner.js');
+    var cfg = readJsonOrNull(path.join(path.dirname(main), 'runnerConfig.json')) || {};
+    var dataRel = typeof cfg.DATA_RELATIVE_PATH === 'string' ? cfg.DATA_RELATIVE_PATH : '../../data';
+    var jsRel = typeof cfg.JS_RELATIVE_PATH === 'string' ? cfg.JS_RELATIVE_PATH : './app.js';
+    var cache = path.join(path.dirname(main), dataRel, jsRel + '.bytecode'), rel = path.relative(data, cache);
+    if (!rel || rel.split(path.sep)[0] === '..' || path.isAbsolute(rel)) return;
+    var dir = home, parts = ['data'].concat(rel.split(path.sep).slice(0, -1)), st;
+    for (var i = 0; i <= parts.length; i++) {
+        st = lstatOrNull(dir);
+        if (!st || !st.isDirectory()) return;
+        if (i < parts.length) dir = path.join(dir, parts[i]);
+    }
+    st = lstatOrNull(cache);
+    if (!st || !st.isFile()) return;
+    try {
+        fs.unlinkSync(cache);
+        say(id + ': its code cache goes (' + cache + ')');
+    } catch (e) {
+        warn(id + ': its code cache ' + cache + ' stays: ' + e.message + '; the app may run its earlier code until it is removed');
+    }
 }
 /* Privacy, the fallback, the package, the app listed by the fallback; then
  * the running manager installs or updates it in place, or else one bounce:
@@ -4424,6 +4700,7 @@ function installApp(a, state, decision) {
         bounceManager();
     }
     if (existing) waitStartedUp('placing ' + a.id + ' ' + a.version);
+    if (existing) clearCodeCache(a.id, existing.uid);
     entry = existing ? readJsonOrNull(appEntryFile(a.id)) : null;
     var kc = existing ? lstatOrNull(keychainFile(existing.uid)) : null;
     a.noKeychain = existing && !(kc && kc.size > 0) ? existing.uid : null;
@@ -4484,6 +4761,7 @@ function installApp(a, state, decision) {
         unstartedInPlace = null;
         if (existing && uid !== existing.uid) warn(a.id + ' runs as uid ' + uid + ' now; its data stays in ' + appHome(existing.uid));
     }
+    clearCodeCache(a.id, uid);
     var tf = tileFlags(readJsonOrNull(appEntryFile(a.id)));
     if (!tf.visible && (tf.allowed || tf.enabled)) {
         warn(a.id + "'s tile stays hidden: provisioning has its own section for " + a.id + ' (-allowed ' +
@@ -4545,6 +4823,7 @@ function carryData(id, stash, oldUid, oldGid, fresh) {
     else if (cur) fs.rmdirSync(dest);
     fs.renameSync(stash, dest);
     say(id + "'s data carried over");
+    clearCodeCache(id, now.uid);
     return true;
 }
 /* state.json data_stash, {<id>: [{path, uid, gid}, ...]}, oldest first:
@@ -5432,6 +5711,36 @@ function syncListingId8() {
         process.stdout.write = out;
     }
 }
+/* status on iDrive 7, run as root: lists the apps id7Unlisted() names. The
+ * running manager reads the listing when provisioning reaches it, so their
+ * tiles show from the manager's next start, or, with the fallback lost,
+ * once an install turns it on again; an install restarts the manager that
+ * has not taken them. Null on a unit with neither the fallback nor an app of ours. */
+function syncListingId7() {
+    if (isId8() || (!fallbackPresent() && !ourInstalledApps().length)) return null;
+    var out = process.stdout.write, locked = false;
+    process.stdout.write = function () { return true; };
+    try {
+        if (!id7Unlisted().length) return { state: 'ok', reason: 'every app of ours is listed' };
+        var held = statusHeld();
+        if (held) return { state: 'pending', reason: held };
+        if (!runningInstalled() && !FAKE) return { state: 'pending', reason: 'this deploy tool is not the installed one' };
+        locked = statusLock();
+        if (!locked) return { state: 'pending', reason: 'another mgu-deploy run holds the lock' };
+        var s = loadState(), ids = listUnlistedId7(s);
+        if (!ids.length) return { state: 'ok', reason: 'every app of ours is listed' };
+        saveState(s);
+        var when = fallbackLost() ? 'once an install turns the provisioning fallback on again' : 'from the next start of the app manager';
+        process.stderr.write('listed for the provisioning fallback, ' + when + ': ' + ids.join(', ') + '\n');
+        return { state: 'changed', reason: 'listed ' + ids.join(', ') + '; their tiles show ' + when };
+    } catch (e) {
+        process.stderr.write('mgu-deploy: our apps not listed again: ' + e.message + '\n');
+        return { state: 'error', reason: e.message };
+    } finally {
+        if (locked) releaseLock();
+        process.stdout.write = out;
+    }
+}
 /* The fallback's boot unit runs it before MainApp-21; another run holding
  * the lock leaves it to status. */
 function cmdRelist() {
@@ -5511,6 +5820,7 @@ function installLiveId8(a, existing, state, backup) {
     var m = inplaceManager();
     if (!m.pid) { say(a.id + ' ' + a.version + ' is not installed in place: ' + m.why); return false; }
     if (existing) waitStartedUp('updating ' + a.id + ' ' + a.version);
+    if (existing) clearCodeCache(a.id, existing.uid);
     var kc = existing ? lstatOrNull(keychainFile(existing.uid)) : null;
     a.noKeychain = existing && !(kc && kc.size > 0) ? existing.uid : null;
     var placed = DAS.map(dasFile).concat([customAppsFile()], id8LiveTouched(a.id, a.version)
@@ -5531,6 +5841,7 @@ function installLiveId8(a, existing, state, backup) {
         restoreSnapshot(backup, placed);
         return false;
     }
+    clearCodeCache(a.id, uid);
     queueId8({ id: a.id });
     return true;
 }
@@ -6302,14 +6613,45 @@ function fallbackLost() {
     if (!Object.keys(readCustomApps()).length) return false;
     return !(fallbackPresent() && (!binds() || boundToCopy()));
 }
+/* iDrive 7: apps of ours the app manager has registered, from whatever
+ * source, that custom_apps.json does not list: the fallback gives them no
+ * section, so their tiles stay hidden. A manager that reinstalls an app
+ * from preinstalled_apps on its own registers it without this tool. The
+ * retired installer's leftovers list apps by themselves. */
+function id7Unlisted() {
+    if (isId8() || retiredBackups().length || !mgrDataReady()) return [];
+    var listed = readCustomApps();
+    return ourInstalledApps().filter(function (a) { return !Object.prototype.hasOwnProperty.call(listed, a.id); });
+}
+/* Lists them, recorded in state.json (listed_unseen: the running manager's
+ * pid and the apps) until the manager restarts: a manager that started
+ * before an app was listed gives it no tile. */
+function listUnlistedId7(state) {
+    var ids = id7Unlisted().filter(function (a) { return listApp(a, a.entry); }).map(function (a) { return a.id; });
+    if (!ids.length) return [];
+    say('listed ' + ids.join(', ') + ' in ' + customAppsFile() + ': registered without a listing, so their tiles were hidden');
+    var pid = managerPid();
+    if (pid) {
+        var was = listedUnseen(state);
+        state.listed_unseen = { pid: pid, apps: was.concat(ids.filter(function (id) { return was.indexOf(id) < 0; })) };
+    }
+    return ids;
+}
+/* The apps listed while the running manager runs, which it has not taken. */
+function listedUnseen(state) {
+    var r = state.listed_unseen;
+    if (r && (!r.pid || r.pid !== managerPid())) { delete state.listed_unseen; r = null; }
+    return r && Array.isArray(r.apps) ? r.apps : [];
+}
 /* What a restarted app manager needs to initialise: without them it fails
  * its start again and again, and oapcontroller wipes every app at the
  * third failure in a row. */
 var PLATFORM_UNITS = ['vsomeipd.service', 'hmi.service'];
-/* An install with no app work on a unit where fallbackLost(): the fallback
- * goes on again and the manager restarts once (bounceManager's rules), so
- * the tiles show; with PLATFORM_UNITS not running, the boot unit lists
- * them from the next start instead. A copy that does not build, or a
+/* An install with no app work on a unit where fallbackLost(),
+ * id7Unlisted() or listedUnseen(): the unlisted apps are listed, the
+ * fallback goes on again and the manager restarts once (bounceManager's
+ * rules), so the tiles show; with PLATFORM_UNITS not running, the boot
+ * unit lists them from the next start instead. A copy that does not build, or a
  * failure, leaves the fallback as it was, recorded in state.json
  * (fallback_refused) for status; the install stands. */
 function relistApps(state) {
@@ -6317,6 +6659,7 @@ function relistApps(state) {
     try {
         preflightFallback();
         backup = takeSnapshot('fallback', fallbackTouched());
+        var listedNow = listUnlistedId7(state).concat(listedUnseen(state));
         ensureFallback(state, false);
         var down = PLATFORM_UNITS.filter(function (u) { return unitState(u, 'is-active') !== 'active'; });
         if (down.length) {
@@ -6326,9 +6669,11 @@ function relistApps(state) {
             return;
         }
         var m = managerStart();
-        if (m && fallbackPresent() && hookAnnounced(m)) return;
+        if (m && fallbackPresent() && hookAnnounced(m) && !listedNow.length) return;
         say('our apps are listed again: restarting the app manager so their tiles show');
-        if (bounceManager() && inplaceHookOf(fs.readFileSync(FALLBACK_COPY, 'utf8')) !== null) inplaceManager();
+        var bounced = bounceManager();
+        if (bounced) delete state.listed_unseen;
+        if (bounced && inplaceHookOf(fs.readFileSync(FALLBACK_COPY, 'utf8')) !== null) inplaceManager();
     } catch (e) {
         warn('our apps\' tiles stay hidden: ' + e.message);
         state.fallback_refused = e.message;
@@ -6727,6 +7072,7 @@ function collectStatus(state) {
         mainapp_guard: guardWhy(),
         last_bounce_at: lastBounceAt() || null,
         lost_apps: lostApps(state),
+        hmi_parts: id7PartsReport(),
         stock_backup: fs.existsSync(path.join(BACKUPS_DIR, 'stock')) };
 }
 function cmdStatus(args, crashList, live, limits, listing) {
@@ -6783,6 +7129,7 @@ function cmdStatus(args, crashList, live, limits, listing) {
     }
     if (s.mainapp_guard) say('no app changes until the next start of the head unit: ' + s.mainapp_guard);
     s.lost_apps.forEach(function (a) { say('not registered: ' + a.id + ' ' + a.version + ' (its package is at ' + a.package + ')'); });
+    s.hmi_parts.forEach(function (a) { say('iDrive 7 HMI files not in place: ' + a.id + ' ' + a.version + ' (' + a.files.join(', ') + ')'); });
     s.pending_reboot.forEach(function (p) { say('pending reboot: ' + p.id + ' - ' + p.reason); });
     if (s.last_apply) {
         say('last apply at the start (' + s.last_apply.at + '):');
@@ -7218,7 +7565,7 @@ function installRun(args, afresh) {
         if (apps && !id8) preflightFallback();
         /* every app current, the fallback lost: listed again after the
          * tools, with the one bounce app-privacy's waits for */
-        var relist = !apps && !noOap && !guardWhy() && fallbackLost();
+        var relist = !apps && !noOap && !guardWhy() && (fallbackLost() || id7Unlisted().length > 0 || listedUnseen(state).length > 0);
         privacyMayWait = apps && !id8 && managerListsNoApp() || relist;
         privacyWaitsRelist = relist;
         if (work.length) {
@@ -7241,6 +7588,8 @@ function installRun(args, afresh) {
                 if (!id8) {
                     try { cleanInterrupted(state); cleanStrays(state); saveState(state); }
                     catch (e) { warn('what interrupted installs left was not looked at: ' + e.message); }
+                    try { if (listUnlistedId7(state).length) saveState(state); }
+                    catch (e) { warn('our unlisted apps were not listed: ' + e.message); }
                 }
             }
             var tx = {}, backup = takeSnapshot('install', artifactTouched(a));
@@ -8242,6 +8591,7 @@ function runCommand() {
         'appmanager', 'verify', 'remove-unused', 'clean-strays']
         .indexOf(args.command) >= 0;
     try {
+        if (args.readOnly && args.command !== 'status') throw refuse('--read-only is only for status');
         if (!FAKE && typeof process.getuid === 'function' && process.getuid() !== 0 && rootOnly) {
             throw refuse('run as root');
         }
@@ -8257,7 +8607,7 @@ function runCommand() {
         if (args.command === 'help' || args.command === '--help') { say(HELP); return 0; }
         if (args.command === 'check') return cmdCheck(args);
         if (args.command === 'install') return cmdInstall(args);
-        if (args.command === 'status') { statusReadOnly = !!args.readOnly; syncMgrHome(); syncGuard(); syncStashes(); return cmdStatus(args, syncBootLists(), syncLiveId8(), syncLimits(), syncListingId8()); }
+        if (args.command === 'status') { statusReadOnly = !!args.readOnly; syncMgrHome(); syncGuard(); syncStashes(); syncId7Parts(); return cmdStatus(args, syncBootLists(), syncLiveId8(), syncLimits(), isId8() ? syncListingId8() : syncListingId7()); }
         if (args.command === 'relist') {
             if (!FAKE && typeof process.getuid === 'function' && process.getuid() !== 0) throw refuse('run as root');
             return cmdRelist();

@@ -1,5 +1,9 @@
 # Updater changelog
 
+## 0.8.42
+
+- The phone page's logs have the deploy tool's verify unit (`mgu-deploy-verify`) too (robertnisipeanu/mgu-store's 0.8.41).
+
 ## 0.8.41
 
 - Switch to TheoneLT83's Store (`store-switch`) is not offered: this updater's own source is that repository

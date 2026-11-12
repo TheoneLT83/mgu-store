@@ -389,6 +389,9 @@ func TestDBusNoAutoStart(t *testing.T) {
 // again without it.
 func TestCarWiFiSessionRefused(t *testing.T) {
 	p, f, phone := carSession(t)
+	shown := scanShown
+	scanShown = 300 * time.Millisecond
+	t.Cleanup(func() { scanShown = shown })
 	f.do(func() { f.refuse = "scan_freq" })
 	p.setEnabled(true)
 	p.start()
@@ -424,6 +427,9 @@ func TestCarWiFiSessionRefused(t *testing.T) {
 // association are left alone; as before when the session ends.
 func TestWiFiSessionMGU(t *testing.T) {
 	fastWiFi(t)
+	shown := scanShown
+	scanShown = 300 * time.Millisecond
+	t.Cleanup(func() { scanShown = shown })
 	scan := filepath.Join(t.TempDir(), "scan")
 	other := "bb:bb:bb:bb:bb:bb\t2412\t-70\t[WPA2-PSK-CCMP][ESS]\tOther\tx12345678"
 	writeScan(t, scan, "40:d6:3c:68:0c:b7\t2462\t-60\t[ESS]\tCafe\t", other)
@@ -473,4 +479,35 @@ func TestWiFiSessionMGU(t *testing.T) {
 	}
 	fakeProc(t, p.proc, rx)
 	waitWiFi(t, p, "searching after the session", func(st wifiStatus) bool { return st.Link == "scanning" && st.Paused == "" })
+}
+
+// Switching Wi-Fi on scans at once, as a scan request does, also during
+// wireless CarPlay: the same request with the same arguments.
+func TestWiFiOnScansOnce(t *testing.T) {
+	p, f, phone := carSession(t)
+	p.start()
+	defer p.stop()
+	waitWiFi(t, p, "off", func(st wifiStatus) bool { return st.Link == "off" })
+	phone(true, "p2p-wlanc0-0")
+
+	p.setEnabled(true)
+	waitWiFi(t, p, "scanning at once", func(st wifiStatus) bool { return st.Scanning && f.called("Scan") == 1 })
+	waitWiFi(t, p, "2.4 GHz only during the session", oursAre(f, "scan_freq", freqList(freqs24), true))
+	time.Sleep(10 * wifiEvery)
+	if n := f.called("Scan"); n != 1 {
+		t.Fatalf("%d scans for one switch on", n)
+	}
+	if err := p.scan(); err != nil {
+		t.Fatal(err)
+	}
+	f.do(func() {
+		if len(f.scans) != 2 || f.scans[0] != f.scans[1] {
+			t.Errorf("switch-on and requested scans differ: %q", f.scans)
+		}
+	})
+
+	p.setEnabled(false)
+	waitWiFi(t, p, "off again", func(st wifiStatus) bool { return st.Link == "off" })
+	p.setEnabled(true)
+	waitWiFi(t, p, "scanning at once again", func(st wifiStatus) bool { return st.Scanning && f.called("Scan") == 3 })
 }

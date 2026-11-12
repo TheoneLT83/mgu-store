@@ -2065,7 +2065,13 @@ function testInplace() {
         'second_app' in (readJsonOrNull(root.p(`var/opt/public/oap/oap_${MGR}/data/custom_apps.json`)) || {}) &&
         JSON.stringify(root.state().apps.second_app) === JSON.stringify({ uid: 13002, version: '1.0.0' }), JSON.stringify(root.state()));
     check('in place: the fallback copy is not rewritten when its bytes are the same', fs.statSync(copy).mtimeMs === copyAt);
+    // the entry point's code cache of 1.0.0's bundle: the firmware's V8 runs it for a bundle of the same length
+    const cache = path.join(root.home(13001), 'data/app.js.bytecode'), own = path.join(root.home(13001), 'data/settings.json');
+    write(cache, 'cache of 1.0.0');
+    write(own, '{}');
     const up = root.run(['install', '--artifact', appArtifact('fixture_app', '1.1.0', true), '--yes']);
+    check('in place: an update removes the app\'s code cache, its other data stays', up.status === 0 && !fs.existsSync(cache) &&
+        fs.existsSync(own) && up.out.includes('fixture_app: its code cache goes'), up.out);
     check('in place: an update is the running manager\'s own update, uid kept, no re-seed, no bounce', up.status === 0 &&
         root.kills().length === 1 && readJson(root.entry('fixture_app')).userId === 13001 &&
         readJson(path.join(root.home(13001), 'source/package.json')).version === '1.1.0' &&
@@ -2076,6 +2082,16 @@ function testInplace() {
     check('in place: the hook logged both requests in the manager\'s log',
         root.managerLog().includes('hook mgu-deploy in-place install second_app: done') &&
         root.managerLog().includes('hook mgu-deploy in-place update fixture_app: done'), root.managerLog().join('\n'));
+    // the app owns its home: a data folder that is a link leads the removal nowhere
+    const elsewhere = root.p('var/opt/elsewhere');
+    write(path.join(elsewhere, 'app.js.bytecode'), 'not the app\'s');
+    fs.renameSync(path.join(root.home(13001), 'data'), root.p('var/opt/fixture_data'));
+    fs.symlinkSync(elsewhere, path.join(root.home(13001), 'data'));
+    const linked = root.run(['install', '--artifact', appArtifact('fixture_app', '1.2.0', true), '--yes']);
+    check('in place: an update leaves a file a linked data folder leads to', linked.status === 0 &&
+        fs.existsSync(path.join(elsewhere, 'app.js.bytecode')) && !linked.out.includes('its code cache goes'), linked.out);
+    fs.unlinkSync(path.join(root.home(13001), 'data'));
+    fs.renameSync(root.p('var/opt/fixture_data'), path.join(root.home(13001), 'data'));
 
     // a copy written after the manager started: it runs older code, so a bounce
     fs.utimesSync(copy, Date.now() / 1000 + 60, Date.now() / 1000 + 60);
@@ -4683,26 +4699,6 @@ function testTransactions() {
     check('wants: a stock .wants folder stays, even empty', fs.existsSync(root.p('etc/systemd/system/sockets.target.wants')));
 }
 
-function testTodoLines() {
-    const root = fakeRoot();
-    // display-bridge installs through this tool; status lists its notes
-    write(root.p('var/opt/display-bridge/current/display-bridge.conf'), [
-        '# "TODO(on-car)" marks values the bring-up (BRINGUP.md) must confirm.',
-        '# The group apps connect with. TODO(on-car): confirm',
-        '# (BRINGUP.md step 6).',
-        'socket_group =',
-        '# Touch range. TODO(on-car): step 8.3.',
-        'touch_range = 0,0,4095,4095',
-        'mode = "TODO(on-car) in a value is not a note"',
-        ''].join('\n'));
-    const st = root.status();
-    check('status: each TODO(on-car) note in full, after its key, notes only',
-        st.display_bridge_todo_on_car.length === 2 &&
-        st.display_bridge_todo_on_car.includes('socket_group: TODO(on-car): confirm (BRINGUP.md step 6).') &&
-        st.display_bridge_todo_on_car.includes('touch_range: TODO(on-car): step 8.3.') &&
-        st.display_bridge_todo_on_car.every((l) => /^[a-z_]+: TODO\(on-car\)/.test(l)), JSON.stringify(st.display_bridge_todo_on_car));
-}
-
 /* ---- the updater's tokens ------------------------------------------------------------------ */
 
 const TOKEN = 'github_pat_FIXTURE0only0for0the0deploy0tests0000000000';
@@ -5416,6 +5412,7 @@ function testSetUpElsewhere() {
     let root = donorRoot();
     let r = root.run(['install', '--artifact', file, '--yes']);
     write(path.join(root.home(app(root).uid), 'data/settings.json'), '{"theme":"dark"}\n');
+    const cacheOf = (root) => path.join(root.home(app(root).uid), 'data/app.js.bytecode');
     check('forced update: a current app the manager starts is not touched, nor built', r.status === 0 && app(root).stale === null &&
         !root.run(['install', '--artifact', file, '--yes']).out.includes('built robertn_demo'), r.out);
     mark(root);
@@ -5424,13 +5421,14 @@ function testSetUpElsewhere() {
         root.run(['status']).out.includes(`(not working: ${WHY})`), JSON.stringify(app(root)));
     fs.unlinkSync(root.preinstalled('donor_app', '1.0.0'));
     donor.tgz(root.preinstalled('donor_app', '1.1.0'));
+    write(cacheOf(root), 'cache of the build for the firmware before');
     r = root.run(['install', '--artifact', file, '--yes']);
     const entry = JSON.parse(fs.readFileSync(entryFile(root), 'utf8'));
     check('forced update: an install installs it afresh, built for this unit, its data carried over, the mark gone',
         r.status === 0 && r.out.includes(`robertn_demo 1.2.3 already installed; ${WHY}: installed afresh after the rest`) &&
         r.out.includes('uninstalling app robertn_demo') && r.out.includes('robertn_demo 1.2.3 installed afresh') &&
         app(root).version === '1.2.3' && app(root).stale === null && !('NO_FORCED_UPDATE_NEEDED' in entry) &&
-        dataOf(root) === '{"theme":"dark"}\n' &&
+        dataOf(root) === '{"theme":"dark"}\n' && !fs.existsSync(cacheOf(root)) &&
         untarBuf(fs.readFileSync(root.preinstalled('robertn_demo', '1.2.3')))['javascript/build.json'].includes('donor_app@1.1.0.tgz'), r.out);
     check('forced update: the fresh install keeps its package and leaves no copy behind',
         fs.existsSync(root.p('var/opt/mgu-deploy/kept/robertn_demo/robertn_demo@1.2.3.tgz')) &&
@@ -7111,7 +7109,8 @@ function testMguInstall() {
         r = mguInstall(['token'], one);
         check('mgu-install from stdin without a terminal: token is refused before connecting, saying how to run it',
             r.status === 2 && r.stderr.includes('no terminal') && !r.calls.length, r.out);
-        r = mguInstall(['first-install'], Object.assign({}, one, { env: { FAKE_GH_TOKEN: TOKEN, MGU_INSTALL_HOTSPOT: '127.0.0.1:9' } }));
+        // an address no host answers (TEST-NET-1): no head unit; a refused port is one found with SSH closed (testMguInstallClosed)
+        r = mguInstall(['first-install'], Object.assign({}, one, { env: { FAKE_GH_TOKEN: TOKEN, MGU_INSTALL_HOTSPOT: '192.0.2.1:22' } }));
         check('mgu-install: no unit answering SSH stops before any download or ssh, saying what to check',
             r.status === 1 && !r.calls.length && r.stderr.includes('no head unit answered SSH') && r.stderr.includes('--host'), r.out);
     } finally {
@@ -7661,6 +7660,120 @@ function testMguInstallStatus() {
     }
 }
 
+/* mgu-install's own command line: node with the file, or the standalone executable under test. */
+function installArgv() {
+    return process.env.MGU_TEST_INSTALL_EXE ? [process.env.MGU_TEST_INSTALL_EXE] : [process.execPath, MGU_INSTALL];
+}
+
+/* Ctrl+C (SIGINT) or SIGTERM while the head unit works: one line saying how
+ * to finish, the ssh it runs stopped, the exit the signal makes. */
+function testMguInstallStop() {
+    const bin = installBin(null);
+    fs.unlinkSync(path.join(bin.bin, 'ssh'));
+    fs.writeFileSync(path.join(bin.bin, 'ssh'), '#!/bin/sh\n[ "$1" = -V ] && { echo OpenSSH_9.6p1 >&2; exit 0; }\nexec sleep 20\n', { mode: 0o755 });
+    // the signal 1.5 s in; the run ends once the sleeping ssh has gone too, as it holds stderr open
+    const SIGNAL_AFTER = `const c = require('child_process').spawn(process.argv[1], JSON.parse(process.argv[2]), { stdio: ['ignore', 'ignore', 'pipe'] });
+let err = ''; const t0 = Date.now();
+c.stderr.on('data', (d) => { err += d; });
+setTimeout(() => c.kill(process.argv[3]), 1500);
+c.on('close', (code, signal) => process.stdout.write(JSON.stringify({ code, signal, err, ms: Date.now() - t0 })));`;
+    const argv = installArgv();
+    ['SIGINT', 'SIGTERM'].forEach((signal) => {
+        const x = cp.spawnSync(process.execPath, ['-e', SIGNAL_AFTER, argv[0], JSON.stringify(argv.slice(1).concat(['status', '--host', '10.0.0.9'])), signal],
+            { encoding: 'utf8', env: Object.assign({}, process.env, { PATH: `${bin.bin}:${process.env.PATH}` }), timeout: 30000 });
+        let r = {};
+        try {
+            r = JSON.parse(x.stdout);
+        } catch (e) {
+            r = { err: x.stderr };
+        }
+        check(`mgu-install: ${signal} while the head unit works says to run the command again, stops ssh, ends by the signal`,
+            r.signal === signal && r.err.split('\n').filter((l) => l === 'stopped; run the same command again to finish').length === 1 &&
+            r.ms < 10000, JSON.stringify(r));
+    });
+}
+
+/* A head unit found whose SSH does not answer (the hotspot's address
+ * refuses port 22): every command that connects says so, nothing run. */
+function testMguInstallClosed() {
+    const port = cp.execFileSync(process.execPath, ['-e', "const s = require('net').createServer().listen(0, '127.0.0.1', () => " +
+        '{ process.stdout.write(String(s.address().port)); s.close(); });'], { encoding: 'utf8' });
+    const opts = { bin: installBin(null), api: 'http://127.0.0.1:9', env: { MGU_INSTALL_HOTSPOT: `127.0.0.1:${port}` } };
+    [['first-install'], ['status'], ['uninstall', '--yes'], ['token', '--list']].forEach((args) => {
+        const r = mguInstall(args, opts);
+        check(`mgu-install ${args[0]}: a found head unit with SSH closed is named so, exit 1, nothing run`, r.status === 1 &&
+            r.stderr.includes(`found the head unit at 127.0.0.1:${port}, but its SSH is closed: enable root SSH first, then run this again`) &&
+            !r.stderr.includes('no head unit answered') && !r.calls.length, r.out);
+    });
+}
+
+/* usb-repo copies each listed icon beside the stick's catalog.json,
+ * checked against its iconSha256; the updater reads it from the stick. */
+function testMguInstallUsbIcons() {
+    const gh = fakeGithub({ files: [], repos: {} });
+    try {
+        const dir = fs.mkdtempSync(path.join(T, 'icons-'));
+        const png = (name) => {
+            const f = path.join(dir, name);
+            fs.writeFileSync(f, Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.alloc(300, name)]));
+            return f;
+        };
+        const apps = ['good_icon', 'bad_icon', 'gone_icon', 'no_icon'].map((id) => thirdPartyArtifact(id, '1.0.0', 'npm'));
+        const good = png('good.png');
+        const bad = png('bad.png');
+        const entries = [
+            publishedEntry(gh.api, apps[0], 0, 'app', { icon: 'good_icon.png', iconSha256: sha256(fs.readFileSync(good)) }),
+            publishedEntry(gh.api, apps[1], 1, 'app', { icon: 'bad_icon.png', iconSha256: sha256(Buffer.from('another picture')) }),
+            publishedEntry(gh.api, apps[2], 2, 'app', { icon: 'gone_icon.png', iconSha256: 'a'.repeat(64) }),
+            publishedEntry(gh.api, apps[3], 3, 'app')];
+        const catalog = path.join(dir, 'catalog.json');
+        fs.writeFileSync(catalog, JSON.stringify({ schema: 2, components: entries }));
+        gh.set({ files: apps.concat([good, bad, catalog]), repos: { [STORE_REPO]: { catalog: 6,
+            catalogAssets: [{ name: 'good_icon.png', n: 4 }, { name: 'bad_icon.png', n: 5 }] } } });
+        // a dir: publish whose icon is a file in a folder of it
+        const pub = path.join(fs.mkdtempSync(path.join(T, 'pub-')), 'with-icons');
+        const dirApp = thirdPartyArtifact('dir_icon', '1.0.0', 'npm');
+        const dirPng = png('dir.png');
+        write(path.join(pub, 'icons', 'dir.png'), fs.readFileSync(dirPng));
+        fs.copyFileSync(dirApp, path.join(pub, 'dir_icon@1.0.0.tgz'));
+        const dd = fs.readFileSync(dirApp);
+        fs.writeFileSync(path.join(pub, 'catalog.json'), JSON.stringify({ schema: 2, components: [{ id: 'dir_icon', kind: 'app', version: '1.0.0',
+            icon: 'icons/dir.png', iconSha256: sha256(fs.readFileSync(dirPng)),
+            artifact: { name: 'dir_icon@1.0.0.tgz', size: dd.length, sha256: sha256(dd), url: 'dir_icon@1.0.0.tgz' } }] }));
+        const media = fs.mkdtempSync(path.join(T, 'media-'));
+        const stick = path.join(media, 'STICK');
+        fs.mkdirSync(stick);
+        const r = mguInstall(['usb-repo', stick, `github:${STORE_REPO}`, pub], { bin: installBin(null), api: gh.api });
+        const repo = path.join(stick, 'mgu-repo');
+        const listed = (name) => (readJson(path.join(repo, name, 'catalog.json')).components || []).reduce((m, c) => Object.assign(m, { [c.id]: c }), {});
+        const store = listed('mgu-store');
+        const same = (a, b) => fs.existsSync(a) && fs.readFileSync(a).equals(fs.readFileSync(b));
+        check('mgu-install usb-repo: a listed icon is copied beside catalog.json as <id>.png, its entry naming it with its sha256',
+            r.status === 0 && same(path.join(repo, 'mgu-store', 'good_icon.png'), good) && store.good_icon && store.good_icon.icon === 'good_icon.png' &&
+            store.good_icon.iconSha256 === sha256(fs.readFileSync(good)) && same(path.join(repo, 'with-icons', 'dir_icon.png'), dirPng) &&
+            listed('with-icons').dir_icon.icon === 'dir_icon.png', `${r.out}\n${JSON.stringify(store)}`);
+        check('mgu-install usb-repo: an icon that does not match its iconSha256, or is missing, is left out, said, and the stick is written',
+            r.status === 0 && !fs.existsSync(path.join(repo, 'mgu-store', 'bad_icon.png')) && !fs.existsSync(path.join(repo, 'mgu-store', 'gone_icon.png')) &&
+            ['bad_icon', 'gone_icon', 'no_icon'].every((id) => store[id] && store[id].icon === undefined && store[id].iconSha256 === undefined) &&
+            r.stdout.includes('bad_icon: icon left out (its sha256 does not match the catalog\'s)') && r.stdout.includes('gone_icon: icon left out (') &&
+            !r.stdout.includes('no_icon: icon'), r.out);
+        const x = cp.spawnSync(UNIT_NODE, [path.join(HERE, 'stick_read.js'), media], { encoding: 'utf8' });
+        let seen = {};
+        try {
+            seen = JSON.parse(x.stdout);
+        } catch (e) {
+            seen = { error: x.stderr };
+        }
+        const comps = [].concat(...Object.keys(seen).map((k) => seen[k].components || []));
+        const byId = comps.reduce((m, c) => Object.assign(m, { [c.id]: c }), {});
+        check('mgu-install usb-repo: the updater reads the copied icons from the stick, matching their sha256 (unit Node)',
+            comps.length === 5 && comps.every((c) => c.ok === true) && byId.good_icon.icon === true && byId.dir_icon.icon === true &&
+            byId.bad_icon.icon === undefined, JSON.stringify(seen));
+    } finally {
+        gh.stop();
+    }
+}
+
 /* ---- run ------------------------------------------------------------------------------------- */
 
 /* ---- head units, compatibility, iDrive 8, service packages, capabilities ---------- */
@@ -7778,6 +7891,120 @@ function testUnitDetect() {
     const r = both.run(['install', '--artifact', rhmiApp('x8', '1.0.0', ['ID8']), '--yes']);
     check('unit: unknown, the install says mguHmi is not checked', both.status().unit.hmi === null &&
         r.out.includes('which head unit this is is unknown (both MainApp folders, no HMI running): mguHmi is not checked'), r.out);
+}
+
+/* An app with iDrive 7 and iDrive 8 HMI parts, as MainApp's AppDescription reads them. */
+function hmiPartsApp(name, version) {
+    const application = { name,
+        uiDescriptions: ['ID7', 'ID8'].map((h) => ({ applicationFilePath: `./uiDescriptions/${h}/application.xml`,
+            uiDescriptionFilePath: `./uiDescriptions/${h}/uiDescription.json`, hmi: [h] })),
+        variantGroups: [{ stringsPath: './variantGroups/Common/texts', resourcesPath: './variantGroups/Common/images', hmi: ['ID7'], brands: ['BMW'] },
+            { stringsPath: './variantGroups/Eight/texts', resourcesPath: './variantGroups/Eight/images', hmi: ['ID8'], brands: ['BMW'] }] };
+    const pkg = { name, version, description: 'hmi parts test app', main: './javascript/app.js', mguLocalOnly: true };
+    const entries = [
+        { name: 'javascript/app.js', data: Buffer.from('console.log(1);\n'), mode: 0o644 },
+        { name: 'package.json', data: Buffer.from(JSON.stringify(pkg, null, 2) + '\n'), mode: 0o644 },
+        { name: 'rhmiData/application.json', data: Buffer.from(JSON.stringify({ application }, null, 2)), mode: 0o644 },
+        { name: 'rhmiData/variantGroups/Common/texts/en_US.json', data: Buffer.from('{"SID_TITLE":"Seven"}'), mode: 0o644 },
+        { name: 'rhmiData/variantGroups/Common/images/icon.png', data: Buffer.from('seven icon'), mode: 0o644 },
+        { name: 'rhmiData/variantGroups/Eight/texts/en_US.json', data: Buffer.from('{"SID_TITLE":"Eight"}'), mode: 0o644 },
+        { name: 'rhmiData/variantGroups/Eight/images/icon.png', data: Buffer.from('eight icon'), mode: 0o644 }];
+    ['ID7', 'ID8'].forEach((h) => {
+        entries.push({ name: `rhmiData/uiDescriptions/${h}/application.xml`, data: Buffer.from(`<${h}/>\n`), mode: 0o644 });
+        entries.push({ name: `rhmiData/uiDescriptions/${h}/uiDescription.json`, data: Buffer.from(`{"${h}":1}\n`), mode: 0o644 });
+    });
+    const file = path.join(fs.mkdtempSync(path.join(T, 'hmiapp-')), `${name}@${version}.tgz`);
+    fs.writeFileSync(file, tgz(entries, 1700000000));
+    return file;
+}
+
+function testHmiParts() {
+    const app = hmiPartsApp('kitapp', '1.0.0');
+    const appJson = (file) => {
+        const m = untar(file);
+        return JSON.parse((m['rhmiData/application.json'] || m['package/rhmiData/application.json']).data).application;
+    };
+    // a unit that reports ID8: MainApp gets a package whose iDrive 7 parts are listed for ID8 and its iDrive 8 ones for nothing
+    const r8 = fakeRoot();
+    r8.env.MGU_DEPLOY_HMI_VERSION = '3';
+    const i8 = r8.run(['install', '--artifact', app, '--yes']);
+    const placed = fs.existsSync(r8.preinstalled('kitapp', '1.0.0')) ? appJson(r8.preinstalled('kitapp', '1.0.0')) : null;
+    check('hmi parts: on an iDrive 7 unit reporting ID8 the package MainApp installs lists its iDrive 7 parts for ID8, its iDrive 8 ones for nothing',
+        i8.status === 0 && placed && JSON.stringify(placed.uiDescriptions.map((u) => u.hmi)) === '[["ID7","ID8"],[]]' &&
+        JSON.stringify(placed.variantGroups.map((g) => g.hmi)) === '[["ID7","ID8"],[]]' &&
+        i8.out.includes('kitapp 1.0.0: its iDrive 7 HMI parts listed for ID8'), `${i8.out}\n${JSON.stringify(placed)}`);
+    const r7 = fakeRoot();
+    r7.env.MGU_DEPLOY_HMI_VERSION = '2';
+    const i7 = r7.run(['install', '--artifact', app, '--yes']);
+    check('hmi parts: a unit reporting ID7 gets the package as it is', i7.status === 0 &&
+        sha256(fs.readFileSync(r7.preinstalled('kitapp', '1.0.0'))) === sha256(fs.readFileSync(app)), i7.out);
+
+    // installed with MainApp's iDrive 8 choice: its iDrive 8 UI, its strings and resources folders empty
+    const uid = r8.state().apps.kitapp.uid;
+    const miss = (root) => {
+        const h = root.home(uid);
+        ['strings', 'resources'].forEach((d) => fs.mkdirSync(path.join(h, 'rhmiData', d), { recursive: true }));
+        write(path.join(h, 'rhmiData/uiDescription/application.xml'), '<ID8/>\n');
+        write(path.join(h, 'rhmiData/uiDescription/uiDescription.json'), '{"ID8":1}\n');
+    };
+    miss(r8);
+    const h0 = r8.hash();
+    const ro = r8.run(['status', '--read-only', '--json']);
+    const rep = JSON.parse(ro.stdout).hmi_parts;
+    check('hmi parts: status --read-only names the app and its files, and changes nothing', ro.status === 0 && rep.length === 1 &&
+        rep[0].id === 'kitapp' && JSON.stringify(rep[0].files) === JSON.stringify(['rhmiData/uiDescription/application.xml',
+            'rhmiData/uiDescription/uiDescription.json', 'rhmiData/strings/en_US.json', 'rhmiData/resources/icon.png']) &&
+        r8.hash().hash === h0.hash, `${ro.out}\n${treeDiff(h0, r8.hash())}`);
+    const st = r8.status();
+    const f = (rel) => path.join(r8.home(uid), 'rhmiData', rel);
+    check('hmi parts: status puts the iDrive 7 files in place as MainApp merges them, modes as MainApp\'s', st.hmi_parts.length === 0 &&
+        fs.readFileSync(f('uiDescription/application.xml'), 'utf8') === '<ID7/>\n' &&
+        fs.readFileSync(f('uiDescription/uiDescription.json'), 'utf8') === '{"ID7":1}\n' &&
+        fs.readFileSync(f('strings/en_US.json'), 'utf8') === '{"SID_TITLE":"Seven"}' &&
+        fs.readFileSync(f('resources/icon.png'), 'utf8') === 'seven icon' &&
+        mode(f('strings/en_US.json')) === 0o660 && mode(f('resources/icon.png')) === 0o644 && mode(f('uiDescription/application.xml')) === 0o644,
+        JSON.stringify(st.hmi_parts));
+    check('hmi parts: the tile then waits for a restart (Restart pending)', st.pending_reboot.some((p) => p.id === 'kitapp' &&
+        p.reason === 'its tile shows from the next start (its iDrive 7 HMI files were put in place)'), JSON.stringify(st.pending_reboot));
+    const h1 = r8.hash();
+    const again = r8.run(['status', '--json']);
+    check('hmi parts: status again changes nothing', again.status === 0 && r8.hash().hash === h1.hash, treeDiff(h1, r8.hash()));
+
+    // a report not read yet: what MainApp installed stays until it is
+    miss(r8);
+    const hu = r8.hash();
+    const unread = r8.run(['status', '--json'], { MGU_DEPLOY_HMI_VERSION: '' });
+    check('hmi parts: while the reported HMI is not read status leaves the installed files', unread.status === 0 &&
+        r8.hash().hash === hu.hash, treeDiff(hu, r8.hash()));
+
+    // paths in application.json outside rhmiData are never read
+    const outside = rebuild(hmiPartsApp('outside', '1.0.0'), (entries) => tgz(entries.map((e) => (e.name !== 'rhmiData/application.json' ? e :
+        Object.assign({}, e, { data: Buffer.from(e.data.toString().split('./uiDescriptions/ID7/uiDescription.json')
+            .join('./../../../../../../../../etc/passwd')) }))), 1700000000));
+    const ri = r8.run(['install', '--artifact', outside, '--yes']);
+    const ouid = r8.state().apps.outside && r8.state().apps.outside.uid;
+    fs.mkdirSync(path.join(r8.home(ouid), 'rhmiData', 'uiDescription'), { recursive: true });
+    const so = r8.status();
+    check('hmi parts: a UI file outside the package is never copied', ri.status === 0 &&
+        !fs.existsSync(path.join(r8.home(ouid), 'rhmiData/uiDescription/passwd')) && !so.hmi_parts.some((a) => a.id === 'outside'),
+        `${ri.out}\n${JSON.stringify(so.hmi_parts)}`);
+
+    // iDrive 8 gets the package's HMI parts as they are, whatever is reported
+    const e8 = id8Root();
+    e8.env.MGU_DEPLOY_HMI_VERSION = '3';
+    const q8 = e8.run(['install', '--artifact', hmiPartsApp('kitapp', '1.0.0'), '--yes']);
+    const qf = e8.p('var/opt/mgu-deploy/id8/queue/kitapp@1.0.0.tgz');
+    const queued = fs.existsSync(qf) ? appJson(qf) : null;
+    check('hmi parts: iDrive 8 installs the package\'s HMI lists as they are', q8.status === 0 && queued &&
+        JSON.stringify(queued.uiDescriptions.map((u) => u.hmi)) === '[["ID7"],["ID8"]]' && !q8.out.includes('HMI parts listed') &&
+        e8.status().hmi_parts.length === 0, `${q8.out}\n${JSON.stringify(queued)}`);
+
+    // a unit that reports ID7 keeps what MainApp installed
+    miss(r7);
+    const h7 = r7.hash();
+    const st7 = r7.status();
+    check('hmi parts: on a unit reporting ID7 status leaves the installed files', st7.hmi_parts.length === 0 && r7.hash().hash === h7.hash,
+        treeDiff(h7, r7.hash()));
 }
 
 function testCompat() {
@@ -9573,15 +9800,46 @@ function testRelist() {
     check('relist: a manager whose hook announced itself on the copy is not restarted',
         r.status === 0 && root.kills().length === k3 && fs.existsSync(root.p('etc/systemd/system/mgu-app-fallback.service')), r.out);
 
-    // our app registered but listed nowhere: the fallback would list nothing, so nothing happens
+    // our app registered (the manager put it back from preinstalled_apps) but not listed, the fallback
+    // on and run by the manager: status lists it, from the manager's next start; an install lists it
+    // and restarts the manager once
+    const custom = (root) => readJson(root.p(`var/opt/public/oap/oap_${MGR}/data/custom_apps.json`));
+    const unlist = (root) => write(root.p(`var/opt/public/oap/oap_${MGR}/data/custom_apps.json`), '{}\n');
+    root = fakeRoot({ active: PLATFORM });
+    root.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
+    startInplace(root);
+    unlist(root);
+    st = root.status();
+    check('relist: status lists an app of ours registered without a listing, from the next start',
+        st.listing && st.listing.state === 'changed' && custom(root).fixture_app &&
+        custom(root).fixture_app['-enabled'] === 'true' && custom(root).fixture_app['-allowed'] === 'true',
+        JSON.stringify(st.listing));
+    check('relist: and the next status has nothing to do', root.status().listing.state === 'ok');
+    const k7 = root.kills().length;
+    r = again(root);
+    check('relist: an install after the status that listed it restarts the manager that has not taken it, once',
+        r.status === 0 && root.kills().length === k7 + 1 &&
+        r.out.includes('our apps are listed again: restarting the app manager so their tiles show'), r.out);
+    startInplace(root);
+    unlist(root);
+    const k4 = root.kills().length;
+    r = again(root);
+    check('relist: an install with every app current lists an unlisted app of ours and restarts the manager once',
+        r.status === 0 && custom(root).fixture_app && root.kills().length === k4 + 1 &&
+        r.out.includes('our apps are listed again: restarting the app manager so their tiles show'), r.out);
+    r = again(root);
+    check('relist: the next install leaves it', r.status === 0 && root.kills().length === k4 + 1 && !r.out.includes('listed again'), r.out);
+
+    // the same with the fallback unit gone: the fallback goes on again with the app listed
     root = fakeRoot({ active: PLATFORM });
     root.run(['install', '--artifact', appArtifact('fixture_app', '1.0.0', true), '--yes']);
     lose(root);
-    write(root.p(`var/opt/public/oap/oap_${MGR}/data/custom_apps.json`), '{}\n');
-    const k4 = root.kills().length;
+    unlist(root);
+    const k6 = root.kills().length;
     r = again(root);
-    check('relist: an app of ours registered but not in custom_apps.json brings no fallback and no restart',
-        r.status === 0 && root.kills().length === k4 && !fs.existsSync(root.p('etc/systemd/system/mgu-app-fallback.service')), r.out);
+    check('relist: an unlisted app of ours with the fallback unit gone: listed, the fallback on, one restart',
+        r.status === 0 && custom(root).fixture_app && root.kills().length === k6 + 1 &&
+        fs.existsSync(root.p('etc/systemd/system/mgu-app-fallback.service')), r.out);
 
     // app-privacy applied during a relist waits for the relist's restart, said as such
     root = fakeRoot({ active: PLATFORM, privacy: false });
@@ -9672,6 +9930,22 @@ function testMguInstallTiles() {
     }
 }
 
+/* --read-only belongs to status: any other command given it is refused
+ * before it takes the lock or changes anything. */
+function testReadOnlyOnlyStatus() {
+    const root = fakeRoot();
+    const ins = root.run(['install', '--artifact', toolArtifact('0.1.0'), '--yes']);
+    if (ins.status !== 0) throw new Error(ins.out);
+    const before = root.hash();
+    [['relay', '--read-only', '--yes'], ['install', '--artifact', toolArtifact('0.2.0'), '--read-only', '--yes'],
+        ['uninstall', 'fixture-tool', '--read-only', '--yes'], ['verify', '--read-only'], ['check', '--read-only']].forEach((a) => {
+        const r = root.run(a);
+        check(`read-only: ${a[0]} --read-only is refused (exit 2) and changes nothing`,
+            r.status === 2 && r.stderr.includes('--read-only is only for status') && root.hash().hash === before.hash,
+            r.out + treeDiff(before, root.hash()));
+    });
+}
+
 // MGU_TEST_ONLY=<name>,...: only those test functions
 const SUITES = [
     testArtifact,
@@ -9734,7 +10008,6 @@ const SUITES = [
     testLock,
     testFallbackOffPrivacy,
     testTransactions,
-    testTodoLines,
     testToken,
     testHuToken,
     testSourcePackages,
@@ -9770,6 +10043,7 @@ const SUITES = [
     testRetiredAppManagementOnly,
     testUnitDetect,
     testCompat,
+    testHmiParts,
     testServices,
     testProvides,
     testDropins,
@@ -9798,7 +10072,11 @@ const SUITES = [
     testRemoveAllId8Kept,
     testRemoveAllRunning,
     testMguInstallUninstall,
-    testMguInstallStatus
+    testMguInstallStatus,
+    testReadOnlyOnlyStatus,
+    testMguInstallStop,
+    testMguInstallClosed,
+    testMguInstallUsbIcons
 ];
 const ONLY = (process.env.MGU_TEST_ONLY || '').split(',').filter(Boolean);
 let crashed = null;

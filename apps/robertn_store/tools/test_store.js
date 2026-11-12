@@ -1,4 +1,5 @@
 'use strict';
+const FILTER_APPS = 'app';
 /**
  * Offline check of src/store.js's flows against stand-ins: the oap-sdk
  * (OnlineApp, logging), the RHMI (components from the generated
@@ -1225,7 +1226,8 @@ function runDrawn() {
         eq(drawn.stack.length, 1, 'BACK leaves the page');
         eq(gpu.visible, true, 'and the tabs show');
         eq(drawn.items[drawn.focus].label, 'DOOM', 'the focus back on the tile the page opened from');
-        // touch: a tap on Renderer's tile opens it; Install installs it beside the other renderer
+        // touch: under Tools, a tap on Renderer's tile opens it; Install installs it beside the other renderer
+        app._act({ do: 'filter', filter: 'tool' });
         reset();
         const tile = drawn.items.find((i) => i.label === 'Renderer');
         gpu.emit('touch', 'down', tile.x + 10, tile.y + 10);
@@ -1233,6 +1235,7 @@ function runDrawn() {
         return tick();
     }).then(() => {
         eq({ name: drawn.top().name, id: drawn.top().id }, { name: 'app', id: 'mgu-render' }, 'a tap opens the tile');
+        app._act({ do: 'filter', filter: FILTER_APPS });
         const install = drawn.items.find((i) => i.label === 'Install');
         eq(!!install && !drawn.items.some((i) => /Replace/.test(i.label || '')), true, 'Install on a second renderer\'s page, no Replace');
         reset();
