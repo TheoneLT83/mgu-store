@@ -1,5 +1,12 @@
 # Deploy tool changelog
 
+## 0.8.16
+
+robertnisipeanu/mgu-store's 0.8.15 with this repository's deploy tool:
+
+- `restore` runs, before it puts anything back and with all of each version in place, the `deactivate` of each tool's current version the backup puts on another version, as a rollback does, and the hooks of the removal of each tool the backup shows absent, as a removal does (a restart one asks for is pending under the deploy tool). One that fails refuses the restore (exit 2, nothing restored), and the versions deactivated run their `activate` again, as they do when the restore fails after them, but for a tool it has removed by then. A tool the backup leaves on its version runs no hook.
+- An install of an older version after a firmware update runs the `deactivate` of the version it replaces, as any downgrade does: that version may have changed the new firmware's files through its own tool since. One that fails refuses the install (exit 2), and that version stays current, needing setup. An install of the same or a newer version from another source after a firmware update still records the version it replaces as deactivated without running it.
+
 ## 0.8.15
 
 robertnisipeanu/mgu-store's 0.8.11-0.8.14 with this repository's deploy tool:
