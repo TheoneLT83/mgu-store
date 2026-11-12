@@ -1441,6 +1441,43 @@ function testReboot() {
         });
 }
 
+/* The deploy tool's safe mode: in the state from status --json, and the
+ * Store's Leave safe mode (safe-mode-off) running its safe-mode off. */
+function testSafeMode() {
+    const { Updater } = require('../js/updater');
+    const dir = path.join(T, 'safe-mode');
+    mkdirp(dir);
+    const flag = path.join(dir, 'on');
+    const calls = path.join(dir, 'calls');
+    const deploy = path.join(dir, 'mgu-deploy.sh');
+    fs.writeFileSync(deploy, '#!/bin/sh\n' +
+        `echo "$*" >> ${calls}\n` +
+        `if [ "$1" = safe-mode ] && [ "$2" = off ]; then rm -f ${flag}; echo 'safe mode off'; exit 0; fi\n` +
+        `if [ -f ${flag} ]; then echo '{"components":[],"pending_reboot":[],"safe_mode":{"at":"2026-11-09T10:00:00Z","reason":"4 starts"}}'; ` +
+        // out of safe mode it reports as an older deploy tool does: no safe_mode at all
+        'else echo \'{"components":[],"pending_reboot":[]}\'; fi\n', { mode: 0o755 });
+    fs.writeFileSync(flag, '');
+    const runs = () => (fs.existsSync(calls) ? fs.readFileSync(calls, 'utf8').split('\n').filter(Boolean) : []);
+    const u = new Updater({ catalog: `file://${path.join(dir, 'catalog.json')}`, state_dir: path.join(dir, 'state'), deploy,
+        store_app: 'robertn_store' });
+    return u.refresh().then(() => {
+        ok('safe mode: in the state while the deploy tool reports it',
+            JSON.stringify(u.state().safeMode) === JSON.stringify({ at: '2026-11-09T10:00:00Z', reason: '4 starts' }), JSON.stringify(u.state().safeMode));
+        ok('safe mode: Leave safe mode needs the secret', u.handle({ op: 'safe-mode-off' }) === 'forbidden');
+        u.busy = { id: 'demo_app', phase: 'download' };
+        ok('safe mode: not left while an install runs', u.handle({ op: 'safe-mode-off', secret: u.secret }) === 'an install is running');
+        u.busy = null;
+        ok('safe mode: Leave safe mode is taken', u.handle({ op: 'safe-mode-off', secret: u.secret }) === null);
+        return until(() => u.state().safeMode, (s) => s === null && !u.leavingSafeMode, 10000, 'safe mode off in the state');
+    }).then(() => {
+        ok('safe mode: the deploy tool ran safe-mode off --yes once, then status', runs().filter((r) => r === 'safe-mode off --yes').length === 1 &&
+            runs()[runs().length - 1] === 'status --json', runs().join(' | '));
+        const before = runs().length;
+        ok('safe mode: out of safe mode the request runs nothing', u.handle({ op: 'safe-mode-off', secret: u.secret }) === null && runs().length === before);
+        ok('safe mode: an older deploy tool, without safe_mode, reports none', u.state().safeMode === null);
+    });
+}
+
 /* ---- checks asked for during a check ---- */
 
 /* A check asked for while one runs reads the sources again once that one is through; several
@@ -6682,7 +6719,7 @@ function main() {
         .then(() => testUidsDaemon())
         .then(() => testUplink())
         .then(() => Promise.all([startDns(), startHttps(certs, pubDir)]))
-        .then((srvs) => testCheckAgain().then(() => srvs))
+        .then((srvs) => testCheckAgain().then(() => testSafeMode()).then(() => srvs))
         .then(([dnsSrv, httpsSrv]) => testFetch(certs, pubDir)
             .then(() => testSources(certs).catch((e) => ok('sources scenario', false, e.stack)))
             .then(() => testRequests(certs).catch((e) => ok('requests scenario', false, e.stack)))

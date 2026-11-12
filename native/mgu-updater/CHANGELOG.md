@@ -1,8 +1,22 @@
 # Updater changelog
 
+## 0.8.43
+
+robertnisipeanu/mgu-store's 0.8.42 with this repository's updater:
+
+- The deploy tool's safe mode shows in the state (`safeMode`), and the Store's Leave safe mode (`safe-mode-off`) leaves it. The updater runs in safe mode.
+- A tool keeps its units' `runsInSafeMode`.
+- Before it asks for a restart of the head unit, the updater records it for the deploy tool, so the restart never counts against safe mode.
+
 ## 0.8.42
 
 - The phone page's logs have the deploy tool's verify unit (`mgu-deploy-verify`) too (robertnisipeanu/mgu-store's 0.8.41).
+
+## 0.8.42
+
+- The deploy tool's safe mode shows in the state (`safeMode`), and the Store's Leave safe mode (`safe-mode-off`) leaves it. The updater runs in safe mode.
+- A tool installed from a repository's tree keeps its units' `runsInSafeMode`.
+- Before it asks for a restart of the head unit, the updater records it for the deploy tool, so the restart never counts against safe mode.
 
 ## 0.8.41
 

@@ -1,5 +1,9 @@
 # mgu-render changelog
 
+## 0.6.25
+
+- robertnisipeanu/mgu-store's car-test kit change (no change on the car).
+
 ## 0.6.24
 
 - robertnisipeanu/mgu-store's build image tag from the build files' hash (no change on the car).
@@ -30,6 +34,7 @@
 - 0.6.18 built again: a change to its car-test tool, since taken back, gave 0.6.18's tree a newer date, and a release publishes no other content under a published version.
 
 - Build: the build image's tag is a hash of its definition, so builds from different definitions never share an image.
+- The car test's `reboot` records the restart for the deploy tool's safe mode before it asks for it.
 No changes.
 
 ## 0.6.19

@@ -197,6 +197,8 @@
     "No internet: Settings > Internet shows how to connect the car": "无网络连接：设置 > 互联网 中说明如何为车辆联网",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
     "new build": "新构建",
-    "Phone over USB": "通过 USB 连接手机"
+    "Phone over USB": "通过 USB 连接手机",
+    "Safe mode": "安全启动",
+    "Leave safe mode": "离开安全启动"
   }
 }
