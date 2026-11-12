@@ -1,7 +1,7 @@
 {
   "id": "store-switch",
   "kind": "tool",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "license": "GPL-3.0-or-later",
   "title": "Switch to TheoneLT83's Store",
   "description": "For a car with robertnisipeanu's Store: the Store, the updater and their tools take their updates from TheoneLT83/mgu-store from the next start. Remove it to switch back",

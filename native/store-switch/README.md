@@ -9,11 +9,14 @@ This tool, installed from the Store like any other, writes one line into the upd
 
     builtin_repo = TheoneLT83/mgu-store
 
+and, as the updater takes its saved sources (`sources.json`) over that setting, sets the Store's own source
+there to the same repo, recording the one it read before in `store-switch.json`.
+
 After the next start of the head unit, the Store's own source is this repository: the Store, the updater, the
 deploy tool and the Store's tools take their updates from here, as updates (their versions here are newer).
-Removing the tool takes the line out again; what was updated stays.
+Removing the tool takes the line out and puts the saved source back on the recorded repo; what was updated stays.
 
 - `activate`: `node switch.js on`; `deactivate`: `node switch.js off` (root, by the deploy tool). The rest of
-  the file is kept, the file root's alone (0600), on disk before it returns. A change asks for a head-unit
+  each file is kept, each root's alone (0600), on disk before it returns. A change asks for a head-unit
   start (the updater reads the file at its start); the same setting again asks for none.
 - Test: `node test/switch_test.js`.
