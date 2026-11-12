@@ -2,8 +2,8 @@
 
 ## 0.9.62
 
-On a screen smaller than the app area the HMI names (an MGU retrofitted to an NBT Evo display), the Store's page is held
-inside the screen instead of running past its edge.
+On iDrive 7, the Store draws its own pages only on the 1920x720 screen the HMI is laid out for, as the idrive7-apps do; on
+another one (an MGU retrofitted to an NBT Evo display) it shows its HMI screens, which fit any screen.
 
 ## 0.9.61
 

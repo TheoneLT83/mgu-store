@@ -275,7 +275,8 @@ class Store extends OnlineApp {
             hostName,
             proxyName,
             proxies: PROXIES,
-            modes: this._hostModes
+            modes: this._hostModes,
+            hmi: () => this._hmi
         });
         this._drawn.on('mode', (mode) => this._useUi(mode || 'widgets'));
         this._drawn.on('page-focus', (page) => {

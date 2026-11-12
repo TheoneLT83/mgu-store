@@ -267,6 +267,13 @@ class Drawn extends EventEmitter {
                 mode = 'layer';
             }
         }
+        // iDrive 7 layer mode only on the screen the HMI is laid out for (1920x720), as the idrive7-apps' kit has it: on
+        // another one (an MGU with an NBT Evo display) the Store's own HMI screens, which fit any
+        const screen = this.gpu.screen || {};
+        if (mode === 'layer' && this.host.hmi && this.host.hmi() === 'ID7' && !(screen.w === 1920 && screen.h === 720)) {
+            this.log.info(`renderer: a ${screen.w}x${screen.h} screen, not the HMI's 1920x720: widget screens`);
+            mode = null;
+        }
         if (mode) {
             let box = mode === 'embed' ? info.embedBox : info.appArea;
             // iDrive 7 layer mode: the whole screen right of the HMI's back arrow column, the header in its title
@@ -274,12 +281,6 @@ class Drawn extends EventEmitter {
             const scr = this.gpu.screen || {};
             const full = mode === 'layer' && box.h < 700 && scr.w === 1920 && scr.h === 720;
             if (full) box = { x: FULL_X, y: 0, w: scr.w - FULL_X, h: scr.h };
-            // a screen smaller than the area the HMI names (an MGU retrofitted to an NBT Evo display): the page inside it
-            if (!full && scr.w > 0 && scr.h > 0 && (box.x + box.w > scr.w || box.y + box.h > scr.h)) {
-                const x = Math.min(Math.max(0, box.x), scr.w - 1), y = Math.min(Math.max(0, box.y), scr.h - 1);
-                box = { x, y, w: Math.min(box.w, scr.w - x), h: Math.min(box.h, scr.h - y) };
-                this.log.info(`renderer: the app area held inside the ${scr.w}x${scr.h} screen`);
-            }
             const p = placement(box.w, box.h, full);
             this.scale = p.scale;
             this.layout = p.layout;
