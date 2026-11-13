@@ -267,29 +267,33 @@ class Drawn extends EventEmitter {
                 mode = 'layer';
             }
         }
-        // iDrive 7 layer mode only on the screen the HMI is laid out for (1920x720), as the idrive7-apps' kit has it: on
-        // another one (an MGU with an NBT Evo display) the Store's own HMI screens, which fit any
+        // iDrive 7 layer mode on a screen of the HMI's shape (1920x720, or the same with fewer pixels: an MGU with an NBT Evo
+        // display, 1440x540): laid out for 1920x720, the renderer given it scaled by the screen's width over 1920 (k); on
+        // a screen of another shape the Store's own HMI screens, which fit any
         const screen = this.gpu.screen || {};
-        if (mode === 'layer' && this.host.hmi && this.host.hmi() === 'ID7' && !(screen.w === 1920 && screen.h === 720)) {
-            this.log.info(`renderer: a ${screen.w}x${screen.h} screen, not the HMI's 1920x720: widget screens`);
+        const same = screen.w > 0 && Math.abs(screen.w * 720 - screen.h * 1920) <= screen.w;
+        const k = same ? screen.w / 1920 : 1;
+        if (mode === 'layer' && this.host.hmi && this.host.hmi() === 'ID7' && !same) {
+            this.log.info(`renderer: a ${screen.w}x${screen.h} screen, not of the HMI's 1920x720 shape: widget screens`);
             mode = null;
         }
         if (mode) {
-            let box = mode === 'embed' ? info.embedBox : info.appArea;
+            const dev = mode === 'embed' ? info.embedBox : info.appArea;
+            let box = { x: dev.x / k, y: dev.y / k, w: dev.w / k, h: dev.h / k };
             // iDrive 7 layer mode: the whole screen right of the HMI's back arrow column, the header in its title
             // strip, as the idrive7-apps run (store_compact.js full)
-            const scr = this.gpu.screen || {};
-            const full = mode === 'layer' && box.h < 700 && scr.w === 1920 && scr.h === 720;
-            if (full) box = { x: FULL_X, y: 0, w: scr.w - FULL_X, h: scr.h };
+            const full = mode === 'layer' && box.h < 700 && same;
+            if (full) box = { x: FULL_X, y: 0, w: 1920 - FULL_X, h: 720 };
             const p = placement(box.w, box.h, full);
             this.scale = p.scale;
             this.layout = p.layout;
             this.viewport = p.viewport;
             this.w = box.w;
             this.gpu.mode(mode);
-            this.gpu.place({ x: box.x, y: box.y, w: box.w, h: box.h, scale: p.scale, ox: p.ox, oy: p.oy });
+            this.gpu.place({ x: Math.round(box.x * k), y: Math.round(box.y * k), w: Math.round(box.w * k), h: Math.round(box.h * k),
+                scale: p.scale * k, ox: p.ox * k, oy: p.oy * k });
             this.controller = !!info.controller;
-            this.log.info(`renderer: ${mode} ${box.w}x${box.h} at ${box.x},${box.y}, scale ${this.scale.toFixed(3)}`);
+            this.log.info(`renderer: ${mode} ${box.w}x${box.h} at ${box.x},${box.y}, scale ${this.scale.toFixed(3)}${k !== 1 ? `, on the screen x ${k.toFixed(3)}` : ''}`);
         } else {
             this.log.info(`renderer: ${info ? 'no mode the Store has' : 'not mgu-render/1'}; widget screens`);
         }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.63
+
+On iDrive 7, the Store draws its own pages, with Wi-Fi and the preferred connection, on a screen of the HMI's shape with
+fewer pixels too (an MGU retrofitted to an NBT Evo display, 1440x540): laid out for 1920x720 and scaled to the screen.
+A screen of another shape keeps the HMI screens.
+
 ## 0.9.62
 
 On iDrive 7, the Store draws its own pages only on the 1920x720 screen the HMI is laid out for, as the idrive7-apps do; on
