@@ -586,6 +586,13 @@ function unmetRequires(uploads, current) {
     return unmet;
 }
 
+/* Whether nothing c ships (its source and, for a tool, its packer) changed between commit and HEAD. */
+function unchangedSince(commit, c) {
+    if (!commit) return false;
+    const packer = c.kind === 'tool' ? ['deploy/hu', 'tools/oap_pack.js'] : [];
+    return cp.spawnSync('git', ['diff', '--quiet', commit, 'HEAD', '--'].concat(c.shipped, packer), { cwd: REPO }).status === 0;
+}
+
 function cmdPublish(ids, dryRun) {
     if (git(['status', '--porcelain', '--untracked-files=no'])) {
         throw new Error('commit first: publish builds HEAD and records its commit in the catalog');
@@ -620,7 +627,13 @@ function cmdPublish(ids, dryRun) {
         if (gate) {
             skipped.push(gate);
         } else if (p && p.version === e.version && p.artifact.sha256 !== e.artifact.sha256) {
-            skipped.push(`${e.id}@${e.version} is published with other content: bump its version to publish it`);
+            // what it ships unchanged since the published catalog's commit: the build's toolchain moved (an image
+            // that is not pinned), the published artifact stays; a change to it needs a new version
+            if (!unchangedSince(published.commit, c)) {
+                skipped.push(`${e.id}@${e.version} is published with other content: bump its version to publish it`);
+            } else {
+                console.log(`kept: ${e.id}@${e.version} as published (its source unchanged, its build differs)`);
+            }
         } else if (p && compareVersions(e.version, p.version) < 0) {
             skipped.push(`${e.id}@${e.version} is older than the published ${p.version}`);
         } else if (!p || p.version !== e.version) {

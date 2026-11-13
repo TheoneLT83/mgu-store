@@ -106,7 +106,11 @@ gzip header. The same tree gives the same bytes on any machine, so a
 version has exactly one artifact and a rebuild can be checked against the
 published sha256; `check` proves it for every component. Node's bundled
 zlib is the one outside input: a Node release with another zlib can
-compress differently, which publishing reports as other content.
+compress differently, which publishing reports as other content. A tool built
+in a build image that is not pinned (the renderer's `ubuntu:18.04` and its
+packages) can differ the same way: where nothing the component ships changed
+since the published catalog's commit, publishing keeps the published artifact
+(`kept:`); with a change, it asks for a new version.
 
 ## The catalog
 
