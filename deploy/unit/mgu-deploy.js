@@ -55,7 +55,7 @@ var os = require('os');
 process.umask(0o022);
 
 /* deploy/component.json's version; the release sets both. */
-var VERSION = '0.8.17';
+var VERSION = '0.8.19';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -488,9 +488,23 @@ function unitState(unit, verb) {
     var r = systemctl(unit ? [verb, unit] : [verb]);
     return (r.stdout || '').trim() || 'unknown';
 }
+/* unitState(unit, verb) of each unit, by name, from one systemctl run:
+ * it prints a line per unit, in order, unless it stops at one it cannot
+ * answer for (is-enabled of a unit without a file), and then each unit is
+ * asked on its own. */
+function unitStates(units, verb) {
+    var out = {}, lines = units.length ? (systemctl([verb].concat(units)).stdout || '').split('\n').filter(Boolean) : [];
+    units.forEach(function (u, i) {
+        out[u] = lines.length === units.length ? lines[i].trim() || 'unknown' : unitState(u, verb);
+    });
+    return out;
+}
+/* Within a status, one ps for every question about processes. */
+var psSnapshot = null;
 /* Full command lines: busybox's "ps w" cuts them at 131 columns, before
  * the app manager's main.js path. */
 function psLines() {
+    if (psSnapshot) return psSnapshot;
     var r = run(CFG.ps, ['ww'], { allowFail: true });
     if (r.status !== 0) r = run(CFG.ps, ['auxww'], { allowFail: true });
     return (r.stdout || '').split('\n');
@@ -3744,7 +3758,7 @@ function cmdRelay(args) {
         done.push(t.id);
     });
     if (done.length) { syncDropIns(); saveState(state); }
-    if (whole.length) return cmdInstall({ artifacts: [], positional: [], setup: whole });
+    if (whole.length) return cmdInstall({ artifacts: [], positional: [], setup: whole, keepSafeMode: args.keepSafeMode });
     if (!done.length) say('nothing to lay again');
     return 0;
 }
@@ -7192,6 +7206,10 @@ function journalTail(unit) {
     return (r.stdout || '').split('\n').filter(function (l) { return l; }).slice(-5);
 }
 function collectStatus(state) {
+    psSnapshot = psLines();
+    try { return collectStatusNow(state); } finally { psSnapshot = null; }
+}
+function collectStatusNow(state) {
     var fb = fallbackState(), components = [], pending = [], seen = {};
     fb.manager_runs_copy = isId8() ? null : managerRunsCopy();
     if (isId8()) fb.listed_by_manager = filledByManager();
@@ -7202,10 +7220,13 @@ function collectStatus(state) {
     }
     state.pending_reboot.forEach(function (p) { pend(p.id, p.reason); });
     readPending().forEach(function (c) { pend(c.id, c.action === 'install' ? ID8_INSTALLS : ID8_REMOVES); });
-    installedTools().forEach(function (t) {
+    var tools = installedTools(), names = [];
+    tools.forEach(function (t) { names = names.concat(unitNames(t.component)); });
+    var enabled = unitStates(names, 'is-enabled'), active = unitStates(names, 'is-active');
+    tools.forEach(function (t) {
         var units = (t.component.units || []).map(function (u) {
-            return { name: u.name, enabled: unitState(u.name, 'is-enabled'),
-                active: unitState(u.name, 'is-active'), journal: journalTail(u.name) };
+            return { name: u.name, enabled: enabled[u.name],
+                active: active[u.name], journal: journalTail(u.name) };
         });
         if (recmgrPresent()) recmgrNamesOf(t.component).forEach(function (n) {
             if (recmgrHas(n) && !recmgrLoaded(n)) pend(t.id, PENDING_RECMGR);
@@ -7604,21 +7625,22 @@ var leaveIds = [];
  * failing it). */
 var outerInstall = null;
 /* An install that goes through as a whole leaves safe mode; one that
- * fails, falls short, stops or is cut short keeps it (settleSafeMode). Only
- * the outermost one settles it; one inside it (an app installed afresh)
- * counts towards it. */
+ * fails, falls short, stops or is cut short keeps it (settleSafeMode), and
+ * so does one with --keep-safe-mode (the updater's own repairs). Only the
+ * outermost one settles it; one inside it (an app installed afresh) counts
+ * towards it. */
 function cmdInstall(args) {
     if (outerInstall) return installAll(args);
-    return asOuterInstall(function () { return installAll(args); }, function (code) { return code === 0; });
+    return asOuterInstall(function () { return installAll(args); }, function (code) { return code === 0; }, args.keepSafeMode);
 }
 /* run() as the outermost install, which settles safe mode: left when
- * through(its result) and nothing in it fell short. */
-function asOuterInstall(run, through) {
+ * through(its result), nothing in it fell short and keep is not set. */
+function asOuterInstall(run, through, keep) {
     var outer = outerInstall = { short: false }, ok = false;
     try {
         return onGuardStop(function () { settleSafeMode(false); }, function () {
             var r = run();
-            ok = through(r) && !outer.short;
+            ok = !keep && through(r) && !outer.short;
             return r;
         });
     } finally {
@@ -8308,7 +8330,7 @@ function cmdRollback(args) {
     if (!id) throw refuse('rollback needs a tool or app id');
     var tool = installedTools().filter(function (t) { return t.id === id; })[0];
     if (!tool) {
-        if (readJsonOrNull(appEntryFile(id))) return rollbackAppCmd(id);
+        if (readJsonOrNull(appEntryFile(id))) return rollbackAppCmd(id, args.keepSafeMode);
         throw refuse(id + ': no installed tool or app with that id');
     }
     var root = tool.root, cur = currentTarget(root);
@@ -8525,7 +8547,7 @@ function keepPackage(a) {
  * The app's data folder is carried over to the new install's home. When
  * that install fails, the version that was there is installed again from
  * its kept package. */
-function rollbackAppCmd(id) {
+function rollbackAppCmd(id, keep) {
     if (isId8()) throw refuse(id + ': apps go back to an earlier version on iDrive 7 only');
     var app = installedApp(id);
     if (!app) throw refuse(id + ': not installed');
@@ -8534,7 +8556,7 @@ function rollbackAppCmd(id) {
     if (!prev) throw refuse(id + ' ' + app.version + ': no earlier version is kept to roll back to');
     say('rolling back ' + id + ' ' + app.version + ' -> ' + prev.version);
     /* one install as to safe mode: a failed one with the version before installed again keeps it */
-    var err = asOuterInstall(function () { return reinstallApp(app, prev.file, cur, prev.version); }, function (e) { return !e; });
+    var err = asOuterInstall(function () { return reinstallApp(app, prev.file, cur, prev.version); }, function (e) { return !e; }, keep);
     if (err) throw fail(id + ': the rollback to ' + prev.version + ' failed: ' + err.message);
     say(id + ' rolled back to ' + prev.version);
     return 0;
@@ -8785,16 +8807,18 @@ var HELP = [
     'mgu-deploy ' + VERSION,
     'usage: mgu-deploy.sh <command> ...',
     '  check [--artifact <file>...]     read-only checks; exits 2 on a hard problem',
-    '  install [--artifact <file>...] [--skip-older] [--leave <id>...] [--yes]',
-    '                                    install tools/apps (default: ./artifacts/*.tgz)',
+    '  install [--artifact <file>...] [--skip-older] [--leave <id>...] [--keep-safe-mode] [--yes]',
+    '                                    install tools/apps (default: ./artifacts/*.tgz); --keep-safe-mode: safe mode stays on',
     '  status [--json]                  installed components and pending reboots',
     '  status --read-only [--json]      the same, its upkeep left undone: changes nothing',
-    '  relay [<id>...] --yes            lay a stale tool\'s files again from the copy kept here, without its install step',
+    '  relay [<id>...] [--keep-safe-mode] --yes',
+    '                                    lay a stale tool\'s files again from the copy kept here, without its install step',
     '  setup <id> --yes                 a tool laid again from the copy kept here, its install step included',
     '  uninstall <id> [--yes]           remove one tool or app',
     '  remove-all [--json]              what the Store setup put on this unit',
     '  remove-all --yes                 remove all of it, this tool last',
-    '  rollback <id> [--yes]            a tool back to its other kept version, an app to its kept older package',
+    '  rollback <id> [--keep-safe-mode] [--yes]',
+    '                                    a tool back to its other kept version, an app to its kept older package',
     '  restore [name] [--yes]           restore a backup (default stock); verified',
     '  backups                          list backups (stock marked)',
     '  fallback <on|off|status>         provisioning fallback for our apps',
@@ -8824,6 +8848,7 @@ function parseArgs(argv) {
         else if (argv[i] === '--json') out.json = true;
         else if (argv[i] === '--skip-older') out.skipOlder = true;
         else if (argv[i] === '--other-source') out.otherSource = true;
+        else if (argv[i] === '--keep-safe-mode') out.keepSafeMode = true;
         else if (argv[i] === '--yes') out.yes = true;
         else if (argv[i] === '--remove') out.remove = argv[++i] || '';
         else if (argv[i] === '--list') out.list = true;

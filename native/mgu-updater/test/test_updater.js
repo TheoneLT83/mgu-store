@@ -9,7 +9,8 @@
  *  - build folders removed as the uid that owns each part (root's too, after
  *    a build and at a start), and a build's output in the log bounded;
  *  - fetch.js: HTTPS through a given DNS server, redirects that drop the
- *    token, size limits, running as the fetch uid;
+ *    token, size limits, running as the fetch uid, a set of files over
+ *    connections kept open and a set's failure;
  *  - the daemon under its supervisor, against an HTTPS catalog and a stand-in
  *    deploy tool: install an app, update itself, return to the previous
  *    version when a new one crashes or never comes up, refuse a download
@@ -165,6 +166,7 @@ function startDns() {
 }
 
 const seen = [];
+let connections = 0;
 
 /* ---- a fake GitHub (api.github.com, github.com, codeload.github.com, raw.githubusercontent.com) -- */
 
@@ -489,7 +491,8 @@ function startHttps(certs, dir) {
         req.on('end', () => {
             const host = String(req.headers.host).replace(/:\d+$/, '');
             const auth = req.headers.authorization || null;
-            seen.push({ host: req.headers.host, url: req.url, auth, method: req.method });
+            // conn: which TLS connection the request came on
+            seen.push({ host: req.headers.host, url: req.url, auth, method: req.method, conn: req.socket.seenId || (req.socket.seenId = ++connections) });
             if (host === 'api.github.com') {
                 // a repo's delayMs holds its answers back: a read stays under way
                 const m = /^\/repos\/([^/]+\/[^/?]+)/.exec(req.url);
@@ -1103,6 +1106,24 @@ function testFetch(certs, pubDir) {
         })
         .then((r) => {
             ok('fetch: the fetch uid cannot write outside its folder', r.code !== 0 && !fs.existsSync('/root/forbidden.bin'));
+            seen.length = 0;
+            return runFetch(Object.assign({}, base, { headers: {}, parallel: 2, files: [0, 1, 2, 3, 4].map((i) => ({
+                url: `https://updates.test:${HTTPS_PORT}/payload.bin`, dest: path.join(dl, `set${i}`), maxBytes: 300000 })) }), FETCH_UID);
+        })
+        .then((r) => {
+            const done = r.events.filter((e) => e.file !== undefined && e.done).map((e) => e.file).sort();
+            const same = [0, 1, 2, 3, 4].every((i) => fs.existsSync(path.join(dl, `set${i}`)) &&
+                fs.readFileSync(path.join(dl, `set${i}`)).equals(fs.readFileSync(path.join(pubDir, 'payload.bin'))));
+            const conns = new Set(seen.filter((s) => s.url === '/payload.bin').map((s) => s.conn));
+            ok('fetch: a set of files, each whole, then done', r.code === 0 && done.join() === '0,1,2,3,4' && same &&
+                r.events[r.events.length - 1].done && r.events[r.events.length - 1].file === undefined, JSON.stringify(r.events.slice(-2)));
+            ok('fetch: a set runs at most parallel files at once, over connections kept open', conns.size === 2, `${conns.size} connections`);
+            return runFetch(Object.assign({}, base, { headers: {}, files: [`payload.bin`, 'missing.bin', 'payload.bin'].map((n, i) => ({
+                url: `https://updates.test:${HTTPS_PORT}/${n}`, dest: path.join(dl, `bad${i}`) })) }), FETCH_UID);
+        })
+        .then((r) => {
+            const last = r.events[r.events.length - 1];
+            ok('fetch: a file that fails ends the set with its error and its index', r.code !== 0 && last.error && last.file === 1, JSON.stringify(last));
         });
 }
 
@@ -4151,7 +4172,7 @@ function testIdrive7(certs) {
             ok('idrive7: a later start keeps what was decided', u.origins.car_vitals.source === 'idrive7-apps' &&
                 u.adopted.imported.join() === 'my_kitapp' && u.stored.filter((d) => d.id === 'idrive7-apps').length === 1, JSON.stringify(u.stored));
             // a new commit while car_vitals is installed: 2.14.1 with a new icon
-            const repo = gh.repos['cauliflowermossgrape/idrive7-apps'];
+            const repo = gh.repos['TheoneLT83/idrive7-apps'];
             const tree = repo.trees[repo.branches.main];
             const files = {};
             Object.keys(tree).forEach((k) => {
@@ -4159,7 +4180,7 @@ function testIdrive7(certs) {
             });
             files['apps/car_vitals/app.json'] = [JSON.stringify({ id: 'car_vitals', title: 'M Vitals', version: '2.14.1' }), 0o644];
             files['apps/car_vitals/icon.png'] = [newCarIcon, 0o644];
-            repo.branches.main = ghCommit('cauliflowermossgrape/idrive7-apps', files);
+            repo.branches.main = ghCommit('TheoneLT83/idrive7-apps', files);
             mark = seen.length;
             return u.check().then(() => until(() => u.src.get('idrive7-apps').icons, (x) => !x, 30000, 'icons fetched'));
         })
@@ -4492,7 +4513,8 @@ function testSelfRepair() {
         .then(() => {
             const i = installs();
             ok('self-repair: after a wipe the Store and our other lost app are installed again from their kept packages, the Store first',
-                i.length === 4 && /verified\/robertn_store@0\.9\.0\.tgz --yes$/.test(i[2]) && /verified\/cat_app@1\.1\.0\.tgz --yes$/.test(i[3]), i.join('\n'));
+                i.length === 4 && /verified\/robertn_store@0\.9\.0\.tgz --yes --keep-safe-mode$/.test(i[2]) &&
+                /verified\/cat_app@1\.1\.0\.tgz --yes --keep-safe-mode$/.test(i[3]), i.join('\n'));
             ok('self-repair: an app removed on purpose (no kept package) stays removed', !fs.existsSync(reg('gone_app')));
             wipe();
             u.watchLost();
@@ -4519,7 +4541,7 @@ function testSelfRepair() {
         .then(() => {
             ok('self-repair: the next start installs them again, the Store (missing at the start, its package kept) first',
                 installs().length === 6 && fs.existsSync(reg('robertn_store')) && fs.existsSync(reg('cat_app')) &&
-                /verified\/robertn_store@0\.9\.0\.tgz --yes$/.test(installs()[4]), installs().join('\n'));
+                /verified\/robertn_store@0\.9\.0\.tgz --yes --keep-safe-mode$/.test(installs()[4]), installs().join('\n'));
             ok('tile: the next start clears the tile line, and an install without a restart of the app manager sets none',
                 comp('cat_app').installed === '1.1.0' && comp('cat_app').tileHidden === false, JSON.stringify(comp('cat_app')));
             // going back stopped by the guard: the version it goes to comes back at the next start
@@ -4559,7 +4581,7 @@ function testSelfRepair() {
         })
         .then(() => {
             ok('factory reset: once the app manager runs on its own home, the lost apps are installed again, the Store first',
-                installs().length === 8 && /robertn_store@0\.9\.0\.tgz --yes$/.test(installs()[6]), installs().join('\n'));
+                installs().length === 8 && /robertn_store@0\.9\.0\.tgz --yes --keep-safe-mode$/.test(installs()[6]), installs().join('\n'));
             ['lost', 'tiles', 'previous'].forEach((x) => fs.unlinkSync(`${deployLog}.${x}`));
         });
 }
@@ -4627,7 +4649,7 @@ function testFirmwareSetup() {
     return fresh()
         .then(() => {
             ok('firmware: a stale tool its source lists newer, online, is updated from it, no files laid again',
-                calls().length === 1 && /^install --artifact .*fw_tool@1\.1\.0\.tgz --yes$/.test(calls()[0]) && comp().installed === '1.1.0' &&
+                calls().length === 1 && /^install --artifact .*fw_tool@1\.1\.0\.tgz --yes --keep-safe-mode$/.test(calls()[0]) && comp().installed === '1.1.0' &&
                 !comp().needsSetup, calls().join('\n'));
             // B: no newer version listed
             fs.writeFileSync(deployLog, '');
@@ -4638,7 +4660,7 @@ function testFirmwareSetup() {
         })
         .then(() => {
             ok('firmware: with no newer version its files are laid again (relay), no install, and the row needs setup',
-                JSON.stringify(calls()) === JSON.stringify(['relay fw_tool --yes']) && comp().needsSetup === 'installed under firmware old',
+                JSON.stringify(calls()) === JSON.stringify(['relay fw_tool --yes --keep-safe-mode']) && comp().needsSetup === 'installed under firmware old',
                 `${calls().join('\n')} ${JSON.stringify(comp())}`);
             return ask(conf.socket, { op: 'setup', id: 'fw_tool' }).then((e1) => ask(conf.socket, { op: 'setup', id: 'fw_tool', secret: u.secret })
                 .then((e2) => [e1, e2]));
@@ -4657,7 +4679,7 @@ function testFirmwareSetup() {
         })
         .then(() => {
             ok('firmware: offline, a stale tool its source lists newer has its files laid again, no download',
-                JSON.stringify(calls()) === JSON.stringify(['relay fw_tool --yes']) && comp().needsSetup, calls().join('\n'));
+                JSON.stringify(calls()) === JSON.stringify(['relay fw_tool --yes --keep-safe-mode']) && comp().needsSetup, calls().join('\n'));
             // a tool that needs setup, its source then lists a newer version, online: updated
             fs.writeFileSync(deployLog, '');
             online(true);
@@ -4677,7 +4699,7 @@ function testFirmwareSetup() {
         .then(() => {
             const c = calls();
             ok('firmware: an update that fails falls back to laying its files again',
-                c.length === 2 && /fw_tool@1\.1\.0\.tgz/.test(c[0]) && c[1] === 'relay fw_tool --yes' && comp().needsSetup, c.join('\n'));
+                c.length === 2 && /fw_tool@1\.1\.0\.tgz/.test(c[0]) && c[1] === 'relay fw_tool --yes --keep-safe-mode' && comp().needsSetup, c.join('\n'));
             // the next check, the same updater: that version is not asked for again
             fs.writeFileSync(deployLog, '');
             return u.check().then(() => idle('a second check'));
@@ -4705,6 +4727,22 @@ function testFirmwareSetup() {
         .then(() => {
             ok('firmware: the same updater, online: the tool that needs setup is updated from its source',
                 calls().length === 1 && /fw_tool@1\.1\.0\.tgz/.test(calls()[0]) && !comp().needsSetup, calls().join('\n'));
+            // the deploy tool's safe mode: a repair's install keeps it; the same install asked for (the Store) leaves it
+            u.busy = { id: 'held', op: 'install' };
+            const repair = u.request('fw_tool', true);
+            const queued = u.queue.map((q) => !!q.auto);
+            const asked = u.handle({ op: 'install', id: 'fw_tool' });
+            ok('safe mode: a repair\'s install is queued to keep safe mode, and asked for from the Store it is not',
+                repair === null && asked === null && JSON.stringify(queued) === '[true]' && JSON.stringify(u.queue.map((q) => !!q.auto)) === '[false]',
+                JSON.stringify(u.queue));
+            u.queue = [];
+            u.busy = null;
+            fs.writeFileSync(deployLog, '');
+            return ask(conf.socket, { op: 'install', id: 'fw_tool' }).then(() => idle('an install asked for'));
+        })
+        .then(() => {
+            ok('safe mode: an install asked for goes to the deploy tool without --keep-safe-mode',
+                calls().length === 1 && /^install --artifact .*fw_tool@1\.1\.0\.tgz --yes$/.test(calls()[0]), calls().join('\n'));
             // a failing setup: the row's error, the Store's usual failed state
             fs.writeFileSync(deployLog, '');
             tool('fw_tool', '1.0.0');
@@ -4730,7 +4768,7 @@ function testFirmwareSetup() {
         })
         .then(() => {
             ok('firmware: a newer version the updater cannot queue leaves the stale tool to its files laid again',
-                JSON.stringify(calls()) === JSON.stringify(['relay fw_tool --yes']) && comp().needsSetup, calls().join('\n'));
+                JSON.stringify(calls()) === JSON.stringify(['relay fw_tool --yes --keep-safe-mode']) && comp().needsSetup, calls().join('\n'));
             ['fail', 'stale', 'setup', 'setupfail'].forEach((x) => rmIfThere(`${deployLog}.${x}`));
             u.server.close();
         }, (e) => {
@@ -4895,6 +4933,25 @@ function testUndo() {
             const s = comp('robertn_store');
             ok('Store trial: a Store whose tile showed and does not show after its update goes back',
                 s.installed === '0.9.37' && s.error === '0.9.38\'s tile does not show; 0.9.37 is back', JSON.stringify(s));
+            // a Store the updater's own repair updated: its trial says so, also to the next updater, and its rollback keeps safe mode
+            fs.writeFileSync(`${deployLog}.previous`, JSON.stringify({ robertn_store: '0.9.36' }));
+            return u.refresh();
+        })
+        .then(() => {
+            u.startStoreTrial('0.9.37', true);
+            ok('Store trial: a repair\'s update is on trial as one, also for the next updater',
+                JSON.parse(fs.readFileSync(trialFile, 'utf8')).auto === true && new Updater(conf).storeTrial.auto === true, fs.readFileSync(trialFile, 'utf8'));
+            fs.writeFileSync(path.join(proc, '4242', 'cmdline'), `node\0${oap}/oap_12470/source/javascript/app.js\0`);
+            u.watchStoreTrial();
+            return sleep(1700);
+        })
+        .then(() => {
+            u.watchStoreTrial();
+            return idle('the repaired Store back');
+        })
+        .then(() => {
+            ok('Store trial: the rollback of a Store a repair updated keeps the deploy tool\'s safe mode',
+                /^rollback robertn_store --yes --keep-safe-mode$/m.test(fs.readFileSync(deployLog, 'utf8')), fs.readFileSync(deployLog, 'utf8'));
             done();
         }, (e) => {
             done();

@@ -1757,6 +1757,21 @@ function runDrawn() {
             app._states[host(1)].emit('focus', { focus: true });
             eq(bridges, [false], 'the focus back bridges nothing');
         }
+        // the deploy tool's safe mode: Leave safe mode on Store after the side menu; a press asks the updater to leave it
+        drawn.setTab('store');
+        const safe = Object.assign({}, st, { safeMode: { at: '2026-11-09T10:00:00Z', reason: 'test' } });
+        app._client.emit('state', safe);
+        // (its proxy unlabelled, as every proxy here)
+        eq([drawn.items[4].label, lastText(proxy(1, 4)).trim(), drawn.items.some((i) => i.label === 'Restart now')], ['Leave safe mode', '', false],
+            'safe mode: Leave safe mode after the side menu, in Restart now\'s place');
+        reset();
+        drawn.proxyPress(1, 4);
+        eq(sent.map(secretless), [{ op: 'safe-mode-off' }], 'safe mode: Leave safe mode sends safe-mode-off');
+        eq(sent[0].secret, 'deadbeef', 'with the secret');
+        app._client.emit('state', Object.assign({}, safe, { busy: { id: 'doom', op: 'install', phase: 'download' } }));
+        eq(drawn.items.some((i) => i.label === 'Leave safe mode'), false, 'safe mode: Leave safe mode hidden while an install runs');
+        app._client.emit('state', st);
+        eq(drawn.items.some((i) => i.label === 'Leave safe mode'), false, 'out of safe mode: no Leave safe mode');
         // Installed puts what runs or waits first; while the focus is on a row the rows stay where they are, so it stays on its row
         const inst = (doom) => Object.assign({}, st, { components: [
             comp({ id: 'alpha', title: 'Alpha', version: '1.0.0', installed: '1.0.0', status: 'installed' }),

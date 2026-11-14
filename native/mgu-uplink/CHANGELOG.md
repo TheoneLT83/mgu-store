@@ -1,5 +1,10 @@
 # mgu-uplink changelog
 
+## 0.7.13
+
+robertnisipeanu/mgu-store's 0.7.12 with this repository's uplink: with the car's `wlan0`, Wi-Fi is used again within
+about 10 s once the car's Wi-Fi is back on; a `wifi-scan` while Wi-Fi is unavailable checks again at once.
+
 ## 0.7.12
 
 - robertnisipeanu/mgu-store's 0.7.11: switching Wi-Fi on scans at once, also during wireless CarPlay or Android Auto.

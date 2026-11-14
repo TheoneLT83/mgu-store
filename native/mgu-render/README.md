@@ -32,6 +32,12 @@ either on the app's own layer over the HMI or inside the app's own HMI page.
 - **Touch** is IterioDev's divert of the display's touch PDUs to the app that
   claims the area, per unit from the configuration; the **iDrive controller**
   can be held for an app through the HMI's controller gate (upstream's GRAB).
+- **Anything of the HMI's over an app** (a popup, its menu, the voice
+  assistant, a screen opened from there) takes the focus from the app's
+  states: the foreground gate reports the app covered, and touch and the
+  controller are the HMI's until the focus comes back. An app whose picture
+  stays as it was through 4 touches or controller turns in a row gets neither
+  for 10 s (a layer app is taken off meanwhile).
 
 It is a Store tool component (`component.json`, `mguProvides: renderer`,
 optional): installed and updated by the updater like the other tools.
@@ -414,6 +420,8 @@ gpu.fps(30);                                        // optional: at most 30 fram
 gpu.on('tick', () => gpu.frame(recorder));          // kit Recorder, or gpu.frameWords(ops)
 gpu.on('state', (s) => { /* { mode, onScreen, front } */ });
 gpu.on('touch', (phase, x, y) => { /* in claimed areas: gpu.claim([...]) */ });
+// gpu.fingers(true): every finger instead, as gpu.on('finger', (phase, id, x, y) => ...) (info.fingers);
+//   phase 'cancel': the finger is gone without a lift seen, drop it (not a tap)
 gpu.connect();
 ```
 
@@ -439,6 +447,9 @@ taken for hung and hidden. The frame file must be the app's (its uid), or a
 system player's (root, or `nobody`). IterioDev's YouTube app
 (IterioDev/car-apps, with its player mgu-ytplay) uses it through IterioDev's
 kit.
+
+Multi-touch (`info.fingers`, `gpu.fingers(true)`) was contributed by
+[ciscospirit](https://github.com/ciscospirit).
 
 The controller: read FrontCCU over SOME/IP in the app (display-bridge's
 `display_input.js` does) and keep the page's hidden focusable components for

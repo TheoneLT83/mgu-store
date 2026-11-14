@@ -1,5 +1,14 @@
 # Updater changelog
 
+## 0.8.46
+
+robertnisipeanu/mgu-store's 0.8.44 and 0.8.45 with this repository's updater (its own way of reading GitHub kept):
+
+- The updater's own repairs leave the deploy tool's safe mode on (`--keep-safe-mode`), and so does the rollback of a
+  Store a repair updated; an install asked for leaves it.
+- Downloads (fetch.js, as upstream's): a cut download goes on from where it stopped more often (Last-Modified, an
+  immutable file), a gzipped answer's rest stays gzipped, and a build's donor is looked up while its files download.
+
 ## 0.8.43
 
 robertnisipeanu/mgu-store's 0.8.42 with this repository's updater:
@@ -11,6 +20,18 @@ robertnisipeanu/mgu-store's 0.8.42 with this repository's updater:
 ## 0.8.42
 
 - The phone page's logs have the deploy tool's verify unit (`mgu-deploy-verify`) too (robertnisipeanu/mgu-store's 0.8.41).
+
+## 0.8.45
+
+- An app built by its repository's script has its SDK donor looked up while its files download, and the build uid's processes are killed with the system's `kill` (with Node where there is none, or something of that uid is still running): its build starts and ends sooner.
+
+## 0.8.44
+
+- Only an install asked for (the Store, the phone page) leaves the deploy tool's safe mode. The updater's own repairs (a lost app installed again, a stale tool laid again, updated or installed again, and the rollback of a Store such a repair updated that did not start) keep it.
+
+## 0.8.43
+
+- Installing or updating from a public repository's branch downloads the component's files over a few connections kept open, six at a time, instead of starting a new download for each file. The progress moves as the bytes come.
 
 ## 0.8.42
 

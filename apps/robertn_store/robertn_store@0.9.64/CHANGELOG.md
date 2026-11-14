@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.64
+
+robertnisipeanu/mgu-store's 0.9.40 with this repository's Store: in safe mode, the drawn start screen has Leave safe
+mode in Restart now's place.
+
 ## 0.9.63
 
 On iDrive 7, the Store draws its own pages, with Wi-Fi and the preferred connection, on a screen of the HMI's shape with

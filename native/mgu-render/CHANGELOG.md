@@ -1,5 +1,18 @@
 # mgu-render changelog
 
+## 0.6.26
+
+robertnisipeanu/mgu-store's 0.6.20 and 0.6.21 with this repository's renderer:
+
+- Multi-touch: a gesture in a claim keeps every finger until the last one is up; a native app that sends X_FINGERS 1
+  gets each finger with its id (X_FINGER, `fingers()` / `finger` in the JS client). Here X_FINGERS is 0x4d520007 and its
+  caps bit 128: upstream's 0x4d520006 and 64 are this repository's X_BRIDGE, which the Store uses.
+- A finger whose UP was lost is let go before the next gesture with no TOUCH (X_FINGER cancel to an app that asked).
+- Touch and the iDrive controller go back to the HMI as soon as it shows something over an app that takes the input
+  (a popup, the header menu, the voice assistant); an app whose picture does not change through 4 inputs in a row gets
+  none for 10 s.
+- The build image's tag is a hash of its definition.
+
 ## 0.6.25
 
 - robertnisipeanu/mgu-store's car-test kit: its `reboot` records the restart for the deploy tool's safe mode before it

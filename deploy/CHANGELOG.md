@@ -1,5 +1,12 @@
 # Deploy tool changelog
 
+## 0.8.19
+
+robertnisipeanu/mgu-store's 0.8.17 and 0.8.18 with this repository's deploy tool: `status` asks systemctl about all
+tools' units in one run per question and reads the process list once (a faster status after each install); a source
+package's modules are checked to compile inside the deploy tool's own Node; `install`, `relay` and an app's `rollback`
+take `--keep-safe-mode`.
+
 ## 0.8.17
 
 robertnisipeanu/mgu-store's 0.8.16 with this repository's deploy tool:

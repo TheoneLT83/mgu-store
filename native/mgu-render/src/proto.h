@@ -85,6 +85,8 @@ enum {
     X_PALETTE = 0x4d520005, /* u32 id, 256 * 3 bytes RGB: an INDEX8 pixmap's colours, for the whole picture */
     X_BRIDGE = 0x4d520006,  /* u32 on (embed, CAP_BRIDGE): 1 the HMI changes the app's page now, its frames are shown
                                over the HMI's box for embed_bridge_ms; 0 hide them now (a popup) */
+    X_FINGERS = 0x4d520007, /* u32 on: every finger of a gesture in a claim comes as X_FINGER, instead of TOUCH (upstream
+                               numbers it 0x4d520006, which this fork's X_BRIDGE had first) */
 };
 
 /* pixmap formats */
@@ -123,6 +125,9 @@ enum {
                                u32 refresh mHz */
     X_STATE = 0x4d520102,   /* u32 mode, u32 on screen, u32 in front (the HMI shows the app's screen): on change */
     X_CCU = 0x4d520103,     /* as EU_CCU */
+    X_FINGER = 0x4d520104,  /* u32 phase (1 down, 2 move, 3 up, 4 cancel: its UP was lost, not a tap), u32 finger id
+                               (0..15), f32 x, f32 y logical px: one finger of a gesture that began in a claim
+                               (after X_FINGERS 1) */
 };
 
 enum {
@@ -133,6 +138,7 @@ enum {
     CAP_VIDEO = 16,         /* MI_VIDEO / MI_DROP_VIDEO / OP_VIDEO */
     CAP_EMBED_ZERO_COPY = 32, /* embed frames are drawn straight into the HMI compositor's GPU buffers (no readback) */
     CAP_BRIDGE = 64,        /* X_BRIDGE: the HMI's page changes are bridged (embed_bridge) */
+    CAP_FINGERS = 128,      /* X_FINGERS: every finger, with its id (X_FINGER) (upstream: 64, this fork's CAP_BRIDGE) */
 };
 
 /* draw opcodes, all dialects */

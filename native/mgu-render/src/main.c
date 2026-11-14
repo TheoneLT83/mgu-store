@@ -78,6 +78,14 @@
 #define SHARE_US 2000000ull          /* the community socket's rule is applied this often */
 #define DROP_WINDOW_US 10000000ull   /* a layer taken off while shown goes back at once at most DROP_MAX times in this */
 #define DROP_MAX 10
+/* An app whose picture stays as it was through DEAF_INPUTS touches or controller turns in a row (in DEAF_WINDOW_US)
+ * is not acting on them: touch and the controller go to the HMI for DEAF_US. Controller events count once per
+ * CCU_INPUT_US. Its picture changed: a frame of other words, or any message but a frame or GRAB (pictures, pixmaps,
+ * layers, claims); an app with a video changes it without a message, so it is never counted. */
+#define DEAF_INPUTS 4
+#define DEAF_WINDOW_US 10000000ull
+#define DEAF_US 10000000ull
+#define CCU_INPUT_US 300000ull
 #define OAP_DIR "/var/opt/public/oap"
 #ifndef GL_BGRA_EXT
 #define GL_BGRA_EXT 0x80E1
@@ -148,6 +156,10 @@ typedef struct client {
     uint32_t tr_frames, tr_touches, tr_drawn, tr_committed;   /* trace.h: frames and touches on this connection */
     /* controller grab: last time the app asked for it, 0 = not */
     uint64_t grab_t;
+    int fingers;            /* native: every finger as X_FINGER (X_FINGERS), instead of TOUCH */
+    /* inputs it got that left its picture as it was: how many, since when, the frame's hash then; until when it
+       takes no input (DEAF_US); its last controller input */
+    uint32_t unanswered; uint64_t unanswered_t, unanswered_hash, deaf_until, ccu_t;
     /* native: the last X_STATE sent */
     int st_mode, st_on, st_front, st_sent;
     int on_screen;          /* shown at the last update: the watchdog counts silence from the moment it shows */
@@ -355,9 +367,43 @@ static void drop_gated(void) {
     update_all();
 }
 
+/* Something of the HMI's that takes the input is over the app (gate.h), or it is not acting on input (DEAF_US): touch
+ * and the controller are the HMI's. In the HMI's box its picture stays under that; a layer, which would hide it, is
+ * taken off. */
+static int covered(const client *c) {
+    return c->uid && (gate_covered(c->uid) || c->deaf_until != 0);
+}
+
 static int shown(const client *c) {
     if (c->mode == MODE_EMBED) return c == embed_owner && embed_visible() && c->frames_shown > 0;
-    return c->cl && c->visible && c->frames_shown > 0 && !c->stale && in_front(c) && (!yielding || c->overlay);
+    return c->cl && c->visible && c->frames_shown > 0 && !c->stale && in_front(c) && !covered(c) && (!yielding || c->overlay);
+}
+
+/* touch on its claims and the controller go to it */
+static int takes_input(const client *c) { return shown(c) && !covered(c); }
+
+static uint64_t frame_hash(const client *c) {
+    uint64_t h = 1469598103934665603ull;
+    for (size_t i = 0; i < c->frame_words; i++) h = (h ^ c->frame[i]) * 1099511628211ull;
+    return h;
+}
+
+/* the app got a touch or a controller input */
+static void note_input(client *c, uint64_t t) {
+    if (!c->uid || c->g.videos) return;
+    if (!c->unanswered || t - c->unanswered_t > DEAF_WINDOW_US) {
+        c->unanswered = 0; c->unanswered_t = t; c->unanswered_hash = frame_hash(c);
+    }
+    if (++c->unanswered < DEAF_INPUTS) return;
+    c->unanswered = 0;
+    c->deaf_until = t + DEAF_US;
+    log_warn("%s: %d inputs left its picture as it was - touch and the controller go to the HMI for %llu s",
+             c->app, DEAF_INPUTS, DEAF_US / 1000000);
+    update_all();
+}
+/* a new frame: what the app got so far was acted on if it differs */
+static void answered(client *c) {
+    if (c->unanswered && (c->dialect == DIALECT_DBR || frame_hash(c) != c->unanswered_hash)) c->unanswered = 0;
 }
 
 /* app is one of the comma-separated ids in list */
@@ -847,7 +893,7 @@ static int embed_available(void) { return cfg.embed && embed_connected() && temp
 int touch_owner_at(int x, int y, int in_area) {
     for (int k = 0; k < 2 * MAX_CLIENTS; k++) {           /* overlays first, wherever they claim; then the others */
         client *c = clients[k % MAX_CLIENTS];
-        if (!c || !shown(c) || c->overlay != (k < MAX_CLIENTS) || (!c->overlay && !in_area)) continue;
+        if (!c || !takes_input(c) || c->overlay != (k < MAX_CLIENTS) || (!c->overlay && !in_area)) continue;
         if (c->mode == MODE_EMBED) {                      /* only in the HMI's box */
             const int *b = cfg.embed_area;
             if (x < b[0] || y < b[1] || x >= b[0] + b[2] || y >= b[1] + b[3]) continue;
@@ -865,6 +911,7 @@ int touch_owner_at(int x, int y, int in_area) {
 void touch_send(int slot, int phase, int x, int y) {
     client *c = clients[slot];
     if (!c) return;
+    if (phase == 1) note_input(c, now_us());
     uint64_t t_in = trace_on() ? now_us() : 0;
     float bx, by; origin(c, &bx, &by);
     uint32_t p[3] = { (uint32_t)phase };
@@ -877,6 +924,7 @@ void touch_send(int slot, int phase, int x, int y) {
         dbr_send(c, DBR_TOUCH, 0, t, sizeof t);
         return;
     }
+    if (c->fingers) return;                              /* it gets every finger as X_FINGER instead */
     memcpy(&p[1], &lx, 4); memcpy(&p[2], &ly, 4);
     send_msg(c, EI_TOUCH, p, sizeof p);
     c->tr_touches++;
@@ -884,6 +932,17 @@ void touch_send(int slot, int phase, int x, int y) {
         trace(t_in, "touch-in", c->app, c->tr_touches);
         trace(now_us(), "touch-fwd", c->app, c->tr_touches);
     }
+}
+
+void touch_finger(int slot, int phase, int id, int x, int y) {
+    client *c = clients[slot];
+    if (!c || !c->fingers || (phase == 4 && !shown(c))) return;   /* CANCEL: only to an app still on screen */
+    float bx, by; origin(c, &bx, &by);
+    float lx = (x - bx - c->xf.ox) / c->xf.s, ly = (y - by - c->xf.oy) / c->xf.s;
+    uint32_t p[4] = { (uint32_t)phase, (uint32_t)id };
+    memcpy(&p[2], &lx, 4); memcpy(&p[3], &ly, 4);
+    send_msg(c, X_FINGER, p, sizeof p);
+    c->tr_touches++;
 }
 
 /* the HMI was touched: layer apps that claim close (an embed app's page is the HMI's to leave) */
@@ -902,7 +961,7 @@ void touch_outside(void) {
 static int any_claim(void) {                           /* 0 none, 1 a shown app claims, 2 an overlay claims */
     int any = 0;
     for (int i = 0; i < MAX_CLIENTS; i++)
-        if (clients[i] && clients[i]->nclaim && shown(clients[i])) { if (clients[i]->overlay) return 2; any = 1; }
+        if (clients[i] && clients[i]->nclaim && takes_input(clients[i])) { if (clients[i]->overlay) return 2; any = 1; }
     return any;
 }
 
@@ -914,7 +973,7 @@ static void touch_defaults(int area[4]) {
 }
 
 /* ---------------- controller gate (upstream inputgate) ---------------- */
-static int grabbing(const client *c, uint64_t t) { return c->grab_t && t - c->grab_t < GRAB_US && shown(c); }
+static int grabbing(const client *c, uint64_t t) { return c->grab_t && t - c->grab_t < GRAB_US && takes_input(c); }
 
 /* The gate's file and event socket are upstream's interface, which upstream's renderer also uses: they are held
  * only while one of our apps grabs, and the file only while the event socket is ours. Bound by another renderer,
@@ -956,7 +1015,9 @@ static void ccu_read(void) {
         if (!ctl_gate_on || n < 5) continue;
         for (int i = 0; i < MAX_CLIENTS; i++) {
             client *c = clients[i];
-            if (c && grabbing(c, t)) send_msg(c, c->dialect == DIALECT_NATIVE ? X_CCU : EU_CCU, ev, (uint32_t)n);
+            if (!c || !grabbing(c, t)) continue;
+            send_msg(c, c->dialect == DIALECT_NATIVE ? X_CCU : EU_CCU, ev, (uint32_t)n);
+            if (t - c->ccu_t >= CCU_INPUT_US) { c->ccu_t = t; note_input(c, t); }
         }
     }
 }
@@ -1014,7 +1075,8 @@ static void hello(client *c, const uint8_t *p, uint32_t len) {
         app_area(area);
         uint32_t caps = CAP_PIXMAP | CAP_VIDEO | (touch_on ? CAP_TOUCH_ROUTE : 0) | (cfg.foreground_gate[0] ? CAP_FRONT_GATE : 0) |
                         (ctl_gate_loaded() && ccu_free() ? CAP_CONTROLLER : 0) | (emb && embed_zero_copy() ? CAP_EMBED_ZERO_COPY : 0) |
-                        (emb && cfg.embed_bridge && cfg.embed_bridge_ms > 0 ? CAP_BRIDGE : 0);
+                        (emb && cfg.embed_bridge && cfg.embed_bridge_ms > 0 ? CAP_BRIDGE : 0) |
+                        (touch_on ? CAP_FINGERS : 0);
         /* a gate that cannot tell which app is in front would never show the app: no mode, the app keeps its own screens */
         uint32_t modes = gate_applies(c) && gate_unavailable() ? 0 : (1u << (MODE_LAYER - 1)) | (emb ? 1u << (MODE_EMBED - 1) : 0);
         uint32_t x[15] = { MGU_NATIVE_VERSION, modes, caps };
@@ -1104,6 +1166,7 @@ static int handle(client *c, uint32_t type, const uint8_t *p, uint32_t len) {
         if (d == DIALECT_UNKNOWN) return -1;              /* fits neither dialect's message */
         set_dialect(c, d);
     }
+    if (type != M_FRAME && type != X_GRAB && !(type == 10 && c->dialect == DIALECT_UPSTREAM)) c->unanswered = 0;
     switch (type) {
     case M_HELLO:
         hello(c, p, len);
@@ -1206,6 +1269,7 @@ static int handle(client *c, uint32_t type, const uint8_t *p, uint32_t len) {
         memcpy(c->frame, p, nw * 4);
         c->frame_words = nw;
         c->frame_seq++;
+        answered(c);
         c->dirty = 1;
         c->want_tick = 1;
         c->tr_frames++;
@@ -1225,6 +1289,10 @@ static int handle(client *c, uint32_t type, const uint8_t *p, uint32_t len) {
         if (nw < 1) return -1;
         if (w[0]) bridge_begin(c);
         else if (c == bridged && bridge_stop(&bridge)) bridge_hide("the app asked");
+        return 0;
+    case X_FINGERS:
+        if (nw < 1) return -1;
+        c->fingers = w[0] != 0;
         return 0;
     case X_PIXMAP:
         if (nw < 5) return -1;
@@ -1339,6 +1407,7 @@ static int dbr_frame(client *c, uint32_t seq, int n, int rects[][4], const uint8
     }
     if (c->dbr.pending) dbr_send(c, DBR_DROPPED, c->dbr.pending_seq, NULL, 0);
     c->dbr.pending = 1; c->dbr.pending_seq = seq;
+    answered(c);
     c->dirty = 1;
     if (!c->frame_words) {                               /* a layer's picture: black, the pixmap over img */
         const float *g = c->dbr.img;
@@ -1732,6 +1801,9 @@ int main(int argc, char **argv) {
             /* apps send a frame at least every second while shown; 3 s of silence = hung */
             if (shown(c) && !c->stale && c->last_msg && tnow - c->last_msg > WATCHDOG_US) {
                 c->stale = 1; log_warn("%s: no frames for 3 s - hidden", c->app); update_all();
+            }
+            if (c->deaf_until && tnow >= c->deaf_until) {
+                c->deaf_until = 0; log_info("%s: takes touch and the controller again", c->app); update_all();
             }
             /* a shown app with a video: its newest frame draws the app's last frame again (no message from the app) */
             if (c->g.videos && shown(c) && c->frame_words) {

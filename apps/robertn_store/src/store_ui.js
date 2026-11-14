@@ -25,7 +25,7 @@ const { t: tr } = require('./i18n.js');
  * each nav, grid and list item, on each filter cell (acts). The acts:
  * { do: 'tab', tab }, { do: 'filter', filter }, { do: 'open', page },
  * { do: 'back' }, { do: 'check' }, { do: 'install', id }, { do: 'update-all' },
- * { do: 'remove', id, tools? }, { do: 'restart' },
+ * { do: 'remove', id, tools? }, { do: 'restart' }, { do: 'safe-mode-off' },
  * { do: 'source-remove', id }, { do: 'account-remove', id }, { do: 'add-source' },
  * { do: 'add-token' }, { do: 'sign-in' }, { do: 'sign-in-cancel' }, { do: 'phone' },
  * { do: 'pick', channel }, { do: 'pick-retry' }, { do: 'pick-add-token' }, { do: 'key', key } (typeKey),
@@ -126,6 +126,15 @@ function canRestart(m) {
 function restartNow(m, keep) {
     return m.connected && m.st && m.st.rebooting === false && (typeof keep === 'boolean' ? keep : comps(m).some((c) => c.pendingReboot))
         ? button(tr("Restart now"), { do: 'open', page: { name: 'confirm', kind: 'restart' } }, { vicon: 'refresh', style: 'primary', color: BLUE })
+        : hidden;
+}
+
+/* Leave safe mode on Store while the deploy tool's safe mode keeps our
+ * tools off and nothing installs (the widget start screen's rule); Restart
+ * now gives it its place meanwhile. */
+function safeModeOff(m) {
+    return m.connected && m.st && m.st.safeMode && !m.st.busy
+        ? button(tr("Leave safe mode"), { do: 'safe-mode-off' }, { vicon: 'unlock', style: 'primary', color: BLUE })
         : hidden;
 }
 
@@ -248,7 +257,8 @@ function storeView(m) {
                 : { text: m.connected ? statusLine(st, true) : statusLine(null, false, m.secret), color: DIM },
         filter: { sel: Math.max(0, FILTERS.indexOf(m.filter)), acts: FILTERS.map((f) => ({ do: 'filter', filter: f })) },
         online: onlineChip(m),
-        restartNow: restartNow(m),
+        safeModeOff: safeModeOff(m),
+        restartNow: safeModeOff(m).hidden ? restartNow(m) : hidden,
         grid: { items: list.map((c) => tile(m, c, busy, name)), empty: m.connected ? tr("Nothing here") : '' }
     };
 }
