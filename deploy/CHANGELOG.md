@@ -1,5 +1,10 @@
 # Deploy tool changelog
 
+## 0.8.20
+
+`status --json` gives an app a firmware update left not working its installed version's kept package
+(`kept_package`, else null), for the updater to install it again without internet.
+
 ## 0.8.19
 
 robertnisipeanu/mgu-store's 0.8.17 and 0.8.18 with this repository's 0.8.18: `status` asks systemctl about all

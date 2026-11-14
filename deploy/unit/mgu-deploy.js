@@ -55,7 +55,7 @@ var os = require('os');
 process.umask(0o022);
 
 /* deploy/component.json's version; the release sets both. */
-var VERSION = '0.8.19';
+var VERSION = '0.8.20';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -7247,11 +7247,13 @@ function collectStatusNow(state) {
             previous: toolPrevious(t), stale: stale, kept: !!keptToolArtifact(t), needs_setup: needsSetup(state, t.id) });
     });
     installedApps().forEach(function (app) {
-        var tile = tileState(app, fb);
+        var tile = tileState(app, fb), stale = appStale(app);
+        /* a stale app's installed version's package, when kept: installing it afresh needs no internet */
+        var kept = stale && !isId8() && fs.existsSync(keptFile(app.id, app.version)) ? keptFile(app.id, app.version) : null;
         components.push({ id: app.id, kind: 'app', version: app.version, uid: app.uid,
             installationSource: app.installationSource, running: appRunning(app.uid),
             tile_provisioned: tile.provisioned, tile_fallback: tile.fallback, tile_visible: tile.visible, tile_withheld: tile.withheld,
-            previous: isId8() ? null : (keptPrevious(app.id, app.version) || {}).version || null, stale: appStale(app) });
+            previous: isId8() ? null : (keptPrevious(app.id, app.version) || {}).version || null, stale: stale, kept_package: kept });
     });
     var backupCount = 0;
     if (fs.existsSync(BACKUPS_DIR)) backupCount = fs.readdirSync(BACKUPS_DIR).length;

@@ -1,5 +1,12 @@
 # Updater changelog
 
+## 0.8.47
+
+- An app a firmware update left not working (the app manager starts it only once it is updated) is installed again
+  from the package the deploy tool keeps for it when the unit has no internet or no source lists it, so the Store
+  opens again without internet; once per reason, the source's install following once online if that did not help.
+  Needs the deploy tool's 0.8.20 for the kept package; with an older one, as before (its source only).
+
 ## 0.8.46
 
 robertnisipeanu/mgu-store's 0.8.44 and 0.8.45 with this repository's updater (its own way of reading GitHub kept):
