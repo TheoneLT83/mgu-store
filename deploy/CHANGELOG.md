@@ -1,5 +1,9 @@
 # Deploy tool changelog
 
+## 0.8.18
+
+- iDrive 7: an app's SOME/IP manifest may ask an interface the firmware has for a field, method, broadcast or instance its version of it lacks, or a field's access without its getter, notifier or setter; MainApp refuses the whole app for it (MainApp 7.1.2: `Requested field 'statusClimateSystemOn' not found in interface 'de.bmw.infotainment.climate.climatemaster.ClimateMaster'` for eDrive, `actualSteeringAngleDriverNoCRC` of `de.bmw.chassis.SteeringAngle` for Live adjustments and Live data). What the interface lacks is taken out of the manifest, read against the firmware's interface database, and the output names it: `…, not in this unit's interfaces and taken out of manifest.json: de.bmw.chassis.SteeringAngle: actualSteeringAngleDriverNoCRC`. A proxy left with nothing to use goes, as an interface the unit lacks does.
+
 ## 0.8.17
 
 robertnisipeanu/mgu-store's 0.8.16 with this repository's deploy tool:

@@ -689,7 +689,7 @@ function build(srcDir, outFile, opts) {
             fs.writeFileSync(pkgFile, JSON.stringify(pkg, null, 2) + (/\n$/.test(raw) ? '\n' : ''));
         }
         const completed = completeCertification(work);
-        const unknown = dropUnknownInterfaces(work, opts.interfaces || null);
+        const unknown = dropUnknownInterfaces(work, opts.interfaces || null, opts.catalog || null);
         const moduleCount = donor.closure.length + modules.length;
         fs.writeFileSync(path.join(work, 'javascript', 'build.json'), JSON.stringify({
             name: m.id,
@@ -860,22 +860,121 @@ function unknownInterfaces(pkgDir, known) {
     const ids = ['proxies', 'services'].reduce((all, k) => all.concat(isMap(r.manifest[k]) ? Object.keys(r.manifest[k]) : []), []);
     return ids.filter((id, i) => id !== CERTIFICATION && !has.has(id) && ids.indexOf(id) === i);
 }
+/* What a proxy asks of an interface the database has, cut to what this
+ * firmware's version of it holds (catalog: the database's interfaces and
+ * instanceIDs). MainApp refuses the whole app for one field, method,
+ * broadcast or instance its interface lacks, or a field's access without
+ * its getter (r), notifier (s) or setter (w): MainApp 7.1.2, "Requested
+ * field 'statusClimateSystemOn' not found in interface
+ * 'de.bmw.infotainment.climate.climatemaster.ClimateMaster'". Changes
+ * entry in place; returns what went ('field (r)', a method's name, ...)
+ * and whether the proxy is left with anything to use. */
+const ACCESS = { r: 'getter', s: 'notifier', w: 'setter' };
+function fitProxy(id, entry, catalog) {
+    const unit = catalog.interfaces[id];
+    const gone = [];
+    if (!isMap(entry) || !isMap(unit)) {
+        return { gone, left: true };
+    }
+    const inst = entry.instances;
+    const ids = isMap(catalog.instanceIDs) ? catalog.instanceIDs[id] : undefined;
+    if (inst !== undefined && inst !== '*' && ids !== undefined) {
+        const asked = Array.isArray(inst) ? inst : [inst];
+        const lost = asked.filter((n) => String(n).indexOf('${') < 0 && !(isMap(ids) && ids[String(n)] !== undefined));
+        if (lost.length) {
+            lost.forEach((n) => gone.push('instance ' + n));
+            const keep = asked.filter((n) => lost.indexOf(n) < 0);
+            if (!keep.length) {
+                return { gone, left: false };
+            }
+            entry.instances = Array.isArray(inst) ? keep : keep[0];
+        }
+    }
+    const fields = isMap(unit.fields) ? unit.fields : {};
+    if (isMap(entry.attributes)) {
+        Object.keys(entry.attributes).forEach((n) => {
+            const f = fields[n], mode = entry.attributes[n];
+            if (!isMap(f)) {
+                gone.push(n);
+                delete entry.attributes[n];
+                return;
+            }
+            if (typeof mode !== 'string') {
+                return;
+            }
+            const left = mode.split('').filter((c) => !ACCESS[c] || f[ACCESS[c]] !== undefined).join('');
+            if (left !== mode) {
+                gone.push(n + ' (' + mode.split('').filter((c) => left.indexOf(c) < 0).join('') + ')');
+                if (left) {
+                    entry.attributes[n] = left;
+                } else {
+                    delete entry.attributes[n];
+                }
+            }
+        });
+        if (!Object.keys(entry.attributes).length) {
+            delete entry.attributes;
+        }
+    }
+    [['methods', unit.methods], ['broadcasts', unit.events || unit.broadcasts]].forEach(([key, have]) => {
+        if (!Array.isArray(entry[key])) {
+            return;
+        }
+        const keep = entry[key].filter((n) => isMap(have) && have[n] !== undefined);
+        entry[key].filter((n) => keep.indexOf(n) < 0).forEach((n) => gone.push(n));
+        if (keep.length) {
+            entry[key] = keep;
+        } else {
+            delete entry[key];
+        }
+    });
+    return { gone, left: !gone.length || ['attributes', 'methods', 'broadcasts'].some((k) => entry[k] !== undefined) };
+}
+/* The proxies of the package's SOME/IP manifest that fitProxy would cut
+ * (['id: what'...]); none without a catalog or a manifest. Nothing written. */
+function unfitProxies(pkgDir, catalog) {
+    const r = catalog && isMap(catalog.interfaces) ? readSomeipManifest(pkgDir) : null;
+    if (!r || !isMap(r.manifest.proxies)) {
+        return [];
+    }
+    return Object.keys(r.manifest.proxies).filter((id) => id !== CERTIFICATION && isMap(catalog.interfaces[id])).map((id) => {
+        const fit = fitProxy(id, JSON.parse(JSON.stringify(r.manifest.proxies[id])), catalog);
+        return fit.gone.length ? id + ': ' + fit.gone.join(', ') : null;
+    }).filter(Boolean);
+}
 /* Takes the interfaces unknownInterfaces names out of the manifest's proxies
- * and services; returns { manifest: its name, dropped: [id...] }, or null
- * when there is none to take out. */
-function dropUnknownInterfaces(pkgDir, known) {
+ * and services and, with catalog (fitProxy), what a proxy asks that this
+ * firmware's interface lacks (a proxy left with nothing to use goes too);
+ * returns { manifest: its name, dropped: [id...], trimmed: ['id: what'...] },
+ * or null when there is nothing to take out. */
+function dropUnknownInterfaces(pkgDir, known, catalog) {
     const dropped = unknownInterfaces(pkgDir, known);
-    if (!dropped.length) {
+    const r = readSomeipManifest(pkgDir);
+    const trimmed = [];
+    if (r && catalog && isMap(catalog.interfaces) && isMap(r.manifest.proxies)) {
+        Object.keys(r.manifest.proxies).forEach((id) => {
+            if (dropped.indexOf(id) >= 0 || id === CERTIFICATION) {
+                return;
+            }
+            const fit = fitProxy(id, r.manifest.proxies[id], catalog);
+            if (fit.gone.length) {
+                trimmed.push(id + ': ' + fit.gone.join(', '));
+            }
+            if (!fit.left) {
+                dropped.push(id);
+            }
+        });
+    }
+    if (!dropped.length && !trimmed.length) {
         return null;
     }
-    const r = readSomeipManifest(pkgDir);
     ['proxies', 'services'].forEach((k) => {
         if (isMap(r.manifest[k])) {
             dropped.forEach((id) => delete r.manifest[k][id]);
         }
     });
     fs.writeFileSync(r.file, JSON.stringify(r.manifest, null, 2) + '\n');
-    return { manifest: path.relative(pkgDir, r.file), dropped };
+    return { manifest: path.relative(pkgDir, r.file), dropped, trimmed };
 }
 
 /* An OAP package folder (pkgDir is changed) as the flat tgz the head unit
@@ -911,7 +1010,7 @@ function preparePackage(pkgDir, outFile, opts) {
     }
     const permissions = completePermissions(pkgDir);
     const certification = completeCertification(pkgDir);
-    const unknown = dropUnknownInterfaces(pkgDir, opts.interfaces || null);
+    const unknown = dropUnknownInterfaces(pkgDir, opts.interfaces || null, opts.catalog || null);
     stampPackage(pkgDir);
     fs.writeFileSync(outFile, tgz(filesBelow(pkgDir).map((name) =>
         ({ name, data: fs.readFileSync(path.join(pkgDir, name)), mode: 0o644 })), MTIME));
@@ -934,7 +1033,7 @@ function rmrf(p) {
 }
 
 module.exports = { build, packSource, readManifest, preparePackage, completePermissions, completeCertification,
-    unknownInterfaces, dropUnknownInterfaces,
+    unknownInterfaces, dropUnknownInterfaces, unfitProxies,
     needsCertification, needsSdk, needsShrinkwrap, sdkModule, unitDonors, untar, SDK_API, ENTRY_ID,
     LOADER };
 

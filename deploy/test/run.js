@@ -2507,6 +2507,36 @@ function testUnknownInterfaces() {
         installed(odd, 'odd_services').proxies[CERT] === '*' && !o.out.includes('not on this unit'), o.out);
     check('interfaces: iDrive 8 keeps the manifest\'s interfaces', e.status === 0 && !e.out.includes('not on this unit') &&
         em.proxies[EP2] === '*', e.out);
+    // an interface the unit has, in an older version (MainApp 7.1.2: "Requested field 'statusClimateSystemOn' not found in
+    // interface ...ClimateMaster"): what it lacks goes, a field's access without its getter / notifier / setter too
+    const CM = 'de.bmw.infotainment.climate.climatemaster.ClimateMaster', SA = 'de.bmw.chassis.SteeringAngle';
+    const fitted = { proxies: { [CERT]: '*', [EP]: '*',
+        [CM]: { instances: '1', attributes: { statusAirConditioning: 'rs', statusClimateSystemOn: 'rs', setTemperature: 'rw' },
+            methods: ['setMode', 'setNewMode'], broadcasts: ['onChange'] },
+        [SA]: { instances: '1', attributes: { actualSteeringAngleDriverNoCRC: 's' } } }, services: {} };
+    const fit = fakeRoot();
+    write(fit.p('etc/oap/someip/someip-interfaces.json'), JSON.stringify({ version: 1,
+        interfaces: { [EP]: { serviceId: 1 }, [CERT]: { serviceId: 2 },
+            [CM]: { serviceId: 3, fields: { statusAirConditioning: { getter: {}, notifier: {} }, setTemperature: { getter: {} } },
+                methods: { setMode: {} }, events: { onChange: {} } },
+            [SA]: { serviceId: 4, fields: { ActualSteeringAngleDriver: { notifier: {} } } } },
+        instanceIDs: { [CM]: { 1: 1 }, [SA]: { 1: 1 } } }));
+    const fitFile = path.join(fs.mkdtempSync(path.join(T, 'app-')), 'fit_fw@1.0.0.tgz');
+    fs.writeFileSync(fitFile, tgz([
+        { name: 'javascript/app.js', data: Buffer.from('console.log(1);\n'), mode: 0o644 },
+        { name: 'manifest.json', data: Buffer.from(JSON.stringify(fitted)), mode: 0o644 },
+        { name: 'package.json', data: Buffer.from(JSON.stringify({ name: 'fit_fw', version: '1.0.0', description: 'deploy test app',
+            mguLocalOnly: true })), mode: 0o644 }], 1700000000));
+    const f = fit.run(['install', '--artifact', fitFile, '--yes']);
+    const fm = f.status === 0 ? installed(fit, 'fit_fw') : { proxies: {} };
+    check('interfaces: what an older interface lacks is taken out (fields, an access without its getter / setter, methods), ' +
+        'an interface left with nothing goes', f.status === 0 &&
+        JSON.stringify(fm.proxies[CM]) === JSON.stringify({ instances: '1', attributes: { statusAirConditioning: 'rs', setTemperature: 'r' },
+            methods: ['setMode'], broadcasts: ['onChange'] }) &&
+        fm.proxies[SA] === undefined && fm.proxies[EP] === '*' &&
+        f.out.includes(`${SA} (not on this unit) taken out of manifest.json`) &&
+        f.out.includes(`not in this unit's interfaces and taken out of manifest.json: ${CM}: statusClimateSystemOn, setTemperature (w), setNewMode; ` +
+            `${SA}: actualSteeringAngleDriverNoCRC`), f.out);
 }
 
 /* What an interrupted install left: removed only when this tool provably put it there. */
