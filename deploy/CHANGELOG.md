@@ -1,5 +1,10 @@
 # Deploy tool changelog
 
+## 0.8.21
+
+`status --json` gives no `kept_package` when the kept package was built with an oap-sdk donor this unit no longer
+has (a firmware update brought another version of it): the app built with the old one does not start.
+
 ## 0.8.20
 
 `status --json` gives an app a firmware update left not working its installed version's kept package

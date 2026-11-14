@@ -1,5 +1,10 @@
 # Updater changelog
 
+## 0.8.48
+
+- Needs the deploy tool's 0.8.21, so a kept package built with an oap-sdk the firmware update took is not installed
+  again offline (the app would not start there); the source's install follows once online.
+
 ## 0.8.47
 
 - An app a firmware update left not working (the app manager starts it only once it is updated) is installed again

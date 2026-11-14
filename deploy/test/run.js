@@ -5638,6 +5638,8 @@ function testSetUpElsewhere() {
         fs.existsSync(app(root).kept_package), JSON.stringify(app(root)));
     fs.unlinkSync(root.preinstalled('donor_app', '1.0.0'));
     donor.tgz(root.preinstalled('donor_app', '1.1.0'));
+    check('forced update: a kept package built with an oap-sdk the firmware update took is not given (it would not start)',
+        app(root).stale === WHY && app(root).kept_package === null, JSON.stringify(app(root)));
     write(cacheOf(root), 'cache of the build for the firmware before');
     r = root.run(['install', '--artifact', file, '--yes']);
     const entry = JSON.parse(fs.readFileSync(entryFile(root), 'utf8'));
