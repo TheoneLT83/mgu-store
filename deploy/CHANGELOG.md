@@ -1,5 +1,10 @@
 # Deploy tool changelog
 
+## 0.8.22
+
+robertnisipeanu/mgu-store's 0.8.19 with this repository's 0.8.21: iDrive 7 with MainApp 6.4.8, the provisioning
+fallback copy carries the in-place install hook, so an app install or update there restarts only that app.
+
 ## 0.8.21
 
 `status --json` gives no `kept_package` when the kept package was built with an oap-sdk donor this unit no longer
@@ -16,6 +21,10 @@ robertnisipeanu/mgu-store's 0.8.17 and 0.8.18 with this repository's 0.8.18: `st
 tools' units in one run per question and reads the process list once (a faster status after each install); a source
 package's modules are checked to compile inside the deploy tool's own Node; `install`, `relay` and an app's `rollback`
 take `--keep-safe-mode`.
+
+## 0.8.19
+
+- iDrive 7 with MainApp 6.4.8: the provisioning fallback copy carries the in-place install hook, at its start-up's `Promise.all([mainApp.init(),bookmarkController.init()])`, so an app install or update restarts only that app instead of the app manager.
 
 ## 0.8.18
 
