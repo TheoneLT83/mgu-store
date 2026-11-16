@@ -1,5 +1,14 @@
 # mgu-render changelog
 
+## 0.6.27
+
+robertnisipeanu/mgu-store's 0.6.22 with this repository's renderer:
+
+- An app can hold only some parts of the iDrive controller: X_GRAB's second word (1 knob, 2 press, 4 tilt; 0 or left
+  out: all three), `grab(on, 'knob')` or `grab(on, ['knob', 'press'])` in the JS client. Where the HMI's gate reads the
+  parts (X_READY caps 256 here, `info.controllerHold`), the others stay the HMI's: a tilt still leaves an app that holds the
+  knob and the press. Every other gate holds all three, as before.
+
 ## 0.6.26
 
 robertnisipeanu/mgu-store's 0.6.20 and 0.6.21 with this repository's renderer:

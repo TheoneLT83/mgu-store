@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.65
+
+robertnisipeanu/mgu-store's unreleased Store change: no change on screen; the renderer client it carries can hold
+only some parts of the iDrive controller (mgu-render 0.6.27).
+
 ## 0.9.64
 
 robertnisipeanu/mgu-store's 0.9.40 with this repository's Store: in safe mode, the drawn start screen has Leave safe
