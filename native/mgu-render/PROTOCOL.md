@@ -119,6 +119,7 @@ Client to daemon:
 | 0x4d520005 | X_PALETTE | u32 id, 768 bytes RGB: an INDEX8 pixmap's colours, for the whole picture from now on |
 | 0x4d520006 | X_BRIDGE | u32 on (embed, caps 64): 1 the HMI changes the app's page now, the app's frames show on the renderer's layer over the box for `embed_bridge_ms` (a second one holds it longer, up to twice that from when it showed); 0 hide that layer now (an HMI popup took the page's focus). README.md, "Page changes" |
 | 0x4d520007 | X_FINGERS | u32 on: every finger of a gesture in the app's claims comes as X_FINGER, with its id; TOUCH no longer comes. Off by default (caps 128; upstream numbers it 0x4d520006, caps 64, which X_BRIDGE has here) |
+| 0x4d520040 | X_BUSY | u32 on: 1 the app is slow on purpose (the Store installing): inputs that leave its picture as it is don't hand touch and the controller to the HMI, for at most 3 min after the last 1 (send it again to keep it); 0 counts them again. A renderer without it ignores it (a number upstream does not use) |
 
 Daemon to client:
 

@@ -1,5 +1,10 @@
 # mgu-render changelog
 
+## 0.6.29
+
+- An app that says it is busy (X_BUSY; the Store while it installs) keeps touch and the controller when its picture
+  is slow to change, for at most 3 minutes after it last said so.
+
 ## 0.6.28
 
 robertnisipeanu/mgu-store's 0.6.23 with this repository's renderer:

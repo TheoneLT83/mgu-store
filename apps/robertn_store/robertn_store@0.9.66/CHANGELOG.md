@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.66
+
+- While an install runs, the Store draws at most 15 frames a second, leaving the CPU to the install, and tells the
+  renderer it is busy: touches on a screen slow to change no longer hand touch and the controller to the iDrive
+  (mgu-render 0.6.29; an older renderer ignores it).
+
 ## 0.9.65
 
 robertnisipeanu/mgu-store's unreleased Store change: no change on screen; the renderer client it carries can hold

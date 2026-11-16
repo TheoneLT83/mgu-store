@@ -302,6 +302,7 @@ class Store extends OnlineApp {
             if (ended) {
                 this._drawn.retry();
             }
+            this._drawn.busy(!!st.busy);
             this._tokenAdded(st);
             this._reprobe();
             this._render();
