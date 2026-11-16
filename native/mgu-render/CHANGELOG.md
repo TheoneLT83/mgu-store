@@ -1,5 +1,12 @@
 # mgu-render changelog
 
+## 0.6.28
+
+robertnisipeanu/mgu-store's 0.6.23 with this repository's renderer:
+
+- Text stays drawn when several apps with large fonts (Chinese, Japanese, Korean) are open or opened one after another:
+  an app's glyphs are freed when it closes.
+
 ## 0.6.27
 
 robertnisipeanu/mgu-store's 0.6.22 with this repository's renderer:

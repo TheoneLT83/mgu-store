@@ -3039,10 +3039,30 @@ class Updater {
         if (!entry.path) {
             return rt.reader.artifact(entry, progress);
         }
-        // a build script needs the whole repo; packing, the component's folder
-        return rt.reader.files(entry.commit, progress, entry.script ? null : entry.path).then((files) => {
-            const job = { entry: own, files: entry.script ? files : sourcesLib.subtree(files, entry.path) };
-            const made = own.id === entry.id ? job : sourcesLib.renameApp(own, job.files, entry.id);
+        // a build script needs the whole repo, or its folder and the shared files it names; packing, the
+        // component's folder. A public repo's are read file by file (sources.js partFiles)
+        const files = (paths) => rt.reader.files(entry.commit, progress, entry.script ? null : entry.path, paths);
+        // a build's donor is looked up while its files download
+        const donorLookup = entry.script ? this.sdkDonor() : null;
+        if (donorLookup) {
+            donorLookup.catch(() => { /* the build reports it */ });
+        }
+        const firstPaths = rt.public ? sourcesLib.partPaths(entry) : null;
+        // a folder too big to hand a build whole (a stick that holds more than the repo): the app's own
+        // folder, its shared files and the script
+        const read = files(firstPaths).catch((err) => {
+            if (!(err.tooBig && entry.script && !rt.reader.network)) {
+                throw err;
+            }
+            const why = `${err.message}; the build gets ${sourcesLib.buildPaths(own).join(', ')}`;
+            console.log(`${entry.id}: ${why}`);
+            return files(sourcesLib.buildPaths(own)).then((got) => Object.assign(got, { narrowed: why }));
+        });
+        return read.then((first) => {
+            const prepare = (got) => {
+                const job = { entry: own, files: entry.script ? got : sourcesLib.subtree(got, entry.path) };
+                return own.id === entry.id ? job : sourcesLib.renameApp(own, job.files, entry.id);
+            };
             if (!entry.script) {
                 return sourcesLib.packComponent(made.entry, made.files);
             }
@@ -3055,12 +3075,30 @@ class Updater {
                     this.checkUids();
                 }
             };
-            return this.sdkDonor()
-                // a network build's proxy runs as the fetch uid: once the uplink lets it out
-                .then((donor) => new Promise((resolve) => setTimeout(resolve, Math.max(0, (this.fetcher.notBefore || 0) - Date.now())))
-                    .then(() => donor))
-                .then((donor) => runBuild({ conf: this.conf, entry: made.entry, files: made.files, donor: donor.path, sdk: donor.module,
-                    lease: readLease(this.conf), log: (l) => console.log(l) }))
+            const build = (got, lookup) => Promise.resolve().then(() => prepare(got)).then((made) => lookup()
+                    // a network build's proxy runs as the fetch uid: once the uplink lets it out
+                    .then((donor) => new Promise((resolve) => setTimeout(resolve, Math.max(0, (this.fetcher.notBefore || 0) - Date.now())))
+                        .then(() => donor))
+                    .then((donor) => runBuild({ conf: this.conf, entry: made.entry, files: made.files, donor: donor.path, sdk: donor.module,
+                        lease: readLease(this.conf), log: (l) => console.log(l) })));
+            // a build that fails with only the files it names is run again with the whole repo
+            return build(first, () => donorLookup)
+                .catch((err) => {
+                    if (first.narrowed) {
+                        err.message = `${err.message} (${first.narrowed})`;
+                    }
+                    if (!first.partial) {
+                        throw err;
+                    }
+                    console.log(`${entry.id}: the build failed with its own and its shared files (${err.message}); again with the whole repo`);
+                    Object.assign(this.busy, { phase: 'download', progress: 0, total: null });
+                    this.changed();
+                    return files(null).then((whole) => {
+                        this.busy.phase = 'build';
+                        this.changed();
+                        return build(whole, () => this.sdkDonor());
+                    });
+                })
                 .then((bytes) => {
                     built();
                     return bytes;

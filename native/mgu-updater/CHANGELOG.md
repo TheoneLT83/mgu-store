@@ -1,5 +1,12 @@
 # Updater changelog
 
+## 0.8.50
+
+robertnisipeanu/mgu-store's 0.8.45 and 0.8.46 with this repository's 0.8.49: an app built by its repository's script
+has its SDK donor looked up while its files download; from a public repository it reads only the app's folder, its
+shared files and the script (the whole repository when a build fails with only those); from a USB stick that holds
+more than the checkout, the same.
+
 ## 0.8.49
 
 Requires deploy tool 0.8.23 (installed first): with 0.8.21 and 0.8.22 the deploy tool's status took longer than the
@@ -38,6 +45,10 @@ robertnisipeanu/mgu-store's 0.8.42 with this repository's updater:
 ## 0.8.42
 
 - The phone page's logs have the deploy tool's verify unit (`mgu-deploy-verify`) too (robertnisipeanu/mgu-store's 0.8.41).
+
+## 0.8.46
+
+- An app built by its repository's script installs from a stick that holds more than the checkout: when the stick holds more than 200 MB or 20000 files, the build gets the app's folder, its shared files and the script. A folder too big to read says which folder, and whether bytes or files are over the limit.
 
 ## 0.8.45
 

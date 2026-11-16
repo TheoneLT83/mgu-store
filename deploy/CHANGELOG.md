@@ -1,5 +1,11 @@
 # Deploy tool changelog
 
+## 0.8.24
+
+robertnisipeanu/mgu-store's 0.8.19 and 0.8.20 with this repository's 0.8.23: iDrive 8's appletId scan passes over an
+installed app whose `rhmiData/application.json` is empty (or does not parse) instead of failing the install; iDrive 7's
+provisioning fallback copy carries the in-place install hook.
+
 ## 0.8.23
 
 `status --json` answers in its usual time again: 0.8.21 read every stock package on the unit (preinstalled_apps) for
@@ -28,6 +34,10 @@ robertnisipeanu/mgu-store's 0.8.17 and 0.8.18 with this repository's 0.8.18: `st
 tools' units in one run per question and reads the process list once (a faster status after each install); a source
 package's modules are checked to compile inside the deploy tool's own Node; `install`, `relay` and an app's `rollback`
 take `--keep-safe-mode`.
+
+## 0.8.20
+
+- iDrive 8: when an install collects the appletIds in use, an installed app whose `rhmiData/application.json` is empty is passed over with a warning naming the file (it declares no appletId), and one that does not parse is kept clear of each `"appletId": <n>` in its text, warning. Neither fails the install with "cannot read … for the appletIds in use".
 
 ## 0.8.19
 
