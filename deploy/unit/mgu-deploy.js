@@ -55,7 +55,7 @@ var os = require('os');
 process.umask(0o022);
 
 /* deploy/component.json's version; the release sets both. */
-var VERSION = '0.8.22';
+var VERSION = '0.8.23';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -5649,24 +5649,30 @@ function tgzAppletId(file) {
  * javascript/build.json sdkModulesFrom, "<name>@<version>.tgz:..."), when
  * this unit no longer has it: a firmware update brought another version,
  * which the app built with the old one does not start against. null when
- * the donor is here, or the package names none by its package file. */
-var DONOR_FILES;
+ * the donor is here, or the package names none by its package file. Cheap
+ * enough for every status: the donor is looked for by its file name among
+ * the stock packages (preinstalled_apps), and the package's donor name is
+ * read once and kept beside it (<kept>.sdk, redone when the package is
+ * newer), as status --json must answer the updater within its wait. */
 function keptSdkGone(file) {
-    var from = null;
+    var memo = file + '.sdk', from;
     try {
-        linker().untar(fs.readFileSync(file)).forEach(function (m) {
-            if (/^(\.\/)?(package\/)?javascript\/build\.json$/.test(m.name)) {
-                from = ((parseJsonText(m.data.toString('utf8')) || {}).bundle || {}).sdkModulesFrom || null;
-            }
-        });
-    } catch (e) { return null; }
-    var name = typeof from === 'string' && /^([^:\/]+\.tgz):/.exec(from);
-    if (!name) return null;
-    if (DONOR_FILES === undefined) {
-        try { DONOR_FILES = unitDonors().map(function (f) { return path.basename(f); }); }
-        catch (e) { DONOR_FILES = null; }
+        if (fs.statSync(memo).mtimeMs >= fs.statSync(file).mtimeMs) from = fs.readFileSync(memo, 'utf8').trim();
+    } catch (e) { /* not read yet */ }
+    if (from === undefined) {
+        from = '';
+        try {
+            linker().untar(fs.readFileSync(file)).forEach(function (m) {
+                if (/^(\.\/)?(package\/)?javascript\/build\.json$/.test(m.name)) {
+                    from = String(((parseJsonText(m.data.toString('utf8')) || {}).bundle || {}).sdkModulesFrom || '');
+                }
+            });
+        } catch (e) { return null; }
+        try { fs.writeFileSync(memo, from + '\n'); } catch (e) { /* read again next time */ }
     }
-    return DONOR_FILES && DONOR_FILES.indexOf(name[1]) < 0 ? name[1] : null;
+    var name = /^([^:\/]+\.tgz):/.exec(from);
+    if (!name) return null;
+    return fs.existsSync(path.join(preinstalledDir(), name[1])) ? null : name[1];
 }
 /* The files below dir, symlinks followed (depth-bounded against loops). */
 function filesBelow(dir, depth) {

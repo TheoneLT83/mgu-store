@@ -459,7 +459,8 @@ function toolProblem(conf, id) {
 /* The deploy tool's status --json, or null when it does not answer with it. */
 function deployStatus(conf) {
     return new Promise((resolve) => {
-        cp.execFile(conf.deploy, ['status', '--json'], { timeout: 60000, maxBuffer: 1 << 20 }, (err, stdout) => {
+        // (a slow unit's status, an app's package read once, takes a while: as the commit of an update waits on it)
+        cp.execFile(conf.deploy, ['status', '--json'], { timeout: 120000, maxBuffer: 1 << 20 }, (err, stdout) => {
             try {
                 resolve(err ? null : JSON.parse(stdout));
             } catch (e) {

@@ -1,5 +1,11 @@
 # Updater changelog
 
+## 0.8.49
+
+Requires deploy tool 0.8.23 (installed first): with 0.8.21 and 0.8.22 the deploy tool's status took longer than the
+check of an updated updater waits, and 0.8.48 was not kept ("the deploy tool does not answer it"). The deploy tool's
+status is given 2 minutes.
+
 ## 0.8.48
 
 - Needs the deploy tool's 0.8.21, so a kept package built with an oap-sdk the firmware update took is not installed

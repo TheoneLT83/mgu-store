@@ -1,5 +1,12 @@
 # Deploy tool changelog
 
+## 0.8.23
+
+`status --json` answers in its usual time again: 0.8.21 read every stock package on the unit (preinstalled_apps) for
+each status, and a stale app's kept package whole, which took longer than the updater waits for an updated updater's
+check, so that update was not kept ("the deploy tool does not answer it"). The oap-sdk donor is now looked for by its
+file name, and a kept package's donor name is read once and kept beside it.
+
 ## 0.8.22
 
 robertnisipeanu/mgu-store's 0.8.19 with this repository's 0.8.21: iDrive 7 with MainApp 6.4.8, the provisioning
