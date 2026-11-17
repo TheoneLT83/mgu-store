@@ -1,5 +1,10 @@
 # Deploy tool changelog
 
+## 0.8.26
+
+robertnisipeanu/mgu-store's 0.8.22 with this repository's 0.8.25: a lost Store is installed again also while safe mode
+is on (it has the Leave safe mode button), and safe mode stays on; under an updater before 0.8.47 it waits.
+
 ## 0.8.25
 
 robertnisipeanu/mgu-store's 0.8.21 with this repository's 0.8.24: an app change never takes another app away (one the
@@ -41,6 +46,10 @@ robertnisipeanu/mgu-store's 0.8.17 and 0.8.18 with this repository's 0.8.18: `st
 tools' units in one run per question and reads the process list once (a faster status after each install); a source
 package's modules are checked to compile inside the deploy tool's own Node; `install`, `relay` and an app's `rollback`
 take `--keep-safe-mode`.
+
+## 0.8.22
+
+- While safe mode is on, a lost Store is still installed again once (`install --repair`), and safe mode stays on: the Store has the Leave safe mode button. Every other lost app stays held, and so does the Store under an updater before 0.8.47, whose repair would leave safe mode.
 
 ## 0.8.21
 

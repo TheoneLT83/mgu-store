@@ -55,7 +55,7 @@ var os = require('os');
 process.umask(0o022);
 
 /* deploy/component.json's version; the release sets both. */
-var VERSION = '0.8.25';
+var VERSION = '0.8.26';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -8742,15 +8742,24 @@ function toolPrevious(t) {
  * removing one), and none while the app manager has not created its data
  * folder (after a factory reset). */
 function lostApps(state) { return lostReport(state).lost; }
+var STORE_APP = 'robertn_store';
+/* Whether the installed updater repairs with install --repair
+ * --keep-safe-mode (0.8.47 and later): one before it would leave safe mode. */
+function repairKeepsSafeMode() {
+    var u = readJsonOrNull(path.join(CFG.varOpt, 'mgu-updater', 'current', 'component.json'));
+    var cmp = u && semverCmp(u.version, '0.8.47');
+    return cmp === 0 || cmp === 1;
+}
 /* { lost, held }: lost apps are installed again by the updater; held ones
  * are not, each with why: one the repair installed once already (or
  * failed), one whose rollback did not install (state.json held, until the
- * user installs it, or the app manager has it registered at a later start), and every one while safe mode is on. While the MainApp
+ * user installs it, or the app manager has it registered at a later start), and every one while safe mode is on, but
+ * the Store (where safe mode is left) under an updater whose repair keeps safe mode on. While the MainApp
  * guard is off the updater installs none (mainapp_guard).
  * An app the user removes has no record from the start of its removal. Lost: an app rollback cut short between its
  * uninstall and its install (its target, the package as recorded), every recorded app with its kept package, and
  * the Store, which never stays removed while a package of it is kept (its recorded version's, else the newest;
- * never held but by safe mode). */
+ * repaired in safe mode too while the updater's repair keeps safe mode on; held after one repair as every app is). */
 function lostReport(state) {
     var lock = lockState(), out = { lost: [], held: [] };
     if ((!lock.free && lock.live) || !mgrDataReady()) return out;
@@ -8778,9 +8787,9 @@ function lostReport(state) {
             if (fv) all.push({ id: FIRST_APP, version: fv, package: keptFile(FIRST_APP, fv) });
         }
     }
-    var safe = readSafeMode(), held = state.held || {};
+    var safe = readSafeMode(), held = state.held || {}, storeRepair = safe && repairKeepsSafeMode();
     all.forEach(function (a) {
-        var why = safe ? 'safe mode is on' : held[a.id] && a.id !== FIRST_APP ? held[a.id].why : null;
+        var why = safe && !(a.id === STORE_APP && storeRepair) ? 'safe mode is on' : held[a.id] ? held[a.id].why : null;
         if (why) out.held.push(Object.assign({}, a, { why: why })); else out.lost.push(a);
     });
     return out;

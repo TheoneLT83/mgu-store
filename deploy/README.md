@@ -507,7 +507,9 @@ first. `restore` needs `--yes`, or `YES` typed at a terminal.
 `--repair` (the updater's) installs again an app `status` lists under
 `lost_apps`, from its kept package, once: after that, or when it fails,
 the app is listed under `lost_held` with the reason until it is installed
-from the Store.
+from the Store. While safe mode is on, every lost app but the Store
+(which has **Leave safe mode**) is held; the Store too under an updater before
+0.8.47.
 
 ### Layout
 
