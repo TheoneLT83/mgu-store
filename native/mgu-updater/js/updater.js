@@ -3064,6 +3064,7 @@ class Updater {
                 return own.id === entry.id ? job : sourcesLib.renameApp(own, job.files, entry.id);
             };
             if (!entry.script) {
+                const made = prepare(first);
                 return sourcesLib.packComponent(made.entry, made.files);
             }
             this.busy.phase = 'build';

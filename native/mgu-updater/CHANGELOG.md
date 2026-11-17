@@ -1,5 +1,10 @@
 # Updater changelog
 
+## 0.8.52
+
+A component packed from a repo's files (no build script), such as Controller gate or the GPU renderer, installs:
+it no longer fails with "made is not defined".
+
 ## 0.8.51
 
 robertnisipeanu/mgu-store's 0.8.47 with this repository's 0.8.50: an app installed again from its kept package goes
