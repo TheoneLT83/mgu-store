@@ -1,5 +1,12 @@
 # Deploy tool changelog
 
+## 0.8.25
+
+robertnisipeanu/mgu-store's 0.8.21 with this repository's 0.8.24: an app change never takes another app away (one the
+app manager dropped gets its entry back), a lost app is installed again once and then held, an app asking for SOME/IP
+the unit lacks after this repository cuts its proxies to fit is refused before anything changes. The Store is never
+held but by safe mode, and a rollback cut short is still finished.
+
 ## 0.8.24
 
 robertnisipeanu/mgu-store's 0.8.19 and 0.8.20 with this repository's 0.8.23: iDrive 8's appletId scan passes over an
@@ -34,6 +41,13 @@ robertnisipeanu/mgu-store's 0.8.17 and 0.8.18 with this repository's 0.8.18: `st
 tools' units in one run per question and reads the process list once (a faster status after each install); a source
 package's modules are checked to compile inside the deploy tool's own Node; `install`, `relay` and an app's `rollback`
 take `--keep-safe-mode`.
+
+## 0.8.21
+
+- iDrive 7: an app whose SOME/IP manifest asks for an interface instance, method, broadcast or field the head unit does not have (or a field access it lacks a getter, setter or notifier for) is refused before anything changes, with what is missing named. The app manager would reject it partway through its install or update.
+- iDrive 7: after an app's install, update, rollback or removal, every other app that was registered is checked. One the app manager dropped meanwhile gets its registry entry back and its listing for the fallback, and the app manager restarts once to load it; one whose files changed is left as it is.
+- A removal drops the app's record before anything else, so a removal cut short never counts the app as lost.
+- `install --repair` installs a lost app again from its kept package and holds it from then on: `status` lists it under `lost_held` (and "not installed again automatically") instead of `lost_apps`, with why, until the user installs it from the Store, or the app manager has it registered at a later start. A repair that fails, a reinstall (rollback or update after a firmware update) that leaves the app uninstalled, and every lost app while safe mode is on are held too.
 
 ## 0.8.20
 

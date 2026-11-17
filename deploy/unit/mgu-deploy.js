@@ -55,7 +55,7 @@ var os = require('os');
 process.umask(0o022);
 
 /* deploy/component.json's version; the release sets both. */
-var VERSION = '0.8.24';
+var VERSION = '0.8.25';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -792,6 +792,7 @@ function recordApp(id, version, file) {
 /* An app removed for good: no record, no kept package, no data folder set aside. */
 function forgetApp(state, id) {
     delete state.apps[id];
+    if (state.held) delete state.held[id];
     forgetStash(state, id);
     rmrf(keptDir(id));
 }
@@ -862,6 +863,19 @@ function syncMgrHome() {
 function syncStashes() {
     if (!Object.keys(loadState().data_stash || {}).length) return;
     statusStep('data set aside', function () { var s = loadState(); if (settleStashes(s)) saveState(s); });
+}
+/* status, as root: an app held back from the repair (held) that the app
+ * manager has registered at a later start than the hold is no longer held. */
+function syncHeld() {
+    var held = loadState().held || {};
+    if (!Object.keys(held).some(function (id) { return held[id].boot !== bootId() && installedApp(id); })) return;
+    statusStep('held apps', function () {
+        var s = loadState();
+        Object.keys(s.held || {}).forEach(function (id) {
+            if (s.held[id].boot !== bootId() && installedApp(id)) delete s.held[id];
+        });
+        saveState(s);
+    });
 }
 /* status --read-only: its steps change nothing. */
 var statusReadOnly = false;
@@ -2019,7 +2033,7 @@ function acquireLock() {
 /* Files a killed run left: its staging, rootfs-window and temp files (named
  * after its pid, gone now), its in-place request, and a deploy/hu kit
  * folder a day old. */
-var RUN_TEMP = /^(?:stage-|window-|main\.fallback-|CertificateManager\.tmp-|app-home-|lock\.|\.mgu-deploy-probe-)(\d+)(?:\.sh|\.js)?$|^write-(\d+)-\d+$|\.(?:tmp|partial|old)-(\d+)$/;
+var RUN_TEMP = /^(?:stage-|preflight-|window-|main\.fallback-|CertificateManager\.tmp-|app-home-|lock\.|\.mgu-deploy-probe-)(\d+)(?:\.sh|\.js)?$|^write-(\d+)-\d+$|\.(?:tmp|partial|old)-(\d+)$/;
 function pidAlive(pid) {
     if (pid === process.pid) return true;
     try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
@@ -2746,7 +2760,7 @@ function validateSource(file, dir) {
 var UNIT_INTERFACES, UNIT_CATALOG;
 function unitInterfaces() {
     if (UNIT_INTERFACES !== undefined) return UNIT_INTERFACES;
-    var db = isId8() ? null : readJsonOrNull(path.join(CFG.etc, 'oap', 'someip', 'someip-interfaces.json'));
+    var db = unitIfDb();
     var ok = db && db.interfaces && typeof db.interfaces === 'object' && !Array.isArray(db.interfaces);
     UNIT_INTERFACES = ok ? Object.keys(db.interfaces) : null;
     // what each interface holds (its fields, methods, events) and its instances: a proxy's request is cut to them
@@ -2757,6 +2771,89 @@ function unitInterfaces() {
 function unitCatalog() {
     unitInterfaces();
     return UNIT_CATALOG;
+}
+/* The unit's interface database (iDrive 7), read once. */
+var UNIT_IF_DB;
+function unitIfDb() {
+    if (UNIT_IF_DB === undefined) UNIT_IF_DB = isId8() ? null : readJsonOrNull(path.join(CFG.etc, 'oap', 'someip', 'someip-interfaces.json'));
+    return UNIT_IF_DB;
+}
+function someipDb() {
+    var db = unitIfDb();
+    return db && db.interfaces && typeof db.interfaces === 'object' && db.instanceIDs && typeof db.instanceIDs === 'object' ? db : null;
+}
+/* The SOME/IP manifest of the package in pkgDir checked as MainApp's
+ * installer checks it against the same database (its AclGenerator): every
+ * interface, its instance map, each instance name with a non-zero id, and
+ * every method, broadcast and field asked for, with a getter, setter or
+ * notifier for each r, w or s. The problems found, in words; none on
+ * iDrive 8, without the database, or without a manifest. */
+function someipProblems(pkgDir) {
+    var db = someipDb(), r = db ? linker().readSomeipManifest(pkgDir) : null, out = [];
+    if (!r) return out;
+    var m = r.manifest, isMap = function (v) { return !!v && typeof v === 'object' && !Array.isArray(v); };
+    var list = function (v) { return Array.isArray(v) ? v : [v]; };
+    function members(ifData, key, depth) {
+        var base = ifData.extends && depth < 20 ? db.interfaces[ifData.extends] : null;
+        if (ifData.extends && !base) throw new Error('its base interface ' + ifData.extends + ' is not on this unit');
+        return Object.assign({}, base ? members(base, key, depth + 1) : {}, ifData[key]);
+    }
+    function instances(id, names) {
+        var map = db.instanceIDs[id];
+        if (!isMap(map)) { out.push(id + ': no instances on this unit'); return; }
+        if (names === '*' || names === undefined) return;
+        list(names).forEach(function (n) {
+            /* MainApp puts the app's uid there, which the map has */
+            if (!map[n] && !/\$\{userId\}/.test(n)) out.push(id + ': instance "' + n + '" is not on this unit (it has ' + Object.keys(map).join(', ') + ')');
+        });
+    }
+    function names(id, ifData, want, key, what) {
+        if (want === undefined || want === '*' || !Object.keys(want).length) return;
+        var have = members(ifData, key, 0);
+        list(want).forEach(function (n) { if (!have[n]) out.push(id + ': ' + what + ' "' + n + '" is not on this unit'); });
+    }
+    function fields(id, ifData, want) {
+        if (want === undefined || want === '*' || !Object.keys(want).length) return;
+        var have = members(ifData, 'fields', 0);
+        Object.keys(want).forEach(function (n) {
+            var f = have[n], p = String(want[n]);
+            if (!f) { out.push(id + ': field "' + n + '" is not on this unit'); return; }
+            if (p === '*') return;
+            [['r', 'getter', 'read'], ['w', 'setter', 'written'], ['s', 'notifier', 'subscribed to']].forEach(function (k) {
+                if (p.indexOf(k[0]) >= 0 && !f[k[1]]) out.push(id + ': field "' + n + '" cannot be ' + k[2] + ' on this unit');
+            });
+        });
+    }
+    function each(key, fn) {
+        if (!isMap(m[key])) return;
+        Object.keys(m[key]).forEach(function (id) {
+            var ifData = db.interfaces[id];
+            if (!ifData) { out.push(id + ': not on this unit'); return; }
+            try { fn(id, ifData, m[key][id]); } catch (e) { out.push(id + ': ' + e.message); }
+        });
+    }
+    each('services', function (id, ifData, cfg) { instances(id, cfg === '*' ? '*' : (cfg || {}).instances); });
+    each('proxies', function (id, ifData, cfg) {
+        (cfg === '*' ? [] : list(cfg)).forEach(function (c) {
+            c = c || {};
+            instances(id, c.instances);
+            names(id, ifData, c.methods, 'methods', 'method');
+            names(id, ifData, c.broadcasts, 'events', 'broadcast');
+            fields(id, ifData, c.attributes);
+        });
+        if (cfg === '*') instances(id, '*');
+    });
+    return out;
+}
+/* Refused, with nothing changed, when MainApp's installer would reject the
+ * package's SOME/IP manifest. */
+function checkSomeip(a) {
+    var problems = a.pkgDir ? someipProblems(a.pkgDir) : [];
+    if (problems.length) {
+        throw refuse(a.id + ' ' + a.version + ' cannot be installed on this head unit: its SOME/IP manifest asks for what the unit ' +
+            'does not have (' + problems.slice(0, 5).join('; ') + (problems.length > 5 ? '; ' + (problems.length - 5) + ' more' : '') + ')');
+    }
+    return a;
 }
 /* The donor bundles on this unit, in search order (oap_link.js). */
 function unitDonors() {
@@ -5083,6 +5180,7 @@ function settleStashes(state) {
  * installed, else recorded (data_stash) for that install. */
 function reinstallApp(app, file, again, version) {
     var id = app.id;
+    preflightApp(file);
     /* beside the homes: the same filesystem as the data folder */
     var data = path.join(appHome(app.uid), 'data'), stash = path.join(CFG.oap, '.mgu-deploy-data-' + id + '-' + process.pid), n = 1;
     /* a name of its own beside the folders kept from earlier runs */
@@ -5133,6 +5231,12 @@ function reinstallApp(app, file, again, version) {
                 try { cmdInstall({ artifacts: [again], positional: [] }); }
                 catch (e2) { process.stderr.write(id + ' ' + app.version + ' did not install either: ' + e2.message + '\n'); }
             }
+            if (!installedApp(id)) {
+                var s = loadState();
+                holdApp(s, id, target.version, 'its reinstall did not install (' + oneLine(e.message) + '); not installed again ' +
+                    'automatically until it is installed from the Store');
+                saveState(s);
+            }
         }
         putBack();
         if (installedApp(id)) unmarkReinstall(id);
@@ -5160,6 +5264,19 @@ function dropStashRecord(id, stash) {
     if (!s.data_stash || !s.data_stash[id]) return;
     if (list.length) s.data_stash[id] = list; else delete s.data_stash[id];
     saveState(s);
+}
+
+/* The package at file as an install would take it (read, prepared, its
+ * SOME/IP manifest checked), in a folder of its own; refused before
+ * anything changes when it would not install. */
+function preflightApp(file) {
+    var dir = path.join(DEPLOY_DIR, 'preflight-' + process.pid);
+    rmrf(dir);
+    mkdirp(dir);
+    try {
+        var a = validateArtifact(file, dir);
+        if (a.kind === 'app' && !isId8()) checkSomeip(prepareApp(a, dir));
+    } finally { rmrf(dir); }
 }
 
 /* ---- uninstall -------------------------------------------------------------- */
@@ -7304,7 +7421,7 @@ function collectStatusNow(state) {
             tile_provisioned: tile.provisioned, tile_fallback: tile.fallback, tile_visible: tile.visible, tile_withheld: tile.withheld,
             previous: isId8() ? null : (keptPrevious(app.id, app.version) || {}).version || null, stale: stale, kept_package: kept });
     });
-    var backupCount = 0;
+    var backupCount = 0, lost = lostReport(state);
     if (fs.existsSync(BACKUPS_DIR)) backupCount = fs.readdirSync(BACKUPS_DIR).length;
     var unit = unitInfo();
     return { version: VERSION, unit: { hmi: unit.hmi, firmware: unit.firmware }, components: components, pending_reboot: pending,
@@ -7321,7 +7438,8 @@ function collectStatusNow(state) {
         idrive7: { apps: i7Apps(state) },
         mainapp_guard: guardWhy(),
         last_bounce_at: lastBounceAt() || null,
-        lost_apps: lostApps(state),
+        lost_apps: lost.lost,
+        lost_held: lost.held,
         hmi_parts: id7PartsReport(),
         stock_backup: fs.existsSync(path.join(BACKUPS_DIR, 'stock')) };
 }
@@ -7381,6 +7499,7 @@ function cmdStatus(args, crashList, live, limits, listing) {
     if (s.mainapp_guard) say('no app changes until the next start of the head unit: ' + s.mainapp_guard);
     if (s.safe_mode) say('safe mode: on' + (s.safe_mode.at ? ' since ' + s.safe_mode.at : '') + "; our tools' units do not start");
     s.lost_apps.forEach(function (a) { say('not registered: ' + a.id + ' ' + a.version + ' (its package is at ' + a.package + ')'); });
+    s.lost_held.forEach(function (a) { say('not registered, not installed again automatically: ' + a.id + ' ' + a.version + ' (' + a.why + ')'); });
     s.hmi_parts.forEach(function (a) { say('iDrive 7 HMI files not in place: ' + a.id + ' ' + a.version + ' (' + a.files.join(', ') + ')'); });
     s.pending_reboot.forEach(function (p) { say('pending reboot: ' + p.id + ' - ' + p.reason); });
     if (s.last_apply) {
@@ -7691,8 +7810,28 @@ var outerInstall = null;
  * outermost one settles it; one inside it (an app installed afresh) counts
  * towards it. */
 function cmdInstall(args) {
-    if (outerInstall) return installAll(args);
-    return asOuterInstall(function () { return installAll(args); }, function (code) { return code === 0; }, args.keepSafeMode);
+    try {
+        if (outerInstall) return installAll(args);
+        return asOuterInstall(function () { return installAll(args); }, function (code) { return code === 0; }, args.keepSafeMode);
+    } catch (e) {
+        if (args.repair && !e.notLost) holdFailedRepair(args.artifacts, e);
+        throw e;
+    }
+}
+/* A repair that failed anywhere, its package unreadable included: each
+ * lost app it was for (named <id>@<version>.tgz) is held. */
+function holdFailedRepair(files, e) {
+    try {
+        var s = loadState(), held = false;
+        files.forEach(function (f) {
+            var m = /^(.+)@(\d+\.\d+\.\d+)\.tgz$/.exec(path.basename(f));
+            if (!m || !s.apps[m[1]] || installedApp(m[1])) return;
+            holdApp(s, m[1], m[2], 'installing it again automatically failed (' + oneLine(e.message) + '); ' +
+                'not tried again until it is installed from the Store');
+            held = true;
+        });
+        if (held) saveState(s);
+    } catch (e2) { warn('the failed repair is not recorded: ' + e2.message); }
 }
 /* run() as the outermost install, which settles safe mode: left when
  * through(its result), nothing in it fell short and keep is not set. */
@@ -7829,7 +7968,7 @@ function installRun(args, afresh) {
         }
         var work = validated.filter(function (a) {
             return a.kind !== 'app' || ['current', 'older'].indexOf(decisions[a.id].action) < 0;
-        }).map(function (a) { return a.kind !== 'app' ? a : id8 ? id8Package(a, stage) : prepareApp(a, stage); });
+        }).map(function (a) { return a.kind !== 'app' ? a : id8 ? id8Package(a, stage) : checkSomeip(prepareApp(a, stage)); });
         validated.forEach(function (a) {
             if (a.kind === 'app' && decisions[a.id].action === 'older') {
                 say(a.id + ' ' + a.version + ' skipped; ' + decisions[a.id].existing.version + ' is installed');
@@ -7840,6 +7979,22 @@ function installRun(args, afresh) {
                 say(a.id + ' ' + a.version + ' already installed; nothing to change');
             }
         });
+        if (args.repair) {
+            var lostNow = lostApps(state);
+            validated.forEach(function (a) {
+                if (a.kind === 'app' && !lostNow.some(function (l) { return l.id === a.id && l.version === a.version; })) {
+                    throw Object.assign(refuse(a.id + ' ' + a.version + ' is not an app lost from the app manager: nothing to repair'),
+                        { notLost: true });
+                }
+            });
+        }
+        work.forEach(function (a) {
+            if (a.kind !== 'app') return;
+            if (args.repair) holdApp(state, a.id, a.version, 'installed again automatically once (' + new Date().toISOString() + '); ' +
+                'not again until it is installed from the Store');
+            else if (state.held) delete state.held[a.id];
+        });
+        if (args.repair) saveState(state);
         var apps = work.some(function (a) { return a.kind === 'app'; }), migrated = id8;
         if (apps || Object.keys(elsewhere).length) guardRefuse('an app install');
         if (apps && !id8) preflightFallback();
@@ -7878,6 +8033,7 @@ function installRun(args, afresh) {
                 }
             }
             var tx = {}, backup = takeSnapshot('install', artifactTouched(a));
+            var others = a.kind === 'app' && !id8 ? registeredApps(a.id) : null;
             attempted = true;
             if (a.kind === 'app' && !id8) {
                 beginAppTx(tx, a, decisions[a.id].existing);
@@ -7901,6 +8057,8 @@ function installRun(args, afresh) {
                     }, function () { installApp(a, state, decisions[a.id]); });
                     keepPackage(a);
                     takeNewestStash(state, a.id);
+                    onGuardStop(function () { endAppRecord(state, a.id); saveState(state); },
+                        function () { keepOthers(others, 'the install of ' + a.id); });
                 }
                 syncDropIns();
                 /* a tool's earlier current folder stays until here, for a rollback */
@@ -7915,6 +8073,13 @@ function installRun(args, afresh) {
                     else if (id8) rollbackAppId8(backup, state, tx);
                     else rollbackApp(a, tx, backup, state);
                     endAppRecord(state, a.id);
+                    if (a.kind === 'app' && !id8) {
+                        onGuardStop(function () { saveState(state); }, function () { keepOthers(others, 'the failed install of ' + a.id); });
+                    }
+                    if (a.kind === 'app' && !id8 && decisions[a.id].existing && !installedApp(a.id)) {
+                        warn(a.id + ' ' + decisions[a.id].existing.version + ' is not registered after the rollback; ' +
+                            'the updater installs it again from its kept package');
+                    }
                     if (tx.saved) rmrf(tx.saved.dir);
                 } catch (e2) { process.stderr.write('rollback failed: ' + e2.message + '\n'); }
                 /* a tool laid again from its copy: the rest goes on */
@@ -8053,6 +8218,58 @@ function rollbackApp(a, tx, backup, state) {
     }
     say('the app-privacy patch stays applied (app-privacy remains installed)');
 }
+/* ---- the other apps through an app change (iDrive 7) ---------------------- */
+/* Every app the manager has registered but except, with its registry entry
+ * as it is now and whether custom_apps.json lists it, for keepOthers. */
+function registeredApps(except) {
+    var custom = readCustomApps();
+    return installedApps().filter(function (a) { return a.id !== except; }).map(function (a) {
+        var p = appEntryFile(a.id), st = fs.lstatSync(p);
+        return { id: a.id, uid: a.uid, version: a.version, pkg: a.pkg, listed: Object.prototype.hasOwnProperty.call(custom, a.id),
+            text: fs.readFileSync(p), mode: st.mode & 0o7777, owner: st.uid, group: st.gid };
+    });
+}
+/* After what (an app's install, update, rollback or removal): every app of
+ * before that the manager no longer has registered, with its entry gone and
+ * its home as it was (the same version's source), gets that entry back, and
+ * one no longer listed is listed again; then the manager restarts once to
+ * load them. An entry that is there but reads otherwise, or a home that
+ * changed, stays as it is: the updater's repair takes up an app of ours
+ * that stays unregistered. Never throws: what it could not do is said. */
+function keepOthers(before, what) {
+    if (!before || !before.length) return;
+    try {
+        var back = [], relisted = [];
+        before.forEach(function (b) {
+            if (installedApp(b.id)) {
+                if (b.listed && !Object.prototype.hasOwnProperty.call(readCustomApps(), b.id) &&
+                    listApp(b, readJsonOrNull(appEntryFile(b.id)))) relisted.push(b.id);
+                return;
+            }
+            var pkg = readJsonOrNull(path.join(appHome(b.uid), 'source', 'package.json'));
+            if (lstatOrNull(appEntryFile(b.id)) || !pkg || pkg.name !== b.id || pkg.version !== b.version) {
+                warn(b.id + ' ' + b.version + ' is not registered after ' + what + ', and its files are not as they were: left as it is');
+                return;
+            }
+            /* whole, and only where the manager has not written one meanwhile */
+            var tmp = appEntryFile(b.id) + '.mgu-deploy-' + process.pid;
+            try {
+                fs.writeFileSync(tmp, b.text, { mode: b.mode });
+                fs.chmodSync(tmp, b.mode);
+                chownMaybe(tmp, b.owner, b.group);
+                fs.linkSync(tmp, appEntryFile(b.id));
+            } catch (e) { if (e.code !== 'EEXIST') throw e; return; } finally { rmrf(tmp); }
+            if (b.listed && !Object.prototype.hasOwnProperty.call(readCustomApps(), b.id)) listApp(b, readJsonOrNull(appEntryFile(b.id)));
+            back.push(b.id);
+        });
+        if (back.length) say('the app manager dropped ' + back.join(', ') + ' during ' + what + ': their registry entries are back');
+        if (relisted.length) say(relisted.join(', ') + ' listed again for the fallback after ' + what);
+        if ((back.length || relisted.length) && managerSoon()) {
+            say('restarting the app manager so it loads them');
+            bounceManager();
+        }
+    } catch (e) { warn('the other apps were not checked after ' + what + ': ' + e.message); }
+}
 /* Our apps: registry entries whose source is marked mguLocalOnly. An
  * entry or source that cannot be read counts as ours. */
 function ourApps() {
@@ -8089,8 +8306,16 @@ function cmdUninstall(args) {
         migrateRetiredFirst(state);
     }
     var backup = takeSnapshot('uninstall', touchedForUninstall(id));
+    var others = !isTool && !isId8() ? registeredApps(id) : null;
+    /* the user's removal: no record from here on, so nothing installs it again */
+    if (!isTool && !args.keepPackages && (state.apps[id] || (state.held || {})[id])) {
+        delete state.apps[id];
+        if (state.held) delete state.held[id];
+        saveState(state);
+    }
     try {
         if (isTool) { uninstallTool(id, state); dropVerify(id); } else uninstallApp(id, state, args.keepPackages);
+        onGuardStop(function () { saveState(state); }, function () { keepOthers(others, 'the removal of ' + id); });
         if (!args.keepPackages) { rmrf(keptDir(id)); forgetStash(state, id); }
         if (isTool && state.tools) delete state.tools[id];
         if (isTool && state.deactivated) delete state.deactivated[id];
@@ -8106,6 +8331,9 @@ function cmdUninstall(args) {
         /* the deactivates that ran stay recorded, so none runs twice */
         try {
             var back = loadState();
+            /* removed in part: it stays removed */
+            if (!isTool && !args.keepPackages && !installedApp(id)) forgetApp(back, id);
+            onGuardStop(function () { saveState(back); }, function () { keepOthers(others, 'the failed removal of ' + id); });
             back.deactivated = state.deactivated;
             back.deactivate_owed = state.deactivate_owed;
             if (deactivated) reactivate(id, deactivated, back);
@@ -8513,34 +8741,54 @@ function toolPrevious(t) {
  * unprovisionedId8. None while another run holds the lock (it may be
  * removing one), and none while the app manager has not created its data
  * folder (after a factory reset). */
-function lostApps(state) {
-    var lock = lockState();
-    if ((!lock.free && lock.live) || !mgrDataReady()) return [];
-    if (isId8()) return unprovisionedId8();
-    var out = [], has = function (id) { return out.some(function (l) { return l.id === id; }); };
-    /* an app rollback cut short between its uninstall and its install: its target, the package as recorded */
-    Object.keys(state.reinstall || {}).forEach(function (id) {
-        var r = state.reinstall[id];
-        if (!r || lstatOrNull(appEntryFile(id)) || (r.boot === bootId() && pidAlive(r.pid))) return;
-        if (!r.file || !fs.existsSync(r.file) || sha256File(r.file) !== r.sha256) {
-            process.stderr.write('warning: ' + id + ': its rollback was cut short, and the package it went back to is not as recorded (' +
-                r.file + '); not installed again\n');
-            return;
+function lostApps(state) { return lostReport(state).lost; }
+/* { lost, held }: lost apps are installed again by the updater; held ones
+ * are not, each with why: one the repair installed once already (or
+ * failed), one whose rollback did not install (state.json held, until the
+ * user installs it, or the app manager has it registered at a later start), and every one while safe mode is on. While the MainApp
+ * guard is off the updater installs none (mainapp_guard).
+ * An app the user removes has no record from the start of its removal. Lost: an app rollback cut short between its
+ * uninstall and its install (its target, the package as recorded), every recorded app with its kept package, and
+ * the Store, which never stays removed while a package of it is kept (its recorded version's, else the newest;
+ * never held but by safe mode). */
+function lostReport(state) {
+    var lock = lockState(), out = { lost: [], held: [] };
+    if ((!lock.free && lock.live) || !mgrDataReady()) return out;
+    var all = [];
+    if (isId8()) all = unprovisionedId8();
+    else {
+        var has = function (id) { return all.some(function (l) { return l.id === id; }); };
+        Object.keys(state.reinstall || {}).forEach(function (id) {
+            var r = state.reinstall[id];
+            if (!r || lstatOrNull(appEntryFile(id)) || (r.boot === bootId() && pidAlive(r.pid))) return;
+            if (!r.file || !fs.existsSync(r.file) || sha256File(r.file) !== r.sha256) {
+                process.stderr.write('warning: ' + id + ': its rollback was cut short, and the package it went back to is not as recorded (' +
+                    r.file + '); not installed again\n');
+                return;
+            }
+            all.push({ id: id, version: r.version, package: r.file, rollback: true });
+        });
+        Object.keys(state.apps).forEach(function (id) {
+            var v = state.apps[id] && state.apps[id].version;
+            if (!has(id) && !lstatOrNull(appEntryFile(id)) && v && fs.existsSync(keptFile(id, v))) all.push({ id: id, version: v, package: keptFile(id, v) });
+        });
+        if (!has(FIRST_APP) && !lstatOrNull(appEntryFile(FIRST_APP))) {
+            var kv = keptVersions(FIRST_APP).sort(semverCmp), rec = state.apps[FIRST_APP] && state.apps[FIRST_APP].version;
+            var fv = rec && kv.indexOf(rec) >= 0 ? rec : kv[kv.length - 1];
+            if (fv) all.push({ id: FIRST_APP, version: fv, package: keptFile(FIRST_APP, fv) });
         }
-        out.push({ id: id, version: r.version, package: r.file, rollback: true });
-    });
-    Object.keys(state.apps).forEach(function (id) {
-        var v = state.apps[id] && state.apps[id].version;
-        if (!has(id) && !lstatOrNull(appEntryFile(id)) && v && fs.existsSync(keptFile(id, v))) out.push({ id: id, version: v, package: keptFile(id, v) });
-    });
-    /* the Store never stays removed while a package of it is kept (its removal on purpose drops them): its
-     * recorded version's, else the newest */
-    if (!has(FIRST_APP) && !lstatOrNull(appEntryFile(FIRST_APP))) {
-        var kv = keptVersions(FIRST_APP).sort(semverCmp), rec = state.apps[FIRST_APP] && state.apps[FIRST_APP].version;
-        var v = rec && kv.indexOf(rec) >= 0 ? rec : kv[kv.length - 1];
-        if (v) out.push({ id: FIRST_APP, version: v, package: keptFile(FIRST_APP, v) });
     }
+    var safe = readSafeMode(), held = state.held || {};
+    all.forEach(function (a) {
+        var why = safe ? 'safe mode is on' : held[a.id] && a.id !== FIRST_APP ? held[a.id].why : null;
+        if (why) out.held.push(Object.assign({}, a, { why: why })); else out.lost.push(a);
+    });
     return out;
+}
+/* Held from the repair until the user installs it. */
+function holdApp(state, id, version, why) {
+    state.held = state.held || {};
+    state.held[id] = { version: version, why: why, at: new Date().toISOString(), boot: bootId() };
 }
 /* iDrive 8: apps placed at a start (their package in preinstalled_apps,
  * their das lines) that MainApp-21 never installs because Telematics
@@ -8910,6 +9158,7 @@ function parseArgs(argv) {
         else if (argv[i] === '--skip-older') out.skipOlder = true;
         else if (argv[i] === '--other-source') out.otherSource = true;
         else if (argv[i] === '--keep-safe-mode') out.keepSafeMode = true;
+        else if (argv[i] === '--repair') out.repair = true;
         else if (argv[i] === '--yes') out.yes = true;
         else if (argv[i] === '--remove') out.remove = argv[++i] || '';
         else if (argv[i] === '--list') out.list = true;
@@ -8951,7 +9200,7 @@ function runCommand() {
         if (args.command === 'help' || args.command === '--help') { say(HELP); return 0; }
         if (args.command === 'check') return cmdCheck(args);
         if (args.command === 'install') return cmdInstall(args);
-        if (args.command === 'status') { statusReadOnly = !!args.readOnly; syncMgrHome(); syncGuard(); syncStashes(); syncId7Parts(); return cmdStatus(args, syncBootLists(), syncLiveId8(), syncLimits(), isId8() ? syncListingId8() : syncListingId7()); }
+        if (args.command === 'status') { statusReadOnly = !!args.readOnly; syncMgrHome(); syncGuard(); syncStashes(); syncHeld(); syncId7Parts(); return cmdStatus(args, syncBootLists(), syncLiveId8(), syncLimits(), isId8() ? syncListingId8() : syncListingId7()); }
         if (args.command === 'relist') {
             if (!FAKE && typeof process.getuid === 'function' && process.getuid() !== 0) throw refuse('run as root');
             return cmdRelist();

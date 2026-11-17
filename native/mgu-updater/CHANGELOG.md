@@ -1,5 +1,10 @@
 # Updater changelog
 
+## 0.8.51
+
+robertnisipeanu/mgu-store's 0.8.47 with this repository's 0.8.50: an app installed again from its kept package goes
+to the deploy tool with `--repair` (deploy tool 0.8.25).
+
 ## 0.8.50
 
 robertnisipeanu/mgu-store's 0.8.45 and 0.8.46 with this repository's 0.8.49: an app built by its repository's script
@@ -45,6 +50,10 @@ robertnisipeanu/mgu-store's 0.8.42 with this repository's updater:
 ## 0.8.42
 
 - The phone page's logs have the deploy tool's verify unit (`mgu-deploy-verify`) too (robertnisipeanu/mgu-store's 0.8.41).
+
+## 0.8.47
+
+- An app installed again from its kept package goes to the deploy tool with `--repair`: the deploy tool then installs it again once, and holds it after a failure or a second loss until it is installed from the Store.
 
 ## 0.8.46
 

@@ -479,7 +479,7 @@ and the stick's other files stay. A root-service package of another
 
 ```
 mgu-deploy.sh check [--artifact <file>...]
-mgu-deploy.sh install [--artifact <file>...] [--skip-older] [--other-source] [--leave <id>...] [--keep-safe-mode] [--yes]
+mgu-deploy.sh install [--artifact <file>...] [--skip-older] [--other-source] [--leave <id>...] [--keep-safe-mode] [--repair] [--yes]
 mgu-deploy.sh status [--read-only] [--json]   # --read-only: changes nothing
 mgu-deploy.sh relay [<id>...] [--keep-safe-mode] --yes   # a stale tool's files from the copy kept here, no install step
 mgu-deploy.sh setup <id> --yes                # a tool laid again from that copy, its install step included
@@ -503,6 +503,11 @@ mgu-deploy.sh appmanager [--json] | appmanager adopt [--yes]
 `install` without `--artifact` takes every `*.tgz` and `*.mgu` in
 `./artifacts` beside the script. Tools install before apps, `app-privacy`
 first. `restore` needs `--yes`, or `YES` typed at a terminal.
+
+`--repair` (the updater's) installs again an app `status` lists under
+`lost_apps`, from its kept package, once: after that, or when it fails,
+the app is listed under `lost_held` with the reason until it is installed
+from the Store.
 
 ### Layout
 

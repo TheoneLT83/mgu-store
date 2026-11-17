@@ -1046,7 +1046,7 @@ function rmrf(p) {
 }
 
 module.exports = { build, packSource, readManifest, preparePackage, completePermissions, completeCertification,
-    unknownInterfaces, dropUnknownInterfaces, unfitProxies,
+    unknownInterfaces, dropUnknownInterfaces, unfitProxies, readSomeipManifest,
     needsCertification, needsSdk, needsShrinkwrap, sdkModule, unitDonors, untar, SDK_API, ENTRY_ID,
     LOADER };
 
