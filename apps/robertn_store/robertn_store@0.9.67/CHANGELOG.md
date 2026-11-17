@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.67
+
+robertnisipeanu/mgu-store's comment change: no change on screen.
+
 ## 0.9.66
 
 - While an install runs, the Store draws at most 15 frames a second, leaving the CPU to the install, and tells the

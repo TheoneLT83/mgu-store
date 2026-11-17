@@ -1,5 +1,9 @@
 # mgu-render changelog
 
+## 0.6.30
+
+robertnisipeanu/mgu-store's comment changes in the configuration and source: no change on the unit.
+
 ## 0.6.29
 
 - An app that says it is busy (X_BUSY; the Store while it installs) keeps touch and the controller when its picture
