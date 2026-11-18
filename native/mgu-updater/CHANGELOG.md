@@ -1,5 +1,11 @@
 # Updater changelog
 
+## 0.8.53
+
+Default source: hexlay/idrive7-system-monitor (System Monitor, iDrive 7 only) on its default branch, added once at the
+first start of this version (and seeded by the installers, `deploy/sources.json`), unless a source of that repo is
+there already; removed, it is not added again (robertnisipeanu/mgu-store's 0.8.48).
+
 ## 0.8.52
 
 A component packed from a repo's files (no build script), such as Controller gate or the GPU renderer, installs:

@@ -110,7 +110,8 @@ const FROM_STDIN = __filename === '[stdin]';
 const SOURCES = { schema: 1, sources: [{ id: 'mgu-store', type: 'github', repo: STORE_REPO, builtin: true },
     { id: 'idrive7-apps', type: 'github', repo: 'TheoneLT83/idrive7-apps', channel: 'branch' },
     { id: 'cluster-apps', type: 'github', repo: 'TheoneLT83/Cluster-apps', channel: 'releases' },
-    { id: 'cartube', type: 'github', repo: 'TheoneLT83/CarTube', channel: 'releases' }] };
+    { id: 'cartube', type: 'github', repo: 'TheoneLT83/CarTube', channel: 'releases' },
+    { id: 'idrive7-system-monitor', type: 'github', repo: 'hexlay/idrive7-system-monitor', channel: 'branch' }] };
 /* the installed deploy tool */
 const DEPLOY = '/var/opt/mgu-deploy/mgu-deploy.sh';
 const UPDATER_JS = '/var/opt/mgu-updater/current/updater.js';
