@@ -1,5 +1,10 @@
 # Updater changelog
 
+## 0.8.54
+
+robertnisipeanu/mgu-store's 0.8.50 with this repository's 0.8.53:
+- The Store gets fresh state within a few seconds when components are installed or removed outside the updater, and after the updater refuses an install, update or removal.
+
 ## 0.8.53
 
 Default source: hexlay/idrive7-system-monitor (System Monitor, iDrive 7 only) on its default branch, added once at the

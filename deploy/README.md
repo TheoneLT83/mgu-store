@@ -481,9 +481,9 @@ and the stick's other files stay. A root-service package of another
 mgu-deploy.sh check [--artifact <file>...]
 mgu-deploy.sh install [--artifact <file>...] [--skip-older] [--other-source] [--leave <id>...] [--keep-safe-mode] [--repair] [--yes]
 mgu-deploy.sh status [--read-only] [--json]   # --read-only: changes nothing
-mgu-deploy.sh relay [<id>...] [--keep-safe-mode] --yes   # a stale tool's files from the copy kept here, no install step
-mgu-deploy.sh setup <id> --yes                # a tool laid again from that copy, its install step included
-mgu-deploy.sh uninstall <id> [--yes]
+mgu-deploy.sh relay [<id>...] [--keep-safe-mode] --yes   # a stale tool's files again, without its install step
+mgu-deploy.sh setup <id> --yes                # a tool laid again, its install step included
+mgu-deploy.sh uninstall <id> [--yes]          # refused while an installed component requires it
 mgu-deploy.sh remove-all [--json] | remove-all --yes
 mgu-deploy.sh rollback <id> [--keep-safe-mode] [--yes]
 mgu-deploy.sh restore [name] [--yes]
@@ -1774,103 +1774,16 @@ own are never given one.
 
 ### Safe mode
 
-When the head unit keeps restarting soon after it starts, and nothing more
-specific (such as a tool's own boot recovery) has ended it, our tools'
-units stay off: **safe mode**. While `/var/opt/mgu-deploy/safe-mode` exists,
-no unit of an installed tool starts, except those that run in safe mode;
-BMW's units are never touched.
-
-**What counts.** A start counts as failed when it ended in a restart recmgr
-or crashhandler asked for within 2 minutes of the start (the system uptime
-at the shutdown), and none of our tools asked for the restart. A restart is
-theirs on either record of it:
-
-- the `restartInfo.xml` each writes under
-  `/var/opt/public/sin/<recmgr|crashhandler>/` when it asks, written in this
-  start (its modification time not before `/proc/stat`'s `btime` and not
-  after now, a second of slack each way);
-- a row recmgr added to its crash statistics since the start's boot step
-  (`/var/opt/public/sin/recmgr/recmgr_stats.db`, table `Crash`, whose
-  `CrashKey` only grows), with the statistics written within 60 s of the
-  shutdown. recmgr adds the row for a failure it restarts the head unit for,
-  just before it asks for the restart, in the same start; none for a
-  service in its lists, nor for a crash of a program crashhandler lists
-  (`node`) in a service that keeps running, nor for crashhandler's own
-  restarts, which its `restartInfo.xml` records. recmgr's startup, some 10 s
-  into a start, deletes its `restartInfo.xml`, also one written in that
-  same start: a restart before then leaves only this record. A row has no
-  time of its own (`Crash`: `CrashKey`, `Timestamp`, `AppID`, `UserID`,
-  `CrashID`, `LC`; recmgr leaves `Timestamp` empty and `LC` 0), so the time
-  is the database file's: its last write of any kind. The mark cannot read
-  the shutdown's kind itself either (a restart, a switch-off and a normal
-  restart all run `var-opt-ro.service`). So a row added earlier in the
-  start counts when the database was written again within a minute of the
-  shutdown (recmgr writes it for the failures it restarts the head unit
-  for), as does a restart recmgr asked for that the NodeStateManager did not
-  take, followed within a minute by a switch-off. A read that meets
-  recmgr's commit waits up to 200 ms for it.
-
-The shutdown that ends the fourth failed start in a row turns safe mode on,
-so the fifth start is the first without our tools: four failed starts.
-Nothing else counts:
-
-| How a start ended | The count |
-|---|---|
-| a restart recmgr or crashhandler asked for, up less than 2 minutes | + 1 |
-| a shutdown without either record after 2 minutes: a switch-off, the HMI's, the Store's or another normal restart | back to 0 |
-| a restart our tools asked for (`restart-requested` names the start) | back to 0 |
-| the start stayed up 5 minutes | back to 0 |
-| a shutdown without either record within 2 minutes (a short drive, or a restart whose records were lost) | kept |
-| a crash restart between 2 and 5 minutes | kept |
-| no shutdown mark (a power cut, a reset that skipped `var-opt-ro.service`, `var-opt-ro.service` failing before the mark ran, `systemctl reboot`) | kept |
-
-A suspend keeps the start (and its boot id) and its uptime runs on, so a
-drive after it never counts as an early end. A state file that is missing
-or does not read as `safe_mode.sh` writes it counts nothing, so it can
-never turn safe mode on.
-
-**How.** `safe_mode.sh` (beside `mgu-deploy.js`) does it, in sh:
-
-- `mark`, at each shutdown through the NodeStateManager: the drop-in
-  `/etc/systemd/system/var-opt-ro.service.d/40-mgu-deploy-safe-mode.conf`
-  runs it before `/var/opt` goes read-only (`ExecStartPre=-`, so it never
-  holds up the remount). recmgr's and crashhandler's restarts, a switch-off
-  and a normal restart all take that path. It writes `last-shutdown`
-  (`<boot id> crash|normal <uptime s> [recmgr] [crashhandler]
-  [recmgr_stats]`), once before the statistics read and again after it, so
-  a shutdown cut during the read still finds the start marked, and
-  `safe-mode-count` (`<failed starts in a row before this start> <boot id>
-  <with this start>`; a second shutdown of the same start counts it again
-  from the first number), and at the fourth failed
-  start in a row writes `safe-mode`, `{"at": "<UTC time>", "reason":
-  "<why>"}`, and starts the count again. The flag is there before the next
-  start's units, so nothing has to wait at boot.
-- `boot`, early at each start: `mgu-deploy-safe-mode.service`
-  (`DefaultDependencies=no`, after `/var/opt` is mounted, enabled for
-  `multi-user.target`, in recmgr's list, and ordered with no other unit).
-  It writes `safe-mode-crashes` (`<boot id> <recmgr's last crash key>`), the
-  baseline for this start's mark.
-- `up`, the same service: at 5 minutes of uptime the count goes back to 0,
-  by `/proc/uptime`, looked at every 5 s, so a suspend counts as time up. The
-  service then stays up, so recmgr never sees it end.
-
-The statistics are read with the database opened read-only
-(`file:…?mode=ro`, the firmware's `sqlite3` 3.22), for at most 2 s.
-
-Each file is written whole (renamed into place) under `/var/opt/mgu-deploy`.
-On a head unit whose firmware has `var-opt-ro.service`, an install lays the
-service, its link, the drop-in and the recmgr entry (entry first), as does
-`status` (with the limits drop-ins, under the same rules); `remove-all` takes
-them out.
-
-**A restart our tools ask for** is marked first: its start's boot id
-(`/proc/sys/kernel/random/boot_id`) in `/var/opt/mgu-deploy/restart-requested`,
-written whole before the request. The updater's `reboot`, `mgu-install.js`'s
-restart and mgu-render's car test do it; another tool that asks for a
-head-unit restart writes it the same way.
-
-**What runs in safe mode.** A unit whose entry in the tool's `component.json`
-says so:
+When three starts of the head unit end within 5 minutes, by a crash or
+recovery restart none of our tools asked for or with no orderly shutdown
+at all (a power cut, a reset), and no start between them stays up 5
+minutes, our tools' units stay off from the next start: **safe mode**. The
+guard runs first at each start and our tools' units start after it, so the
+start that follows the third failed one already runs without them. A
+shutdown in order (switching the car off, the Store's or the HMI's
+restart) never counts. BMW's units are never touched. Units marked
+`"runsInSafeMode": true` in their tool's `component.json` still run; give
+it to units that recover the head unit or leave safe mode:
 
 ```json
 "units": [{ "name": "acme-recovery.service", "from": "systemd/acme-recovery.service", "runsInSafeMode": true }]
