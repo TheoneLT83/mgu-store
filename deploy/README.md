@@ -1692,6 +1692,9 @@ there: give the program a name of its own instead. A tool without
 list; a shipped ELF file's only when the firmware has no such name (in
 `[ForceRestartList]`, or a program in `/bin`, `/sbin`, `/usr/bin` or
 `/usr/sbin`, such as `sh` or `node`).
+Each name goes in also as `<name> (deleted)`, the name of a process whose
+executable an update replaced while it ran. The list takes effect from
+the next boot.
 
 Every tool install and uninstall puts the names of the installed tools into
 `[Whitelist]`, after its last entry, and takes out the ones it added that no

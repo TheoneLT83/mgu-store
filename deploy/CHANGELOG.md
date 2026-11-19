@@ -1,5 +1,12 @@
 # Deploy tool changelog
 
+## 0.8.27
+
+robertnisipeanu/mgu-store's 0.8.23 with this repository's 0.8.26: every name a tool puts on the crash handler's list
+goes in a second time as `<name> (deleted)`, the name a process carries once an update replaced its executable while it
+ran (Maps on cluster rewriting `aapd`, for example). A crash of such a process does not restart the head unit. `status`
+adds these names on a head unit that has the tools installed already; they count from the next start of the head unit.
+
 ## 0.8.26
 
 robertnisipeanu/mgu-store's 0.8.22 with this repository's 0.8.25: a lost Store is installed again also while safe mode
