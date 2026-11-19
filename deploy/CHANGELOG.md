@@ -1,5 +1,12 @@
 # Deploy tool changelog
 
+## 0.8.30
+
+robertnisipeanu/mgu-store's 0.8.26 with this repository's 0.8.29:
+- `mgu-install.js` over ENET on Windows: ssh connects to the head unit without binding to the adapter's address, so the SSH client that comes with Windows can connect.
+- `mgu-install.js` over ENET: only a link-local host address is tried as the head unit's (not the computer's own address). When the head unit's SSH does not answer, the message names the addresses tried and says that `--host <address>` can be given.
+- `mgu-install.js`: when an `--identity` or `--from` path with a space is not in quotes, the error says to put it in quotes and shows the whole path.
+
 ## 0.8.29
 
 robertnisipeanu/mgu-store's 0.8.25 (and the safe mode change after it) with this repository's 0.8.28:
