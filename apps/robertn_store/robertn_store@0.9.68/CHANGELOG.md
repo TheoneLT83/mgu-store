@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.68
+
+robertnisipeanu/mgu-store's Store change: Restart now, Restart head unit and the confirm step's Restart are greyed
+out while an install, update or removal runs or waits, and can be pressed again once nothing is left. The renderer
+client it carries knows NV12 video frames.
+
 ## 0.9.67
 
 robertnisipeanu/mgu-store's comment change: no change on screen.

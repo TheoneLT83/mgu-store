@@ -1,5 +1,12 @@
 # mgu-render changelog
 
+## 0.6.31
+
+robertnisipeanu/mgu-store's 0.6.24: video frame files can be NV12, the layout hardware decoders write (the header's
+format word 1), so a player hands over decoded frames without converting them to I420 on the CPU. X_READY caps 512 here
+(`info.videoNv12` in the JS client; 256 upstream, this fork's controller hold) tells a player the renderer reads NV12;
+I420 files stay as they are.
+
 ## 0.6.30
 
 robertnisipeanu/mgu-store's comment changes in the configuration and source: no change on the unit.

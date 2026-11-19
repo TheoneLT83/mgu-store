@@ -71,7 +71,7 @@ Object.keys(UNITS).forEach((unit) => ['id7', 'id8'].forEach((look) => fixture.sc
     const m = Object.assign(fixture.model(over, st), { look });
     const f = frame(m, { textScale: p.scale, focus: m.focus, scroll: {}, layout: p.layout });
     ok(!f.rec.errors, `${unit} ${name}: every element draws (${f.rec.errors})`);
-    ok(f.items.length && f.items.every((it) => it.label && it.act), `${unit} ${name}: every item has a label and a press`);
+    ok(f.items.length && f.items.every((it) => it.label && (it.act || it.keepPlace)), `${unit} ${name}: every item has a label, and a press or a greyed-out button's place`);
     const out = f.items.filter((it) => !it.reveal && !(it.x - ring >= vp.x - 1 && it.x + it.w + ring <= vp.x + vp.w + 1 &&
         (!p.layout || (it.y - ring >= vp.y && it.y + it.h + ring <= vp.y + vp.h))));
     eq(out.map((it) => it.label), [], `${unit} ${name}: items and their focus ring in view`);
@@ -256,6 +256,10 @@ f = laterOf({ stack: [{ name: 'main' }, { name: 'app', id: 'car_vitals' }] });
 eq([f.items.map((i) => i.label).slice(0, -4).filter(notVersion), text(f, 'notes')], [['Restart head unit', 'Back'], 'Restart pending'], 'first install');
 eq(laterOf({ stack: [{ name: 'main' }, { name: 'app', id: 'doom' }] }).items.map((i) => i.label).slice(0, -4).filter(notVersion),
     ['Restart head unit', 'Remove', 'Back'], 'update of an installed app');
+later.busy = { id: 'other', op: 'install', phase: 'install' };
+f = laterOf({ stack: [{ name: 'main' }, { name: 'app', id: 'car_vitals' }] });
+eq([f.values.primary.text, f.values.primary.disabled, f.items.map((i) => i.label).slice(0, -4).filter(notVersion)], ['Restart head unit', true, ['Back']], 'greyed out while another install runs');
+later.busy = null;
 f = laterOf({});
 eq([f.values.grid.items.map((t) => [t.id, t.sub, t.badge]), f.values.nav.items[1].badge],
     [[['car_vitals', 'Restart pending', ''], ['doom', 'Restart pending', 'installed']], ''], 'tiles; not counted as an update');
@@ -447,6 +451,23 @@ eq(info.slice(0, 3).map((i) => [i.title, i.right]), [['iDrive 7', ''], ['Store',
 ok(info.some((i) => i.id === 'mgu-renderd' && i.right === 'chip:1.1.0'), 'Information: an installed renderer and its version');
 const idle = { busy: null, components: fixture.state().components.map((c) => Object.assign({}, c, { queued: false })) };
 ok(screen('settings', {}, idle).labels.indexOf('Restart head unit') >= 0, 'Restart head unit with nothing installing');
+// every Restart greyed out while an install runs or waits, in its place, and pressable again after
+const restartOff = (g, el) => [g.values[el].hidden, g.values[el].disabled];
+const queuedOnly = Object.assign({}, idle, { components: idle.components.map((c, i) => Object.assign({}, c, { queued: i === 0 })) });
+const unlistedQueued = Object.assign({}, idle, { components: idle.components.concat([Object.assign({}, idle.components[0],
+    { id: 'gone', compat: 'no', installed: null, status: 'available', queued: true })]) });
+eq([restartOff(screen('settings', {}, idle), 'restart'), restartOff(screen('settings', {}, { components: idle.components }), 'restart'),
+    restartOff(screen('settings', {}, queuedOnly), 'restart'), restartOff(screen('settings', {}, unlistedQueued), 'restart')],
+[[false, false], [false, true], [false, true], [false, true]], 'Settings: Restart head unit greyed out while an install runs or waits');
+eq(screen('settings', {}, { components: idle.components }).labels.indexOf('Restart head unit'), -1, 'greyed out: not pressed');
+['iDrive 7 embed', 'iDrive 8'].forEach((u) => {
+    const box = (stOver) => {
+        const g = frame(fixture.model({ tab: 'settings' }, Object.assign(fixture.state(), stOver)),
+            { textScale: UNITS[u].scale, focus: 0, scroll: {}, layout: UNITS[u].layout });
+        return g.values.restart;
+    };
+    eq(Object.assign({}, box({ components: idle.components }), { disabled: false }), box(idle), `${u}: greyed out the same button`);
+});
 const refused = Object.assign({}, idle, { rebootError: 'too soon after start-up, possible in 3 min' });
 eq(text(screen('settings', {}, refused), 'note'), 'Restart failed: too soon after start-up, possible in 3 min', 'a refused restart beside Restart head unit');
 
@@ -479,6 +500,15 @@ eq(f.items[5].act, restartAct);
 eq(f.values.services.items.map((i) => i.right).filter((r) => /^chip:/.test(r)), ['chip:Restart pending', 'chip:Not working'],
     'Installed: a row restarting and one not working');
 eq([shown(screen('installed')), shown(screen('store'))], [true, true], 'kept while an install runs');
+// greyed out then, and still in the focus order: the rows after it keep their place
+f = screen('store');
+eq([f.values.restartNow.disabled, f.labels[4], f.items[4].act, f.items[4].keepPlace], [true, 'Restart now', null, true],
+    'Store: Restart now greyed out while an install runs, in its place');
+const storeRestartNow = (st) => { const g = screen('store-restart', {}, st); return [g.values.restartNow.disabled, g.items[4].label, g.items[4].act]; };
+eq([storeRestartNow(queuedOnly), storeRestartNow(idle)], [[true, 'Restart now', null], [false, 'Restart now', restartAct]],
+    'Store: greyed out and inert while one waits, pressable again once nothing is left');
+eq([screen('installed').values.restartNow.disabled, screen('installed-restart', {}, queuedOnly).values.restartNow.disabled,
+    screen('installed-restart', {}, idle).values.restartNow.disabled], [true, true, false], 'Installed: greyed out while an install runs or waits');
 const confirmRestart = (st) => frame(fixture.model({ stack: [{ name: 'main' }, { name: 'confirm', kind: 'restart' }] }, st),
     { textScale: 1, focus: 0, scroll: {} }).values.now.disabled;
 eq([confirmRestart(idle), confirmRestart({})], [false, true], 'its confirm step\'s Restart: off while an install runs');

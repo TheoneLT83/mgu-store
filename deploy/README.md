@@ -511,6 +511,11 @@ from the Store. While safe mode is on, every lost app but the Store
 (which has **Leave safe mode**) is held; the Store too under an updater before
 0.8.47.
 
+On iDrive 7, an app's first install frees app uids when the app manager has
+none left: the homes of our apps in `/var/opt/public/oap` that no registry
+entry uses go (not those changed in the last 10 minutes or that a process
+runs from). `status` shows the free app uids and those held by no app.
+
 ### Layout
 
 ```
