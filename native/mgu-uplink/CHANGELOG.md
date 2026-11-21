@@ -1,5 +1,10 @@
 # mgu-uplink changelog
 
+## 0.7.14
+
+robertnisipeanu/mgu-store's 0.7.13 with this repository's 0.7.13: an app's lease file is rewritten only when the
+lease changes, not at each renewal of the same lease.
+
 ## 0.7.13
 
 robertnisipeanu/mgu-store's 0.7.12 with this repository's uplink: with the car's `wlan0`, Wi-Fi is used again within

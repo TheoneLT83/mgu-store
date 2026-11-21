@@ -1,5 +1,10 @@
 # Updater changelog
 
+## 0.8.55
+
+robertnisipeanu/mgu-store's 0.8.51 with this repository's 0.8.54:
+- Downloads, the checked package handed to the deploy tool, and builds on the unit go to RAM when there is room (to storage otherwise), so they are not written to the head unit's storage. Source listings and the updater's state files are written only when they change.
+
 ## 0.8.54
 
 robertnisipeanu/mgu-store's 0.8.50 with this repository's 0.8.53:
