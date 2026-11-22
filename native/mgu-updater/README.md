@@ -42,8 +42,7 @@ core, the deploy tool's on-unit `mgu-deploy.js` (`deploy/README.md`):
 Both take the same artifacts (`release.js` packs tools with `deploy/hu
 artifact`), the same `component.json`, the same `versions/<v>` + `current`
 layout and the same `"mguLocalOnly": true` marking, so a component
-installed by one is updated or removed by the other. The emulator's image
-provisioning installs apps for testing only.
+installed by one is updated or removed by the other.
 
 ## Sources
 
@@ -62,7 +61,7 @@ them:
 - `github`: a repo ("GitHub without a token" below for how a public one is
   read). `https`: a
   `catalog.json` URL, or an App Manager index (below). `file`: a local
-  folder (tests, the emulator).
+  folder (tests).
 - `builtin`: the Store's own source (`builtin_repo`, id `mgu-store`),
   always there and not removable.
 - **Moved repositories** (`MOVED_SOURCES`): a stored source on a repository
@@ -149,9 +148,10 @@ point's icon, `author` (a string or `author.name`) and
 `store.description` over `description`. An installed app's `icon` is its
 installed package's entry-point icon (`rhmiData/resources/`, read through
 no link), copied into `state/icons/` and read again only when the package
-changes. The row of the installed app has its source's icon fetched only
-once its installed package has none; the other sources' rows of that id
-show their own. Once a check has read every source, the icons of each
+changes. The row of the installed app shows that icon, else its source's;
+the other sources' rows of that id show their own. Every source icon is
+fetched, an installed app's too, so a removed app shows its source's icon
+at once. Once a check has read every source, the icons of each
 source read without error are looked at again.
 
 **Channels** (a `github` source's `channel`): `releases` (the catalog
@@ -321,7 +321,7 @@ lists the id.
   is removed. Its state row has that id as `id`, the source's as
   `listedId`, and the title its source gives.
 - An installed component without an origin (installed from outside the
-  updater: the installers, the emulator's provisioning; `imported`), or
+  updater: the installers; `imported`), or
   whose origin lists its id no more (a stick that is gone, a source
   removed), is updated by the origin whose listing has its title (an
   app's en_GB entry-point text, a tool's `component.json` title), of
@@ -342,9 +342,8 @@ lists the id.
   source lists (a tool, an app the deploy tool marked local, one with an
   origin, imported) has such a row, for its Remove: an app removable, a
   tool when its `component.json` says `uninstallable: true`, never one the
-  updater never removes (itself, the deploy tool, the Store, what the
-  updater requires); a tool's requirements and capability are its
-  `component.json`'s.
+  updater never removes (below); a tool's requirements and capability are
+  its `component.json`'s.
 
 `requires` (`{"<id>":
 "<min version>"}`) installs a missing or older requirement first, from the
@@ -358,8 +357,14 @@ component requiring the renderer installs beside another renderer);
 installed; apps, whatever their source's `uninstallable` says, and
 `uninstallable` tools can be removed (Store, phone page), through
 `mgu-deploy.sh uninstall <id> --yes`, unless something installed requires
-them. The updater, the deploy tool, the Store and what the updater
-requires are never removed (their `uninstallable` is false). An install asked
+them: what its row lists, or what it required when it was installed
+(`state/origins.json` `requires`, also recorded when its source lists the
+version installed), which stands while no source lists it (its stick out,
+its source removed). The Store and the tools its setup installs (the updater, the deploy
+tool, `mgu-python`, `app-privacy`, `mgu-render`, `mgu-uplink`) are never
+removed, whatever a source says, nor taken along by an app's removal
+(their `uninstallable` is false); the computer's uninstall
+(deploy/README.md) removes them. An install asked
 for while a removal of the same component waits or runs (or the other way
 round) is refused.
 
@@ -726,6 +731,10 @@ the user out. `systemctl reboot` is not used: it is systemd's stock reboot,
 which no BMW unit hooks, and it stops the services by their `KillSignal`
 (SIGABRT for many of BMW's, the NSM daemon's included).
 
+- Before the command runs, the start's boot id goes into the deploy tool's
+  `/var/opt/mgu-deploy/restart-requested` (when that folder is there), so
+  the deploy tool's safe mode never counts the restart as a failed start
+  (deploy/README.md, "Safe mode").
 - Refused (`an install is running`) while an install runs or waits, so a
   restart never cuts one short. Once the restart is under way, installs
   are refused (`the head unit is restarting`), and a second reboot request
@@ -879,7 +888,7 @@ each request, and whenever it changes (at most every 250 ms):
     "wifi": { "enabled": true, "link": "online", "ssid": "Phone", "ip": "172.20.10.2", "signal": -45, "networks": [ … ],
       "saved": [ "Phone" ], "scanning": false, "error": null } },
   "busy": { "id": "doom", "phase": "download", "progress": 524288, "total": 2080457 },
-  "rebooting": false, "rebootError": null,
+  "rebooting": false, "rebootError": null, "safeMode": null,
   "components": [ { "id": "doom", "kind": "app", "title": "DOOM", "version": "1.0.1",
     "installed": "1.0.0", "size": 2080457, "status": "update", "source": "idrive7-apps",
     "build": null, "optional": false, "uninstallable": true, "revision": null,
@@ -996,6 +1005,14 @@ each request, and whenever it changes (at most every 250 ms):
   not yet restarted onto it), `unpatched`, `mismatch`, `unknown` (the tool
   gave no answer), or `null` without the tool. `rebooting` and
   `rebootError`: "Restarting the head unit".
+- `safeMode` is the deploy tool's safe mode (`status --json` `safe_mode`,
+  deploy/README.md, "Safe mode"): `{ "at", "reason" }` while our tools'
+  units stay off, else null (also with a deploy tool that does not report
+  it). An install asked for (the Store, the phone page) that goes through
+  leaves it; the updater's own repairs (a lost app installed again from its
+  kept package, a stale tool laid again, updated or installed again from its
+  source, the requirements those install, and the rollback of a Store such a
+  repair updated that did not start) keep it (`--keep-safe-mode`).
 
 Requests: `{"op":"status"}`, `{"op":"check"}`, `{"op":"install","id"}`
 (with its missing requirements first), from any app.
@@ -1006,6 +1023,7 @@ Store says it at each connection (below, "The Store's update").
 | Request | Does |
 |---|---|
 | `{"op":"reboot"}` | restarts the head unit ("Restarting the head unit"): at once with the secret; without it while a Store older than 0.9.16 is installed, within the restart limits |
+| `{"op":"safe-mode-off"}` | Leave safe mode: the deploy tool's `safe-mode off --yes`, then its state again; refused while an install runs or waits, nothing while not in safe mode. The tools start at the next start of the head unit (`pendingReboot` on the deploy tool's row) |
 | `{"op":"uninstall","id","tools"?}` | removes an `uninstallable` component (every app but the Store); then each of `tools`, which must be among the app row's `requiredAlone` (else nothing is queued), a tool before those it requires. A tool whose turn comes while something installed still requires it (the app's removal failed) stays; an app whose removal waits for the next start (iDrive 8) requires none |
 | `{"op":"setup","id"}` | Set up: a tool whose row has `needsSetup` laid again by the deploy tool from its kept copy with its install step (`mgu-deploy.sh setup <id> --yes`) |
 | `{"op":"rollback","id"}` | Undo update: a component whose row has `previous` back to that version, through `mgu-deploy.sh rollback <id> --yes` |
@@ -1101,7 +1119,8 @@ js/client.js             socket client (Store app, command line)
 js/web.js                the phone page
 updater.conf             defaults
 systemd/mgu-updater.service
-component.json           the tool component (deploy tool format)
+component.json           the tool component (deploy tool format); its unit runs in the deploy tool's safe mode
+                         ("runsInSafeMode"), so installs and Leave safe mode work there
 test/                    offline tests (test/run.sh: Node 8.16.2 in Docker; MGU_TEST_NODE_VERSION=8.9.4 for the 2019 MGU's)
 ```
 

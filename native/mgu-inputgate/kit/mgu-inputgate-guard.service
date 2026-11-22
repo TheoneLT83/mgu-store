@@ -1,9 +1,9 @@
-# Controller gate (mgu-inputgate): decides at boot whether hmi.service loads mgu-inputgate.so
+# Controller gate (mgu-inputgate): decides at boot whether the HMI (hmi.service, hmi8.service on iDrive 8) loads mgu-inputgate.so
 [Unit]
 Description=mgu-inputgate boot guard
 DefaultDependencies=no
 RequiresMountsFor=/var/opt/mgu-inputgate
-Before=hmi.service
+Before=hmi.service hmi8.service
 
 [Service]
 Type=oneshot

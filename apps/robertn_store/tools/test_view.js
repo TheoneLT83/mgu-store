@@ -8,7 +8,7 @@
 const assert = require('assert');
 const { listed, sourceAuthor, sourceNames, withSources, rowState, rowAction, removable, undoable, groupState, statusLine, sourceLabel, sourceState, sourcesState, sourceActions,
     sourceChannel, sourceAccount, tokenLabel, tokenState, tokenSources, accountsState, loginStatus, loginCode, phoneState, phoneAddress,
-    parseSource, pickOptions, probeStatus, sourcesMessage, tokenMessage, proxyUrlError, setClusterTime, clock } = require('../src/store_view.js');
+    parseSource, pickOptions, probeStatus, neededBy, removeRefusal, sourcesMessage, proxyUrlError, setClusterTime, clock } = require('../src/store_view.js');
 
 const row = (o) => Object.assign({ id: 'doom', kind: 'app', title: 'DOOM', version: '1.0.1', installed: '1.0.0',
     status: 'update', queued: false, error: null, pendingReboot: false }, o);
@@ -61,12 +61,14 @@ const cases = [
     [parsed('https://github.com'), 'null'],
     [parsed('https://raw.githubusercontent.com/owner/repo/main/catalog.json'),
         '{"type":"https","url":"https://raw.githubusercontent.com/owner/repo/main/catalog.json"}'],
-    [sourcesMessage({ kind: 'invalid-source', text: 'foo' }), 'Not owner/repo or https://host/path: foo'],
-    [tokenMessage({ kind: 'checking' }), 'Checking token'],
-    [tokenMessage({ kind: 'added', label: 'robertn' }), 'Added robertn'],
-    [tokenMessage({ kind: 'refused', error: 'GitHub does not accept this token' }), 'Add token failed: GitHub does not accept this token'],
-    [tokenMessage({ kind: 'speller', error: 'use case factory timed out' }), 'Text entry failed: use case factory timed out'],
-    [sourcesMessage({ kind: 'speller', error: 'use case factory timed out' }), 'Text entry failed: use case factory timed out'],
+    // a refused Remove: the updater's keptBy names the component that needs it, shown with its title in the rows
+    [neededBy('Waze on cluster needs cluster-render'), 'Waze on cluster'],
+    [neededBy('Waze on cluster needs a renderer: remove it first, or install another renderer'), 'Waze on cluster'],
+    [neededBy('cluster-render cannot be removed'), null],
+    [removeRefusal({ error: 'Waze on cluster needs cluster-render', by: 'waze-on-cluster' },
+        [{ id: 'waze-on-cluster', title: 'Waze im Kombiinstrument' }]), 'Needed by Waze im Kombiinstrument'],
+    [removeRefusal({ error: 'Waze on cluster needs cluster-render', by: null }, []), 'Needed by Waze on cluster'],
+    [removeRefusal({ error: 'cluster-render cannot be removed', by: null }, []), 'cluster-render cannot be removed'],
     [sourcesMessage({ kind: 'refused', op: 'source-add', error: 'owner/repo is already a source' }),
         'Add source failed: owner/repo is already a source'],
     [sourcesMessage({ kind: 'refused', op: 'source-remove', error: 'forbidden' }), 'Remove failed: forbidden'],
@@ -291,6 +293,10 @@ const cases = [
     [statusLine(st({ privacy: 'restart-needed', components: [row({})] }), true), 'App privacy patch not in effect'],
     [statusLine(st({ privacy: 'unknown', components: [row({})] }), true), 'App privacy patch not in effect'],
     [statusLine(st({ privacy: 'patched', components: [row({})] }), true), '1 update, checked 14:02'],
+    // the deploy tool's safe mode, before everything but a restart under way
+    [statusLine(st({ safeMode: { at: null, reason: null }, privacy: 'mismatch', components: [row({ error: 'failed' })] }), true), 'Safe mode'],
+    [statusLine(st({ safeMode: { at: null, reason: null }, rebooting: true }), true), 'Restarting'],
+    [statusLine(st({ safeMode: null, components: [row({})] }), true), '1 update, checked 14:02'],
     // the deploy tool's MainApp guard holds app changes until the next start
     [statusLine(st({ mainappGuard: 'the app manager stopped 12s after mgu-deploy restarted it', components: [row({ tileHidden: true })] }), true),
         'Restart head unit to install apps'],
@@ -316,7 +322,6 @@ const cases = [
     [probeStatus({ status: 'offline' }), 'Offline'],
     [probeStatus({ status: 'rate-limited' }), 'GitHub limit reached. Try later or sign in.'],
     [probeStatus({ status: 'error', error: 'HTTP 500 from api.github.com' }), 'HTTP 500 from api.github.com'],
-    [sourcesMessage({ kind: 'checking', repo: 'o/r' }), 'Checking o/r'],
     // a proxy address: what the updater takes
     [['http://192.168.8.1:7890', 'socks5://192.168.8.1:7891', 'socks5h://u:p@proxy.lan', 'http://[fd00::1]:3128/', ' http://h:1 ', 'SOCKS5://u:p%40ss@h:1']
         .map(proxyUrlError).join(','), ',,,,,'],

@@ -71,7 +71,7 @@ Object.keys(UNITS).forEach((unit) => ['id7', 'id8'].forEach((look) => fixture.sc
     const m = Object.assign(fixture.model(over, st), { look });
     const f = frame(m, { textScale: p.scale, focus: m.focus, scroll: {}, layout: p.layout });
     ok(!f.rec.errors, `${unit} ${name}: every element draws (${f.rec.errors})`);
-    ok(f.items.length && f.items.every((it) => it.label && it.act), `${unit} ${name}: every item has a label and a press`);
+    ok(f.items.length && f.items.every((it) => it.label && (it.act || it.keepPlace)), `${unit} ${name}: every item has a label, and a press or a greyed-out button's place`);
     const out = f.items.filter((it) => !it.reveal && !(it.x - ring >= vp.x - 1 && it.x + it.w + ring <= vp.x + vp.w + 1 &&
         (!p.layout || (it.y - ring >= vp.y && it.y + it.h + ring <= vp.y + vp.h))));
     eq(out.map((it) => it.label), [], `${unit} ${name}: items and their focus ring in view`);
@@ -239,6 +239,12 @@ broken.components = broken.components.map((c) => c.id === 'mgu-render' ? Object.
     problem: 'In-page drawing unavailable: no identifier table in HmiMain3D' }) : c);
 f = screen('app-renderer', {}, broken);
 eq([text(f, 'problem'), text(f, 'notes')], ['In-page drawing unavailable: no identifier table in HmiMain3D', ''], 'an installed tool\'s problem');
+// a refused Remove: who needs it, on that component's page only
+f = screen('app-remove-refused');
+eq([text(f, 'notes'), own(f)], ['Needed by Vehicle control', ['Undo update', 'Remove', 'Back']], 'a Remove refused for a dependent');
+eq(text(screen('app-remove-refused', { stack: [{ name: 'main' }, { name: 'app', id: 'gauges' }] }), 'notes'), '', 'another component\'s page');
+eq(text(screen('app-remove-refused', { removeNote: { id: 'mgu-uplink', error: 'the head unit is restarting', by: null } }), 'notes'),
+    'the head unit is restarting', 'another refusal as the updater says it');
 f = screen('app-downloading');
 eq(own(f), ['Back'], 'nothing to press while it downloads');
 eq([f.values.progress.label, f.values.progress.right, f.values.icon.progress], ['Downloading', '42 %', 0.42]);
@@ -250,6 +256,10 @@ f = laterOf({ stack: [{ name: 'main' }, { name: 'app', id: 'car_vitals' }] });
 eq([f.items.map((i) => i.label).slice(0, -4).filter(notVersion), text(f, 'notes')], [['Restart head unit', 'Back'], 'Restart pending'], 'first install');
 eq(laterOf({ stack: [{ name: 'main' }, { name: 'app', id: 'doom' }] }).items.map((i) => i.label).slice(0, -4).filter(notVersion),
     ['Restart head unit', 'Remove', 'Back'], 'update of an installed app');
+later.busy = { id: 'other', op: 'install', phase: 'install' };
+f = laterOf({ stack: [{ name: 'main' }, { name: 'app', id: 'car_vitals' }] });
+eq([f.values.primary.text, f.values.primary.disabled, f.items.map((i) => i.label).slice(0, -4).filter(notVersion)], ['Restart head unit', true, ['Back']], 'greyed out while another install runs');
+later.busy = null;
 f = laterOf({});
 eq([f.values.grid.items.map((t) => [t.id, t.sub, t.badge]), f.values.nav.items[1].badge],
     [[['car_vitals', 'Restart pending', ''], ['doom', 'Restart pending', 'installed']], ''], 'tiles; not counted as an update');
@@ -441,6 +451,23 @@ eq(info.slice(0, 3).map((i) => [i.title, i.right]), [['iDrive 7', ''], ['Store',
 ok(info.some((i) => i.id === 'mgu-renderd' && i.right === 'chip:1.1.0'), 'Information: an installed renderer and its version');
 const idle = { busy: null, components: fixture.state().components.map((c) => Object.assign({}, c, { queued: false })) };
 ok(screen('settings', {}, idle).labels.indexOf('Restart head unit') >= 0, 'Restart head unit with nothing installing');
+// every Restart greyed out while an install runs or waits, in its place, and pressable again after
+const restartOff = (g, el) => [g.values[el].hidden, g.values[el].disabled];
+const queuedOnly = Object.assign({}, idle, { components: idle.components.map((c, i) => Object.assign({}, c, { queued: i === 0 })) });
+const unlistedQueued = Object.assign({}, idle, { components: idle.components.concat([Object.assign({}, idle.components[0],
+    { id: 'gone', compat: 'no', installed: null, status: 'available', queued: true })]) });
+eq([restartOff(screen('settings', {}, idle), 'restart'), restartOff(screen('settings', {}, { components: idle.components }), 'restart'),
+    restartOff(screen('settings', {}, queuedOnly), 'restart'), restartOff(screen('settings', {}, unlistedQueued), 'restart')],
+[[false, false], [false, true], [false, true], [false, true]], 'Settings: Restart head unit greyed out while an install runs or waits');
+eq(screen('settings', {}, { components: idle.components }).labels.indexOf('Restart head unit'), -1, 'greyed out: not pressed');
+['iDrive 7 embed', 'iDrive 8'].forEach((u) => {
+    const box = (stOver) => {
+        const g = frame(fixture.model({ tab: 'settings' }, Object.assign(fixture.state(), stOver)),
+            { textScale: UNITS[u].scale, focus: 0, scroll: {}, layout: UNITS[u].layout });
+        return g.values.restart;
+    };
+    eq(Object.assign({}, box({ components: idle.components }), { disabled: false }), box(idle), `${u}: greyed out the same button`);
+});
 const refused = Object.assign({}, idle, { rebootError: 'too soon after start-up, possible in 3 min' });
 eq(text(screen('settings', {}, refused), 'note'), 'Restart failed: too soon after start-up, possible in 3 min', 'a refused restart beside Restart head unit');
 
@@ -473,6 +500,15 @@ eq(f.items[5].act, restartAct);
 eq(f.values.services.items.map((i) => i.right).filter((r) => /^chip:/.test(r)), ['chip:Restart pending', 'chip:Not working'],
     'Installed: a row restarting and one not working');
 eq([shown(screen('installed')), shown(screen('store'))], [true, true], 'kept while an install runs');
+// greyed out then, and still in the focus order: the rows after it keep their place
+f = screen('store');
+eq([f.values.restartNow.disabled, f.labels[4], f.items[4].act, f.items[4].keepPlace], [true, 'Restart now', null, true],
+    'Store: Restart now greyed out while an install runs, in its place');
+const storeRestartNow = (st) => { const g = screen('store-restart', {}, st); return [g.values.restartNow.disabled, g.items[4].label, g.items[4].act]; };
+eq([storeRestartNow(queuedOnly), storeRestartNow(idle)], [[true, 'Restart now', null], [false, 'Restart now', restartAct]],
+    'Store: greyed out and inert while one waits, pressable again once nothing is left');
+eq([screen('installed').values.restartNow.disabled, screen('installed-restart', {}, queuedOnly).values.restartNow.disabled,
+    screen('installed-restart', {}, idle).values.restartNow.disabled], [true, true, false], 'Installed: greyed out while an install runs or waits');
 const confirmRestart = (st) => frame(fixture.model({ stack: [{ name: 'main' }, { name: 'confirm', kind: 'restart' }] }, st),
     { textScale: 1, focus: 0, scroll: {} }).values.now.disabled;
 eq([confirmRestart(idle), confirmRestart({})], [false, true], 'its confirm step\'s Restart: off while an install runs');
@@ -513,6 +549,31 @@ Object.keys(UNITS).forEach((unit) => {
         const it = item(g, 'Restart now');
         eq(g.items.filter((o) => o !== it && !o.box && overlap(it, o)).map((o) => o.label), [], `${unit} ${name}: Restart now overlaps no other button`);
     });
+});
+
+// Leave safe mode on Store: in the deploy tool's safe mode while nothing installs, after the side menu, in Restart now's place
+const SAFE = { safeMode: { at: '2026-11-09T10:00:00Z', reason: '4 starts' } };
+f = screen('store-safe-mode');
+eq([f.labels.slice(0, 5), f.items[4].act, text(f, 'subtitle')], [['Store', 'Installed', 'Wi-Fi', 'Settings', 'Leave safe mode'],
+    { do: 'safe-mode-off' }, 'Safe mode'], 'Store in safe mode: the side menu, then Leave safe mode; the status line says so');
+eq(f.labels.indexOf('Restart now'), -1, 'Restart now gives it its place');
+eq(screen('store-safe-mode', {}, { busy: { id: 'doom', op: 'install', phase: 'download' } }).labels.indexOf('Leave safe mode'), -1,
+    'hidden while an install runs');
+eq(screen('store-safe-mode', { connected: false }).labels.indexOf('Leave safe mode'), -1, 'hidden without the updater');
+eq(screen('store-restart').labels.indexOf('Leave safe mode'), -1, 'none out of safe mode');
+eq(['installed', 'usb', 'settings'].map((n) => screen(n, {}, SAFE).labels.indexOf('Leave safe mode')), [-1, -1, -1], 'on Store only');
+Object.keys(UNITS).forEach((unit) => {
+    const p = UNITS[unit];
+    const at = (name) => {
+        const s = fixture.screens().find((x) => x[0] === name);
+        const m = fixture.model(s[1], Object.assign(fixture.state(), s[2]));
+        return frame(m, { textScale: p.scale, focus: -1, scroll: {}, layout: p.layout });
+    };
+    const g = at('store-safe-mode');
+    const it = g.items[4];
+    const now = at('store-restart').items.find((o) => o.label === 'Restart now');
+    eq([it.label, it.x + it.w, it.y, it.h], ['Leave safe mode', now.x + now.w, now.y, now.h], `${unit} Store: Leave safe mode where Restart now is`);
+    eq(g.items.filter((o) => o !== it && !o.box && overlap(it, o)).map((o) => o.label), [], `${unit} Store: Leave safe mode overlaps no other button`);
 });
 
 // a source: Remove; the GitHub App's install page while a sign-in does not reach it

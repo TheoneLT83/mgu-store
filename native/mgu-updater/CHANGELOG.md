@@ -1,5 +1,138 @@
 # Updater changelog
 
+## 0.8.55
+
+robertnisipeanu/mgu-store's 0.8.51 with this repository's 0.8.54:
+- Downloads, the checked package handed to the deploy tool, and builds on the unit go to RAM when there is room (to storage otherwise), so they are not written to the head unit's storage. Source listings and the updater's state files are written only when they change.
+
+## 0.8.54
+
+robertnisipeanu/mgu-store's 0.8.50 with this repository's 0.8.53:
+- The Store gets fresh state within a few seconds when components are installed or removed outside the updater, and after the updater refuses an install, update or removal.
+
+## 0.8.53
+
+Default source: hexlay/idrive7-system-monitor (System Monitor, iDrive 7 only) on its default branch, added once at the
+first start of this version (and seeded by the installers, `deploy/sources.json`), unless a source of that repo is
+there already; removed, it is not added again (robertnisipeanu/mgu-store's 0.8.48).
+
+## 0.8.52
+
+A component packed from a repo's files (no build script), such as Controller gate or the GPU renderer, installs:
+it no longer fails with "made is not defined".
+
+## 0.8.51
+
+robertnisipeanu/mgu-store's 0.8.47 with this repository's 0.8.50: an app installed again from its kept package goes
+to the deploy tool with `--repair` (deploy tool 0.8.25).
+
+## 0.8.50
+
+robertnisipeanu/mgu-store's 0.8.45 and 0.8.46 with this repository's 0.8.49: an app built by its repository's script
+has its SDK donor looked up while its files download; from a public repository it reads only the app's folder, its
+shared files and the script (the whole repository when a build fails with only those); from a USB stick that holds
+more than the checkout, the same.
+
+## 0.8.49
+
+Requires deploy tool 0.8.23 (installed first): with 0.8.21 and 0.8.22 the deploy tool's status took longer than the
+check of an updated updater waits, and 0.8.48 was not kept ("the deploy tool does not answer it"). The deploy tool's
+status is given 2 minutes.
+
+## 0.8.48
+
+- Needs the deploy tool's 0.8.21, so a kept package built with an oap-sdk the firmware update took is not installed
+  again offline (the app would not start there); the source's install follows once online.
+
+## 0.8.47
+
+- An app a firmware update left not working (the app manager starts it only once it is updated) is installed again
+  from the package the deploy tool keeps for it when the unit has no internet or no source lists it, so the Store
+  opens again without internet; once per reason, the source's install following once online if that did not help.
+  Needs the deploy tool's 0.8.20 for the kept package; with an older one, as before (its source only).
+
+## 0.8.46
+
+robertnisipeanu/mgu-store's 0.8.44 and 0.8.45 with this repository's updater (its own way of reading GitHub kept):
+
+- The updater's own repairs leave the deploy tool's safe mode on (`--keep-safe-mode`), and so does the rollback of a
+  Store a repair updated; an install asked for leaves it.
+- Downloads (fetch.js, as upstream's): a cut download goes on from where it stopped more often (Last-Modified, an
+  immutable file), a gzipped answer's rest stays gzipped, and a build's donor is looked up while its files download.
+
+## 0.8.43
+
+robertnisipeanu/mgu-store's 0.8.42 with this repository's updater:
+
+- The deploy tool's safe mode shows in the state (`safeMode`), and the Store's Leave safe mode (`safe-mode-off`) leaves it. The updater runs in safe mode.
+- A tool keeps its units' `runsInSafeMode`.
+- Before it asks for a restart of the head unit, the updater records it for the deploy tool, so the restart never counts against safe mode.
+
+## 0.8.42
+
+- The phone page's logs have the deploy tool's verify unit (`mgu-deploy-verify`) too (robertnisipeanu/mgu-store's 0.8.41).
+
+## 0.8.47
+
+- An app installed again from its kept package goes to the deploy tool with `--repair`: the deploy tool then installs it again once, and holds it after a failure or a second loss until it is installed from the Store.
+
+## 0.8.46
+
+- An app built by its repository's script installs from a stick that holds more than the checkout: when the stick holds more than 200 MB or 20000 files, the build gets the app's folder, its shared files and the script. A folder too big to read says which folder, and whether bytes or files are over the limit.
+
+## 0.8.45
+
+- An app built by its repository's script has its SDK donor looked up while its files download, and the build uid's processes are killed with the system's `kill` (with Node where there is none, or something of that uid is still running): its build starts and ends sooner.
+
+## 0.8.44
+
+- Only an install asked for (the Store, the phone page) leaves the deploy tool's safe mode. The updater's own repairs (a lost app installed again, a stale tool laid again, updated or installed again, and the rollback of a Store such a repair updated that did not start) keep it.
+
+## 0.8.43
+
+- Installing or updating from a public repository's branch downloads the component's files over a few connections kept open, six at a time, instead of starting a new download for each file. The progress moves as the bytes come.
+
+## 0.8.42
+
+- The deploy tool's safe mode shows in the state (`safeMode`), and the Store's Leave safe mode (`safe-mode-off`) leaves it. The updater runs in safe mode.
+- A tool installed from a repository's tree keeps its units' `runsInSafeMode`.
+- Before it asks for a restart of the head unit, the updater records it for the deploy tool, so the restart never counts against safe mode.
+
+## 0.8.41
+
+- Switch to TheoneLT83's Store (`store-switch`) is not offered: this updater's own source is that repository
+  already. One installed still shows, so it can be removed.
+
+## 0.8.40
+
+robertnisipeanu/mgu-store's 0.8.37/0.8.38 with this repository's updater:
+
+- A tool stays while an installed app or tool still requires it, also when no source lists that app any more: Remove all
+  neither offers nor takes it along, and it can't be removed on its own. The updater records what each component requires.
+- The tools the Store's setup installs (Internet uplink, Renderer, App privacy, Python, the deploy tool and the updater)
+  can't be removed from the Store.
+
+## 0.8.39
+
+robertnisipeanu/mgu-store's 0.8.36 with this repository's updater:
+
+- An installed app's icon from its source is fetched too, so a removed app keeps its icon in the Store.
+
+## 0.8.38
+
+- CarTube (`TheoneLT83/CarTube`, Releases) is a default source: added once at this updater's first start, and stays removed if removed.
+
+## 0.8.37
+
+robertnisipeanu/mgu-store's 0.8.35 with this repository's updater:
+
+- Lost apps are installed again only while the app manager runs on a data folder of its own: not while it has not started or created its home after a factory reset. The updater looks again when it comes up.
+
+## 0.8.36
+
+- A branch app of the same version is an update only when its own folder changed: a change to the kit every app is
+  built with (a translation, a font) no longer offers an update of every installed app.
+
 ## 0.8.35
 
 robertnisipeanu/mgu-store's 0.8.32 with this repository's updater:

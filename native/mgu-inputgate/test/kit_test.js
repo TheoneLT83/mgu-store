@@ -1,7 +1,8 @@
 'use strict';
-/* The controller gate's install kit (kit/, component.json) is the one the updater makes for a repository's preload
- * tool of this id (native/mgu-updater/js/sources.js preloadFiles, packPreload: idrive7-apps' mgu-inputgate), file for
- * file, so whichever source installed it, the gate on the head unit is the same and either updates it. */
+/* The controller gate's install kit (kit/, component.json): idrive7-apps' gate 1.1.0 (kit/renderd/inputgate/tool: the
+ * HMI of either iDrive, the drop-in in hmi.service and hmi8.service) with this repository's shutdown check (guard.sh
+ * stop). Its guard keeps the updater's preload kit's lines for iDrive 7 (sources.js preloadFiles), the iDrive 8 HMI
+ * chosen before them. */
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
@@ -14,15 +15,26 @@ const f = preloadFiles(entry);
 const read = (from) => fs.readFileSync(path.join(HERE, from), 'utf8');
 let checks = 0;
 const eq = (a, b, msg) => { checks++; assert.deepStrictEqual(a, b, msg); };
+const ok = (v, msg) => { checks++; assert.ok(v, msg); };
 
 eq([c.id, c.title], [entry.id, entry.title], 'component.json: the id and title of the repositories\' gate');
-eq(read('kit/guard.sh'), f.guardSh, 'guard.sh as the updater writes it');
+const guardSh = read('kit/guard.sh');
+// the updater's kit for iDrive 7, with the HMI chosen by iDrive: Hmi8 / hmi8.service, else HmiMain3D / hmi.service
+const id7 = guardSh.split('\n').filter((l) => !/^if \[ ! -e \/usr\/bin\/HmiMain3D \]|^# The HMI: Hmi8/.test(l)).join('\n')
+    .split('$UNIT').join('hmi.service').split('$PROC').join('HmiMain3D')
+    .replace('mgu-inputgate.so in the HMI, from', 'mgu-inputgate.so in hmi.service, from')
+    .replace('(mgu-inputgate-check.service, after the HMI)', '(mgu-inputgate-check.service, after hmi.service)')
+    .replace('at a normal shutdown, before the HMI)', 'at a normal shutdown, before hmi.service)');
+eq(id7, f.guardSh, 'guard.sh: the updater\'s kit on iDrive 7');
+ok(/UNIT=hmi8\.service; PROC=Hmi8/.test(guardSh), 'guard.sh: Hmi8 and hmi8.service on iDrive 8');
 eq(c.files.map((x) => [x.path, x.mode]), [[entry.preload.library, '0755'], ['guard.sh', '0755']], 'the library and guard.sh, 0755');
 eq(c.files[1].from, 'kit/guard.sh');
 eq(c.units.map((u) => u.name), [f.guard, f.check], 'the guard and check units');
-c.units.forEach((u, i) => eq(read(u.from), [f.guardUnit, f.checkUnit][i], `${u.name} as the updater writes it`));
-eq(c.dropins.map((d) => [d.unit, d.name]), [[entry.preload.unit, f.dropinName]], 'the drop-in in hmi.service');
-eq(read(c.dropins[0].from), f.dropin, `${f.dropinName} as the updater writes it`);
+ok(/^Before=hmi\.service hmi8\.service$/m.test(read(c.units[0].from)) && /^After=hmi\.service hmi8\.service$/m.test(read(c.units[1].from)),
+    'the guard before the HMI of either iDrive, the check after it');
+ok(/guard\.sh stop$/m.test(read(c.units[1].from)), 'the check unit runs guard.sh stop at a normal shutdown');
+eq(c.dropins.map((d) => [d.unit, d.name]), [['hmi.service', f.dropinName], ['hmi8.service', f.dropinName]], 'the drop-in in hmi.service and hmi8.service');
+eq(c.mguHmi, ['ID7', 'ID8'], 'iDrive 7 and iDrive 8');
 eq([c.enable, c.recmgr, c.restart], [[], [], []], 'nothing enabled, listed or restarted: the HMI loads it at its next start');
 
 /* guard.sh stop, run: the count goes back to 0 only while the process that first loaded the library still runs
@@ -35,7 +47,7 @@ eq([c.enable, c.recmgr, c.restart], [[], [], []], 'nothing enabled, listed or re
     fs.mkdirSync(bin);
     fs.writeFileSync(path.join(bin, 'pidof'), '#!/bin/sh\necho 4242\n', { mode: 0o755 });
     fs.writeFileSync(path.join(bin, 'systemctl'), '#!/bin/sh\n[ -f "$GATE_ACTIVE" ]\n', { mode: 0o755 });
-    const sh = f.guardSh.split('D=/var/opt/mgu-inputgate').join(`D=${T}/opt`)
+    const sh = guardSh.split('D=/var/opt/mgu-inputgate').join(`D=${T}/opt`)
         .split('RUN=/run/mgu-inputgate.env').join(`RUN=${T}/run.env`).split('PID=/run/mgu-inputgate.pid').join(`PID=${T}/run.pid`)
         .split('/proc/$p/').join(`${T}/proc/$p/`);
     fs.mkdirSync(path.join(T, 'opt', 'versions', '1.0.1'), { recursive: true });

@@ -17,9 +17,8 @@ when nothing listens there, to the community one.
 
 `src/proto.h` has every number below.
 
-A fourth protocol, display-bridge's DBR1 (mgu-apps `native/display-bridge`,
-`src/dbr.h`), has its own framing: a connection whose first four bytes are its
-magic `DBR1` speaks it for good (README.md, "display-bridge's apps"). No
+A fourth protocol, display-bridge's DBR1 (`src/dbr.h`), has its own
+framing: a connection whose first four bytes are its magic `DBR1` speaks it for good (README.md, "display-bridge's apps"). No
 message of the three dialects begins that way: their first message is HELLO,
 type 1.
 
@@ -81,9 +80,7 @@ treats 9, 10, 11, the events and op 18 that way:
 
 - **9** is upstream's IMAGE when words 1 and 2 are a size of 1..4096 and the
   payload holds at least 12 + w×h×4 bytes; otherwise IterioDev's CLAIM (word 0
-  at most 16, then that many rects). An upstream image's w and h, read as a
-  claim's first x and y, are float bit patterns below 1e-38, which no claim
-  has, so the image reading wins.
+  at most 16, then that many rects).
 - **10** of 4 bytes is upstream's GRAB; 12 + w×h×4 bytes is IterioDev's IMAGE.
 - **11** is IterioDev's.
 - Anything else in 9-11 fits neither and ends the connection.
@@ -95,10 +92,6 @@ Until then nothing tells them apart, and nothing needs to: messages 1-8 are the
 same, the daemon sends 105 and 106 only to an app that claimed or grabbed, and
 op 18 draws nothing without an uploaded image. An app that never sends 9-11
 stays undecided and is served exactly as either original would serve it.
-
-`test/test_dialect.c` checks the rules; `make test` replays sessions recorded
-from both kits through the original daemons and through mgu-render and
-compares every frame byte for byte.
 
 ## Native dialect, mgu-render/1
 
@@ -113,27 +106,29 @@ An older renderer takes the app id up to the NUL and answers with READY
 alone, so the client knows to fall back. mgu-render
 answers with X_READY first, then READY. Native clients use IterioDev's numbers
 for 9-14, 105, 106 and ops 18 and 19, and the extensions below, whose types start
-with "MR" (0x4d52…) so they never meet a number another dialect uses. A
-dialect added later takes its own HELLO field and its own type prefix.
+with "MR" (0x4d52…) so they never meet a number another dialect uses.
 
 Client to daemon:
 
 | Type | Name | Payload |
 |---|---|---|
 | 0x4d520001 | X_MODE | u32 mode: 1 layer, 2 embed. Before PLACE, or again to move the app |
-| 0x4d520002 | X_GRAB | u32 on: as upstream's GRAB; events come as X_CCU |
+| 0x4d520002 | X_GRAB | u32 on[, u32 hold]: as upstream's GRAB; events come as X_CCU. hold: the parts of the controller the HMI doesn't get meanwhile, bits 1 knob, 2 press, 4 tilt; 0 or left out: all three ("Touch and controller") |
 | 0x4d520003 | X_PIXMAP | u32 id, w, h (1..2048), format (1 premultiplied RGBA, 2 RGBA shown opaque, 3 INDEX8), filter (0 nearest, 1 linear): an image written in regions, drawn with op 18 |
 | 0x4d520004 | X_PIXELS | u32 id, n (1..64), n × u32 x, y, w, h, then each rect's pixels in turn, rows top-down, packed (w × 1 or 4 bytes a row) |
 | 0x4d520005 | X_PALETTE | u32 id, 768 bytes RGB: an INDEX8 pixmap's colours, for the whole picture from now on |
 | 0x4d520006 | X_BRIDGE | u32 on (embed, caps 64): 1 the HMI changes the app's page now, the app's frames show on the renderer's layer over the box for `embed_bridge_ms` (a second one holds it longer, up to twice that from when it showed); 0 hide that layer now (an HMI popup took the page's focus). README.md, "Page changes" |
+| 0x4d520007 | X_FINGERS | u32 on: every finger of a gesture in the app's claims comes as X_FINGER, with its id; TOUCH no longer comes. Off by default (caps 128; upstream numbers it 0x4d520006, caps 64, which X_BRIDGE has here) |
+| 0x4d520040 | X_BUSY | u32 on: 1 the app is slow on purpose (the Store installing): inputs that leave its picture as it is don't hand touch and the controller to the HMI, for at most 3 min after the last 1 (send it again to keep it); 0 counts them again. A renderer without it ignores it (a number upstream does not use) |
 
 Daemon to client:
 
 | Type | Name | Payload |
 |---|---|---|
-| 0x4d520101 | X_READY | u32 version (1), modes (bit 0 layer, bit 1 embed: offered now), caps (1 touch routing, 2 controller gate loaded in the HMI and its event socket ours or free, 4 front gate, 8 pixmaps, 16 video, 32 embed frames drawn zero-copy, 64 X_BRIDGE), i32 embed box x, y, w, h (0 when no embed), i32 app area x, y, w, h, u32 largest pixmap side, refresh mHz |
+| 0x4d520101 | X_READY | u32 version (1), modes (bit 0 layer, bit 1 embed: offered now), caps (1 touch routing, 2 controller gate loaded in the HMI and its event socket ours or free, 4 front gate, 8 pixmaps, 16 video, 32 embed frames drawn zero-copy, 64 X_BRIDGE, 128 X_FINGERS, 256 the loaded gate holds only the parts X_GRAB's hold names, 512 NV12 video frames (upstream: 256)), i32 embed box x, y, w, h (0 when no embed), i32 app area x, y, w, h, u32 largest pixmap side, refresh mHz |
 | 0x4d520102 | X_STATE | u32 mode, on screen, in front (the HMI shows the app's screen); sent whenever one changes |
 | 0x4d520103 | X_CCU | as upstream's CCU |
+| 0x4d520104 | X_FINGER | u32 phase (1 down, 2 move, 3 up, 4 cancel), u32 finger id (0..15, the display's), f32 x, y logical px: one finger of a gesture that began in a claim (after X_FINGERS 1). Cancel: the finger's lift was never seen and it is gone (x, y where it was last): drop it without acting on it, never as a tap or a release there |
 
 Pixmaps share the id space of IMAGE pictures. Pictures, upstream images and
 pixmaps count towards 64 per app and 96 MiB for all apps; pictures also
@@ -146,8 +141,8 @@ IterioDev's protocol 4, the same in the iterio and native dialects. Another
 program (a player) writes decoded frames to a file in `/dev/shm`; the app
 names the file (VIDEO) and draws op 19 where the picture goes. The renderer
 reads the file's newest frame each time it draws the app, and draws the app's
-last frame again by itself when a newer one is there (it looks every 5 ms
-while a shown app has a video), so the app sends frames for its own changes.
+last frame again by itself when a newer one is there, so the app sends frames
+for its own changes.
 New video frames are not the app talking: a shown app still sends at least
 one message a second (its frame again will do), or after 3 s of silence it is
 taken for hung and hidden until it talks again, as IterioDev's kit does.
@@ -159,8 +154,13 @@ taken for hung and hidden until it talks again, as IterioDev's kit does.
   mgu-ytplay gives its file to `nobody` and writes as `nobody`). Anything else
   gets an ERROR and the app stays connected; the op then draws nothing. At
   most 4 videos per app.
-- **File**: a 64-byte header, then `nslot` frames of w×h×3/2 bytes, I420 (the
-  Y plane, then U, then V, rows without padding):
+- **File**: a 64-byte header, then `nslot` frames of w×h×3/2 bytes, rows
+  without padding, in one of two layouts:
+  - **I420** (format 0): the Y plane (w×h), then U, then V (w/2×h/2 each).
+  - **NV12** (format 1): the Y plane (w×h), then one plane of U, V byte pairs
+    (w/2 pairs a row, h/2 rows), as hardware decoders write it. Only where
+    X_READY caps has 256; an older renderer reads every frame as I420, so a
+    player writes I420 there.
 
   | Word | Field |
   |---|---|
@@ -172,7 +172,8 @@ taken for hung and hidden until it talks again, as IterioDev's kit does.
   | 6 | nslot: 1..4 |
   | 7 | matrix: 0 BT.601, 1 BT.709 |
   | 8 | range: 0 limited (16-235), 1 full |
-  | 9-15 | zero |
+  | 9 | format: 0 I420, 1 NV12 |
+  | 10-15 | zero |
 
   The writer fills slot (slot + 1) % nslot, then sets slot, then seq + 1; the
   renderer reads the header, then that slot. With 3 slots the writer is two
@@ -220,7 +221,12 @@ disconnected once so they connect again to that.
 - **Touch** is IterioDev's divert (`src/touch.c`): while a shown app claims
   areas, one nftables rule (table `ip mgu_render`) sends the display's touch
   PDUs (UDP 30567) to the daemon on port 30570; a gesture that starts in a claim goes to that app as TOUCH, every
-  other PDU goes on to the HMI unchanged. A layer app that claims is hidden
+  other PDU goes on to the HMI unchanged. A gesture lasts until its last finger is up: every finger in it is the
+  owner's, wherever it is. TOUCH carries the finger that began the gesture; a native app that sends X_FINGERS 1 gets
+  every finger as X_FINGER (phase, finger id, x, y) instead. A finger that was down and is missing from a report, or
+  goes down again, lost its UP (a lost datagram, the divert taken out while the HMI covered the app, the app hidden):
+  it is let go first, with no TOUCH, and as X_FINGER cancel only to an app still on screen. An app that goes off
+  screen (X_STATE) drops the fingers it holds. A layer app that claims is hidden
   and gets CLOSED when the HMI is touched outside its claims; an embed app's
   page is the HMI's to leave, so it is not closed. A guard process removes the
   rule if the daemon dies or hangs.
@@ -231,6 +237,16 @@ disconnected once so they connect again to that.
   is bound only while an app grabs, and is upstream's renderer's when that one
   holds it. Without the gate the HMI keeps the controller; apps read FrontCCU
   over SOME/IP themselves and keep their RHMI focus proxies.
+- **Holding parts of the controller**: X_GRAB's second word names the parts
+  the HMI doesn't get (1 knob, 2 press, 4 tilt); the others stay the HMI's,
+  so a tilt still leaves an app that holds the knob and the press. The
+  renderer writes them into the gate's file as words (`knob press`); a gate
+  that reads them (its library carries the marker `mgu-inputgate-hold:`;
+  X_READY caps 256 here) looks at the words every 50 ms while the file is fresh
+  and not empty, and holds only those. An empty file holds all three, and so
+  does a gate without the marker. The words go when the controller goes back
+  to the HMI, and when the renderer stops or starts. X_CCU still carries the whole
+  event; the 4-inputs safety net counts only events that move a held part.
 
 ## Draw ops
 

@@ -11,13 +11,14 @@
  *   scrolls as in frame())
  *   dragOf(model, { textScale, scroll, layout }, key) -> what a drag of grid or list key draws (store_drawn.js)
  *   dragFrame(drag, baseLayer, rowsLayer, from, top, textScale) -> one frame of that drag
+ *   toward(items, i, dir) -> the item the controller's tilt dir ('N', 'E', 'S', 'W') moves the focus to from item i
  *
  * model.look: 'id7' or 'id8' (Settings), else the head unit's own
  * (store_ui.js lookOf); it picks the theme and the fonts.
  *
  * layout: placement()'s; the iDrive 8 design when null.
  *
- * items: { x, y, w, h, r, label, act, reveal?, box? }; an item of a grid or
+ * items: { x, y, w, h, r, label, act (null: a greyed-out button that keeps its place), reveal?, box? }; an item of a grid or
  * list carries box: its grid's or list's box, which bounds where it takes a
  * touch, and while not wholly in view reveal { key, top }: the scroll that
  * shows it.
@@ -116,9 +117,11 @@ function itemsOf(st, page, look) {
                 if (q.it.act) items.push({ x: q.x, y: b.y, w: q.w, h: b.h, r: b.h / 2, label: q.it.text, act: q.it.act });
             });
         } else if (c.gpu === 'vbutton') {
-            if (o.act && !o.disabled) {
+            // a greyed-out button is not pressed; one with keepPlace keeps its place in the focus order (act null)
+            if (o.act && (!o.disabled || o.keepPlace)) {
                 const round = o.style === 'round';
-                items.push({ x: b.x, y: b.y, w: b.w, h: b.h, r: round ? b.w / 2 : Math.min(18, b.h / 2), label: o.text || 'Back', act: o.act });
+                items.push(Object.assign({ x: b.x, y: b.y, w: b.w, h: b.h, r: round ? b.w / 2 : Math.min(18, b.h / 2), label: o.text || 'Back',
+                    act: o.act }, o.disabled ? { act: null, keepPlace: true } : {}));
             }
         } else if (c.gpu === 'tabs') {
             const t = tabCells(b, o);
@@ -164,7 +167,7 @@ function itemsOf(st, page, look) {
             });
         }
     });
-    return { items: items.filter((it) => it.act), regions };
+    return { items: items.filter((it) => it.act || it.keepPlace), regions };
 }
 
 /* A layout's options with its words in the display language. */
@@ -314,4 +317,33 @@ function hit(items, x, y) {
     return -1;
 }
 
-module.exports = { frame, layoutOf, dragOf, dragFrame, hit, placement };
+/* The item a tilt of the controller moves the focus to from items[i], of those ahead that way: one in line (sharing
+ * some of items[i]'s span across the tilt) first, the nearest ahead and of those the nearest to the side; else one at
+ * most as far off to the side as ahead, the nearest with the distance to the side counting double. null when none
+ * is. Items out of view count where a scroll puts them. */
+function toward(items, i, dir) {
+    const cur = items[i];
+    if (!cur) {
+        return null;
+    }
+    const across = dir === 'E' || dir === 'W';
+    const cx = cur.x + cur.w / 2;
+    const cy = cur.y + cur.h / 2;
+    let best = null;
+    let score = Infinity;
+    items.forEach((it, k) => {
+        const dx = it.x + it.w / 2 - cx;
+        const dy = it.y + it.h / 2 - cy;
+        const ahead = dir === 'E' ? dx : dir === 'W' ? -dx : dir === 'S' ? dy : -dy;
+        const side = across ? Math.abs(dy) : Math.abs(dx);
+        const inLine = across ? it.y < cur.y + cur.h && cur.y < it.y + it.h : it.x < cur.x + cur.w && cur.x < it.x + it.w;
+        const s = inLine ? ahead * 1e4 + side : 1e12 + ahead + 2 * side;
+        if (k !== i && ahead > 4 && (inLine || side <= ahead) && s < score) {
+            score = s;
+            best = k;
+        }
+    });
+    return best;
+}
+
+module.exports = { frame, layoutOf, dragOf, dragFrame, hit, placement, toward };

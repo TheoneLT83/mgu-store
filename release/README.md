@@ -51,7 +51,8 @@ The store shows the app under the en_GB text of its first entry point.
 **Adding a tool** is its `native/<id>/component.json`: `id`, `kind: "tool"`,
 `version`, `title`, `description`, `files[{path, from, mode}]`, `units`,
 `enable`, `recmgr`, `restart`, `dropins` (the deploy tool's format; see
-`native/mgu-updater/component.json`), and optionally `internet` with
+`native/mgu-updater/component.json`; a unit's `runsInSafeMode`,
+deploy/README.md, "Safe mode"), and optionally `internet` with
 `uids` (deploy/README.md, "Internet for selected components") and the
 catalog fields `requires`, `optional`, `uninstallable`, `mguHmi`, `mguProvides`.
 
@@ -105,7 +106,11 @@ gzip header. The same tree gives the same bytes on any machine, so a
 version has exactly one artifact and a rebuild can be checked against the
 published sha256; `check` proves it for every component. Node's bundled
 zlib is the one outside input: a Node release with another zlib can
-compress differently, which publishing reports as other content.
+compress differently, which publishing reports as other content. A tool built
+in a build image that is not pinned (the renderer's `ubuntu:18.04` and its
+packages) can differ the same way: where nothing the component ships changed
+since the published catalog's commit, publishing keeps the published artifact
+(`kept:`); with a change, it asks for a new version.
 
 ## The catalog
 
@@ -129,8 +134,7 @@ compress differently, which publishing reports as other content.
       "id": "mgu-uplink",
       "kind": "tool",
       "…": "…",
-      "optional": true,
-      "uninstallable": true
+      "optional": true
     }
   ]
 }
@@ -151,21 +155,10 @@ changed. The updater checks
 `size` and `sha256` before anything is installed. The catalog is not
 signed: the unit trusts a source over HTTPS.
 
-Schema 2 adds, per entry:
-
-- `build: "unit"`: the artifact is a source package (`mgu-app.json` at its
-  root), which the deploy tool builds on the unit (deploy/README.md,
-  "Source packages"). Absent: a ready OAP tgz or tool kit.
-- `requires: { "<id>": "<min version>" }`: installed (or updated) first.
-  The Store requires the deploy tool that builds source packages.
-- `optional: true`: listed, never offered as an update unless installed
-  (`mgu-uplink`).
-- `uninstallable: true`: the Store may offer Remove (`mgu-uplink`).
-- `mguHmi: ["ID7"|"ID8", ...]`: the head units it is for; the Store
-  refuses it on another (docs/PUBLISHING.md). `robertn_store`: `["ID7"]`.
-- `mguProvides: "<capability>"`: the capability a tool provides
-  (`renderer`); a requirement on such a tool is also met by another
-  installed provider, and providers install side by side.
+The other fields (`build`, `requires`, `optional`, `uninstallable`,
+`mguHmi`, `mguProvides`) are described in docs/PUBLISHING.md, "2. Catalog".
+The Store's own tools are not `uninstallable`: the updater never removes
+them.
 
 ## Publishing
 
@@ -190,8 +183,8 @@ the car reads like any public repository.
 
 | Target (`MGU_PUBLISH`) | Layout | The unit reads it with |
 |---|---|---|
-| `github:<owner>/<repo>` (the workflow's repository) | release `<id>@<version>` per version, its artifact the one asset; release `catalog` holding `catalog.json` | a `github` source |
-| `dir:<path>` (relative paths: to the repository) | `catalog.json` and the artifacts side by side in a local folder, for the emulator or a USB stick | a `file` source, a USB stick, or the folder served over HTTPS (`https` source) |
+| `github:<owner>/<repo>` (the workflow's repository) | release `<id>@<version>` per version, its artifact the one asset; release `catalog` holding `catalog.json` and the icons it names | a `github` source |
+| `dir:<path>` (relative paths: to the repository) | `catalog.json`, its icons and the artifacts side by side in a local folder, for a USB stick or a static host | a `file` source, a USB stick, or the folder served over HTTPS (`https` source) |
 
 `publish` requires a clean working tree, builds HEAD, uploads each new
 artifact, and uploads `catalog.json` last, so the published catalog never
@@ -202,7 +195,7 @@ rest is published. Nothing is published when the resulting catalog would list a 
 whose requirements it doesn't hold at that version or newer, so a car can
 always install a component's requirements first.
 An interrupted run can be run again: a release left behind is completed,
-its asset checked against the new artifact's sha256. For the emulator,
+its asset checked against the new artifact's sha256.
 `MGU_PUBLISH=dir:release/published` (git-ignored) writes a local catalog.
 
 The entries of the published catalog carry over into the next one;

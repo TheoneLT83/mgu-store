@@ -22,8 +22,7 @@ plays, and says what they see.
 | `install-test.sh` | runs on the Mac: status, the test install and restore, test settings, renderer and head-unit restarts, measurements |
 | `probe.js` | runs on the unit (Node 8): Wayland globals, GPU, CPU per second; read-only |
 | `kit.js` | `install-test.sh`'s version checks, on the Mac |
-| `test_probe.js` | `node test_probe.js`: the probe against a fake compositor |
-| `trace.js` | the per-frame trace of a drag as a step-by-step breakdown, on the Mac (`node test_trace.js`) |
+| `trace.js` | the per-frame trace of a drag as a step-by-step breakdown, on the Mac |
 
 ## Short check: swipes, 30 and 60 fps, page changes
 
@@ -79,9 +78,8 @@ and the time from one frame to the next.
   build`) and refuses uncommitted changes in `native/mgu-render` or
   `apps/robertn_store`.
 - Docker is running (the mgu-render build), the Mac has internet (`install`
-  copies the published release first), and `node test_probe.js` passes.
-- Rehearse once in your own emulator (`./emu.py up --preset store` in your
-  own emulator checkout), with the options `up` prints as the target:
+  copies the published release first).
+- Rehearse once on a test head unit, with its SSH options as the target:
 
   ```sh
   H=(--host 127.0.0.1 --port <ssh> --identity <key> --ssh-opt StrictHostKeyChecking=no
@@ -265,7 +263,7 @@ DRI driver HmiMain3D has loaded ______.
 - The whole round trip (status, probe, install of mgu-render and a newer
   Store, restart guard and restart, the runtime settings, drag with stats
   lines, restore with the Store reinstalled, the checks, `k reboot`) ran in
-  the emulator. The car's own connection (`--car`) is deploy/hu's. `k
+  a test unit. The car's own connection (`--car`) is deploy/hu's. `k
   reboot` sends the request the updater's `reboot` sends (`nsm_control
   --requestRestart 7 --normal`) and waits for a new boot id or a new start
   of the HMI.

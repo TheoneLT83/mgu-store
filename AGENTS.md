@@ -43,3 +43,25 @@ every release has to be safe whichever component is updated first:
   its tile, and it can still update the rest. Repeat for each changed
   component, each time from the published release. (`deploy/hu install`
   also installs the branch's deploy tool, so it can't test an order.)
+
+## Pull requests by AI agents
+
+A pull request opened, or mostly written, by an AI agent says in its
+description (`.github/pull_request_template.md` has the fields):
+
+- **AI:** the product **and** the exact model name and version, for example
+  "Claude Code, Claude Opus 5.5" or "Codex, GPT-6.1". "An AI agent", "an AI
+  coding agent" or "AI-assisted" alone is not enough: name both. When several
+  models worked on it, list each, with what it did if that helps.
+- **Tested:** exactly how: which test suites ran and passed; whether it ran
+  on a real car (which iDrive and firmware) or on a test unit; and what was
+  not tested.
+- **Human review:** whether a person reviewed it before it was opened.
+
+A pull request without AI involvement says `AI: none`.
+
+Every pull request that changes anything shown on screen (a page, screen,
+dialog, tile, icon or text of the Store or an app) includes screenshots or a
+screen recording of each changed screen, before and after, under
+**Screenshots:**. A change to how something moves or reacts to input needs a
+recording.

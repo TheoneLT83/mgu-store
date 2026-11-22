@@ -36,7 +36,12 @@ def restart_now(st, before, x, y, h, shift):
         'size': 34, 'color': '#3d9bff', 'hidden': True, 'shift': shift}, 'event:restartNow'))
 # store: his, filter Apps / Tools
 st = copy.deepcopy(S['store']); get(st, 'filter')['opts']['items'] = 'All,Apps,Tools'
-restart_now(st, 'filter', 936, 134, 84, {}); screens.append(st)
+restart_now(st, 'filter', 936, 134, 84, {})
+# Leave safe mode in Restart now's place (store_ui.js safeModeOff)
+i = next(k for k, c in enumerate(st['components']) if c['name'] == 'filter')
+st['components'].insert(i, comp('safeModeOff', 'vbutton', 936, 134, 540, 84, {'text': 'Leave safe mode', 'vicon': 'unlock', 'style': 'primary',
+    'size': 34, 'color': '#3d9bff', 'hidden': True}, 'event:safeModeOff'))
+screens.append(st)
 # app: his; under the description its update history, then what an installed tool says is wrong
 st = copy.deepcopy(S['app']); get(st, 'desc')['h'] = 104
 st['components'].insert(st['components'].index(get(st, 'desc')) + 1,

@@ -44,6 +44,7 @@ class Gpu extends EventEmitter {
     connect() {}
     close() {}
     fps() {}
+    busy() {}
     mode(m) { if (m) this.wantMode = m; return this.wantMode; }
     place() {}
     claim() {}

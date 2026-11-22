@@ -32,6 +32,12 @@ either on the app's own layer over the HMI or inside the app's own HMI page.
 - **Touch** is IterioDev's divert of the display's touch PDUs to the app that
   claims the area, per unit from the configuration; the **iDrive controller**
   can be held for an app through the HMI's controller gate (upstream's GRAB).
+- **Anything of the HMI's over an app** (a popup, its menu, the voice
+  assistant, a screen opened from there) takes the focus from the app's
+  states: the foreground gate reports the app covered, and touch and the
+  controller are the HMI's until the focus comes back. An app whose picture
+  stays as it was through 4 touches or controller turns in a row gets neither
+  for 10 s (a layer app is taken off meanwhile).
 
 It is a Store tool component (`component.json`, `mguProvides: renderer`,
 optional): installed and updated by the updater like the other tools.
@@ -99,6 +105,11 @@ from the installed HmiMain3D.
   readable by the HMI's user (0644, 0755) whatever the installer's umask. Embed is
   offered from the next HMI start: after the first install, the next
   head-unit start. `umount /mnt/dataro/data/hmi/bmw/widget` undoes it.
+- The boot count ("The HMI and the page template", below) stops the mount
+  after the HMI failed twice with the template: `/var/opt/mgu-render/hmi-boot`,
+  `hmi-shutdown`, and `"hmi": "failed"` with its `problem` in `status.json`.
+- Drop-in `/etc/systemd/system/var-opt-ro.service.d/50-mgu-render.conf`: the
+  shutdown record the boot count reads.
 - Drop-ins `/etc/systemd/system/display-bridge{.socket,.service,-hmi.service}.d/mgu-render.conf`:
   display-bridge's units stand down while mgu-render is installed ("display-bridge's apps").
 - Logs: `journalctl -u mgu-render -u mgu-render-hmi`. `embed:` lines name the HMI compositor's globals and the
@@ -120,6 +131,81 @@ tool restarts a changed socket whose service is stopped), else at the next
 head-unit start; meanwhile apps reach it through the community socket, which
 the client tries next.
 
+## The HMI and the page template
+
+The template goes into HmiMain3D's widgets before the HMI starts, at every
+boot. An HMI build that failed with it would restart the head unit at every
+start (recmgr and crashhandler restart the head unit for any failure of
+`hmi.service` or HmiMain3D), so `mgu-render-hmi.sh` counts the boots that
+mount it and stops mounting it after two that ended in an HMI failure.
+
+**Which template.** The count is kept for one key: the template's stamp
+(HmiMain3D, the generator, `embed_surface_id`) and the MD5 of its `.pbw`
+files. Another key (a firmware update, another generator or
+`embed_surface_id`, a template that comes out different) starts the count
+again at 0 and mounts it, as does a new install after a removal, which takes
+`/var/opt/mgu-render` with it. An mgu-render update that leaves the template
+as it was keeps the count.
+
+**Healthy.** After mounting, `mgu-render-hmi.sh --confirm` waits in
+`mgu-render-hmi.service` (in the background; the unit is already started)
+for `hmi.service` to be active, notes its main PID and
+`ExecMainStartTimestampMonotonic`, and 120 s later checks that the same run
+is still active, that its main PID is HmiMain3D and that the template is
+still in place. The boot is then confirmed healthy and the count goes to 0.
+`hmi.service` has no `Restart=`, and a failure of it restarts the head unit,
+so the same main PID and start time 120 s apart is one unbroken HMI run
+with the template. It asks systemd every 5 s until the HMI is active, for
+up to 600 s, then once more 120 s later.
+
+**Failed.** A boot that mounted the template counts one failure only when
+it was not confirmed healthy, was not stopped by systemd, and a restart
+record names the HMI: recmgr's `/var/opt/public/sin/recmgr/restartInfo.xml`
+with `<ServiceName value="hmi.service"/>` (recmgr writes it before it asks
+for the restart, for any failure of `hmi.service`: a crash, a watchdog
+timeout, a start timeout) or crashhandler's
+`/var/opt/public/sin/crashhandler/restartInfo.xml` naming `HmiMain3D`. Only
+a record written in that boot after the mount counts: one that was not there
+at the mount or whose modification time, size or inode changed since
+(`seen` in `hmi-boot`), whatever the clock did. crashhandler names the
+process as dlt-cdh, the kernel's core handler, gives it: the file name of
+`/proc/<pid>/exe`. The boot's evidence is read:
+
+- at its end, by the drop-in of `var-opt-ro.service` (`--shutdown`), which
+  the NodeStateManager runs at every shutdown of the head unit (a
+  switch-off, a restart asked for, a restart recmgr or crashhandler asked
+  for) before `/var/opt` goes read-only: `hmi-shutdown` holds `<boot>
+  hmi|other|none`;
+- without such a line for that boot, at the next boot (before the HMI
+  starts, and before recmgr and crashhandler delete their records, some
+  10 s into the boot), from the records on disk.
+
+| How the boot ended | Counted |
+|---|---|
+| the HMI ran 120 s unbroken with the template (confirmed) | the count goes to 0 |
+| a switch-off or suspend, a restart from BMW's menu, the Store or an update (the NodeStateManager's restart: no restart record) | no |
+| `systemctl reboot` or `poweroff` (`--stop`, the unit's `ExecStop`, which `Conflicts=shutdown.target` runs at every systemd shutdown, marks the boot; `hmi.service`'s stop signal, SIGABRT, may leave a core) | no |
+| a power cut (no shutdown record, no new restart record) | no |
+| an HMI that starts slowly, then any of the above | no |
+| a restart for another program (the record names it) | no |
+| a record already there at the mount, left by an earlier boot | no |
+| a restart record naming the HMI, written after the mount | 1 |
+
+At two failures with no confirmed boot between them, the template is marked
+failed (`state=failed`) and not mounted: the HMI starts with its stock
+widgets, the marker is not written, and apps that ask for the embed
+placement get their layer, as with no template. `status.json` gets `"hmi":
+"failed"` and the `problem` `In-page drawing unavailable: the HMI failed
+with the page template`, which the Store shows on the Renderer's page, until
+the key changes. A template marked failed is never mounted, whatever else
+fails. A count that cannot be read (a missing or corrupt `hmi-boot`, no boot
+id) mounts the template, as does any other error in the count.
+
+`hmi-boot` is `template=<key>`, `fails=<n>`, `boot=<id>` (a random id kept
+in `/run/mgu-render/boot`, which every boot starts without), `at=<s>`,
+`seen=<recmgr's record's mtime.size.inode or -> <crashhandler's>` and
+`state=mounted|confirmed|clean|failed`.
+
 ## Embed buffers
 
 An embed app's frames reach the HMI's compositor one of two ways, decided when mgu-render connects to it:
@@ -135,8 +221,8 @@ An embed app's frames reach the HMI's compositor one of two ways, decided when m
 
 Both draw top-down and give the same bytes (`test/test_embed.c`). display-bridge's apps' pixels go into whichever
 kind is in use (with zero-copy, uploaded at the app's own size and scaled into the GPU buffer by GL): the HMI's compositor shows a GPU buffer
-with red and blue swapped once the same surface id has shown a shared-memory buffer in that HMI run (seen in the
-emulator and on the car), so a connection never mixes the two. Once reading back, mgu-render stays so until it restarts, and
+with red and blue swapped once the same surface id has shown a shared-memory buffer in that HMI run (seen on a
+test unit and on the car), so a connection never mixes the two. Once reading back, mgu-render stays so until it restarts, and
 zero-copy after a readback shows right only on a freshly started HMI. The journal names the path (`embed: zero-copy` or `embed: readback fallback (<why>)`);
 apps see it in X_READY's caps (32) and STATS' fourth word.
 
@@ -200,7 +286,7 @@ and serves those apps, unchanged.
   drawn and waiting for the compositor's frame callback, one committed. A
   newer frame replaces the one waiting, or is drawn over the one not yet
   committed (DROPPED either way). The committed one is PRESENTED on the
-  frame callback, or DROPPED when the picture goes first. In the emulator,
+  frame callback, or DROPPED when the picture goes first. On a test unit
   whose HMI repaints its embedded surfaces about 20 times a second, 10 s of
   DOOM play showed 16.9 frames a second (3 dropped), display-bridge 17.9.
 - **Touch.** The picture is the app's claim: a touch that starts there comes
@@ -247,6 +333,16 @@ restarts), which the link replaces.
   file is still there.
 - The socket unit stopping (uninstall) removes our socket and our link
   (`--unshare`), nothing else.
+- *Kit apps sent back* (`src/kit.c`): an idrive7-apps kit app (its folder
+  has `source/javascript/kit/app-spec.json`) tries the community socket first
+  and ours second, and stays with the one it reached. When the renderer there
+  restarts, its kit apps come to us. While a kit app is connected to us, the
+  daemon reads every 2 s which socket listens at the community path (the
+  kernel's table `/proc/net/unix`, no connection); once the same one has
+  listened there for 5 s, the kit app's connection is closed and the kit
+  connects again, to the community socket unless a failed try there turned
+  it to ours. An app back within 60 s is sent again only after 30 s, then
+  2 min; back a third time, it stays.
 
 **ivi ids.** Our layer apps use layer `0x4d520000 + slot` and surface
 `0x4d520100 + slot` ("MR"); the community renderers use `0x4d470000` and
@@ -270,7 +366,7 @@ and ports 30570 in, 30571 out, so neither removes the other's rule or takes
 its ports. Each diverts only while one of its own apps is shown with claims:
 ours only while one of its apps is in front (the foreground gate), his while
 his app shows its screen. They take turns. Were both in at once, the first
-chain to see a PDU takes it; on the emulator's `lo` our rule passes both
+chain to see a PDU takes it; on a test unit's `lo` our rule passes both
 renderers' re-injections (from 30569 and 30571) to the HMI and his catches
 ours, so a PDU passes each renderer at most once and nothing loops. Neither
 leaves its rule behind: each has a guard process that removes it when its
@@ -298,7 +394,7 @@ logged and skipped; the renderer still starts. The unit-specific ones:
 | Key | iDrive 7 | iDrive 8 |
 |---|---|---|
 | screen, app area | read from Winston's output: 1920×720, area 108,82,1790,638 | 2880×960, area 0,76,2880,764 |
-| `touch_iface`, `touch_saddr` | `vlan73`, `160.48.199.115` (`auto`: `lo` when there is no vlan73, as in the emulator) | same |
+| `touch_iface`, `touch_saddr` | `vlan73`, `160.48.199.115` (`auto`: `lo` when there is no vlan73, as on a test unit) | same |
 | `touch_area` | 0,0,1920,720 (`auto` by screen size) | 0,76,2880,764 |
 | `embed`, `embed_area` | 1, 104,88,1796,632 | never offered: no HmiMain3D, so no template is loaded |
 | `embed_zero_copy`, `tick_early`, `readback_pbo`, `embed_finish` | 1, 1, 1, 0 (embed: "Embed buffers") | same |
@@ -324,6 +420,8 @@ gpu.fps(30);                                        // optional: at most 30 fram
 gpu.on('tick', () => gpu.frame(recorder));          // kit Recorder, or gpu.frameWords(ops)
 gpu.on('state', (s) => { /* { mode, onScreen, front } */ });
 gpu.on('touch', (phase, x, y) => { /* in claimed areas: gpu.claim([...]) */ });
+// gpu.fingers(true): every finger instead, as gpu.on('finger', (phase, id, x, y) => ...) (info.fingers);
+//   phase 'cancel': the finger is gone without a lift seen, drop it (not a tap)
 gpu.connect();
 ```
 
@@ -339,7 +437,8 @@ Pixel apps: `gpu.pixmap(1, 320, 200, 'index8', 'nearest')`, `gpu.palette(1,
 rgb768)`, `gpu.pixels(1, rects, indices)` for what changed, and
 `imageOp(1, x, y, w, h)` in each frame (`test/pixel_client.js`).
 
-Video (`info.video`): a player process writes decoded frames (I420) to
+Video (`info.video`): a player process writes decoded frames (I420, or NV12
+where `info.videoNv12` is set: the header's format word 1) to
 `/dev/shm/mgu-video-<name>` (PROTOCOL.md, "Video"); the app names the file
 with `gpu.video(1, '/dev/shm/mgu-video-<name>')` and puts
 `videoOp(1, x, y, w, h, r)` in its frames. Each new video frame draws the
@@ -354,6 +453,9 @@ The controller: read FrontCCU over SOME/IP in the app (display-bridge's
 `display_input.js` does) and keep the page's hidden focusable components for
 the HMI's own focus and BACK; `gpu.grab(true)` holds the dial back from the
 HMI only where the HMI's controller gate is loaded (`info.controller`).
+`gpu.grab(true, ['knob', 'press'])` holds only those parts (`'knob'`,
+`'press'`, `'tilt'`) where the gate can (`info.controllerHold`); the HMI
+keeps the rest. Elsewhere it holds all three.
 
 ## Build and test
 
@@ -362,14 +464,14 @@ HMI only where the HMI's controller gate is loaded (`info.controller`).
 | `make target` | `build/target/mgu-render`: x86-64, glibc 2.27, loader `/lib/ld-linux-x86-64.so.2`, built in Ubuntu 18.04 (Docker, linux/amd64) |
 | `make check-target` | the binary's architecture, loader, libraries (`libwayland-client`, `libwayland-egl`, `libEGL`, `libGLESv2`, libc, libm, libdl) and glibc versions |
 | `make test` | in Ubuntu 24.04 with Mesa's llvmpipe (Docker): `test/test_embed.c` (embed's buffer paths against a mock HMI compositor, `test/mock_hmi.c`: zero-copy through `wl_drm` with memfds standing in for dmabufs, readback with and without a pixel buffer, no `wl_drm`, no PRIME, buffers refused; every committed frame's CRC equal to the frame GL drew), `test/test_dialect.c`, `test/test_touch.c` (routing; our table and ports only, in while claimed, out when not and when the renderer dies), `test/test_share.c` (the community socket beside a fake second renderer: handover, restart, take-back, the drop race, foreign sockets kept), `test/test_video.c` (a frame file shorter than its header, the frame file's owner, the video limits), `test/test_hmi.sh` (the page-template script: built at install, only mounted at boot, a refused build not retried, a timeout or signal retried, the template and the boot's copy readable by the HMI's user under umask 077), and `test/replay.sh`: every session in `test/sessions/` (recorded from upstream's and IterioDev's kits, `test/sessions/README.md`) and the synthetic ones (`test/gen_sessions.js`) replayed through the original daemons (`test/reference/`) and mgu-render, every frame compared byte for byte; native pixmaps compared with the same pictures sent as IterioDev pictures; video sessions read frame files in `/dev/shm` and their last frame is checked for the videos' colours; a frame file of another uid is refused |
-| `deploy/hu install mgu-render` | build and install on a unit or the emulator (deploy/README.md) |
+| `deploy/hu install mgu-render` | build and install on a unit (deploy/README.md) |
 
 `mgu-render --replay FILE --out F.pam [--raw F.rgba]` draws a recorded
 stream offscreen. `record_dir` in the conf records each connection.
 
 ## On the car
 
-Settled offline and in the emulator: both legacy protocols (frames identical
+Settled offline and on a test unit: both legacy protocols (frames identical
 to the originals), native pixmaps, the embed and layer placements, the
 foreground gate, the template service, socket activation and packaging. Only
 the car can show:
@@ -380,7 +482,7 @@ the car can show:
 - [ ] Embed: DOOM-style pixmap frames inside the page: presented rate (`fps` in `test/pixel_client.js`), and the readback cost at 1796×632 (STATS avg µs) on the HD 505.
 - [ ] display-bridge's apps: after the update and a head-unit restart, display-bridge's units inactive (condition), DOOM, draw_gallery and display_bridge_demo drawn in their pages, DOOM's presented rate (`doom fps` in `/tmp/doom.log`) and touch on display_bridge_demo.
 - [ ] Embed: HmiMain3D's compositor offers `wl_drm` v2 with PRIME (`embed:` lines in the journal), takes the GPU buffers and shows them (`embed: zero-copy`), and the Store's drawn screens' frame rate while dragging (`tools/car-test/CAR-TEST.md`).
-- [ ] Touch: finger PDUs on UDP 30567 from 160.48.199.115 on vlan73, finger PDUs told by their finger count (payload byte 37) whatever their word type; the claim area 0,0,1920,720.
+- [ ] Touch: finger PDUs on UDP 30567 from 160.48.199.115 on vlan73, finger PDUs told by their finger count (payload byte 37) whatever their word type; the claim area 84,0,1836,720.
 - [ ] Touch in embed mode: a claimed area inside the page reaches the app and the HMI's hidden components under it do not react.
 - [ ] The foreground gate as root:root (gid 0) under the unit's SOME/IP credentials.
 - [ ] GRAB with upstream's `mgu-inputgate.so` loaded (installed separately).

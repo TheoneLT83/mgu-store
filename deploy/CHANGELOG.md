@@ -1,5 +1,158 @@
 # Deploy tool changelog
 
+## 0.8.31
+
+robertnisipeanu/mgu-store's 0.8.27 with this repository's 0.8.30:
+- Installs write less to the head unit's storage: packages are unpacked, prepared and checked in RAM when there is room (on storage otherwise), a package is written to the system partition once, straight from its file, and a backup links a file that an earlier backup or kept package already holds instead of storing it again.
+- The provisioning fallback copy of MainApp's `main.js` is built in RAM, at each start and at each install, and written to storage only when it changes. The deploy tool's state files are written only when they change.
+
+## 0.8.30
+
+robertnisipeanu/mgu-store's 0.8.26 with this repository's 0.8.29:
+- `mgu-install.js` over ENET on Windows: ssh connects to the head unit without binding to the adapter's address, so the SSH client that comes with Windows can connect.
+- `mgu-install.js` over ENET: only a link-local host address is tried as the head unit's (not the computer's own address). When the head unit's SSH does not answer, the message names the addresses tried and says that `--host <address>` can be given.
+- `mgu-install.js`: when an `--identity` or `--from` path with a space is not in quotes, the error says to put it in quotes and shows the whole path.
+
+## 0.8.29
+
+robertnisipeanu/mgu-store's 0.8.25 (and the safe mode change after it) with this repository's 0.8.28:
+- Safe mode counts every start as failed from its first moments until it stays up 5 minutes or shuts down in order, so starts that end in a power cut, a reset or a hang count too, and so does a crash restart up to 5 minutes into a start (the crash handler restarts the head unit about a minute and a half after a crash). Three failed starts in a row turn it on, and the start that follows already runs without our tools: their units start after the guard's first step. A `systemctl reboot` or `poweroff` counts as an orderly shutdown.
+- An install cut short between moving a tool's version folder aside and putting the new one in its place gets the folder back at the deploy tool's next install or other change.
+- `uninstall` refuses to remove a component that an installed app or tool still depends on (its requirements, or a capability only that component provides), and names those components. Remove them first, or use `remove-all`, which removes them in order.
+
+## 0.8.28
+
+robertnisipeanu/mgu-store's 0.8.24 with this repository's 0.8.27:
+- iDrive 7: when the app manager has no app uid left to give a new app ("No free user Ids left"), the app's install first removes the homes of our apps in `/var/opt/public/oap` that no registry entry uses, which frees their uids. The app manager leaves such a home behind each time it installs an app again under a new uid, and holds its uid for good. Homes of other apps, homes changed in the last 10 minutes and homes a process runs from stay.
+- `status` reports the app manager's app uid range, how many are free, and those held by no app (`app_uids`).
+- `status --json` stays JSON when an app's registry entry does not read (one the app manager is writing): the check
+  for homes our apps left behind then skips quietly, and any other warning of it goes to stderr.
+
+## 0.8.27
+
+robertnisipeanu/mgu-store's 0.8.23 with this repository's 0.8.26: every name a tool puts on the crash handler's list
+goes in a second time as `<name> (deleted)`, the name a process carries once an update replaced its executable while it
+ran (Maps on cluster rewriting `aapd`, for example). A crash of such a process does not restart the head unit. `status`
+adds these names on a head unit that has the tools installed already; they count from the next start of the head unit.
+
+## 0.8.26
+
+robertnisipeanu/mgu-store's 0.8.22 with this repository's 0.8.25: a lost Store is installed again also while safe mode
+is on (it has the Leave safe mode button), and safe mode stays on; under an updater before 0.8.47 it waits.
+
+## 0.8.25
+
+robertnisipeanu/mgu-store's 0.8.21 with this repository's 0.8.24: an app change never takes another app away (one the
+app manager dropped gets its entry back), a lost app is installed again once and then held, an app asking for SOME/IP
+the unit lacks after this repository cuts its proxies to fit is refused before anything changes. The Store is never
+held but by safe mode, and a rollback cut short is still finished.
+
+## 0.8.24
+
+robertnisipeanu/mgu-store's 0.8.19 and 0.8.20 with this repository's 0.8.23: iDrive 8's appletId scan passes over an
+installed app whose `rhmiData/application.json` is empty (or does not parse) instead of failing the install; iDrive 7's
+provisioning fallback copy carries the in-place install hook.
+
+## 0.8.23
+
+`status --json` answers in its usual time again: 0.8.21 read every stock package on the unit (preinstalled_apps) for
+each status, and a stale app's kept package whole, which took longer than the updater waits for an updated updater's
+check, so that update was not kept ("the deploy tool does not answer it"). The oap-sdk donor is now looked for by its
+file name, and a kept package's donor name is read once and kept beside it.
+
+## 0.8.22
+
+robertnisipeanu/mgu-store's 0.8.19 with this repository's 0.8.21: iDrive 7 with MainApp 6.4.8, the provisioning
+fallback copy carries the in-place install hook, so an app install or update there restarts only that app.
+
+## 0.8.21
+
+`status --json` gives no `kept_package` when the kept package was built with an oap-sdk donor this unit no longer
+has (a firmware update brought another version of it): the app built with the old one does not start.
+
+## 0.8.20
+
+`status --json` gives an app a firmware update left not working its installed version's kept package
+(`kept_package`, else null), for the updater to install it again without internet.
+
+## 0.8.19
+
+robertnisipeanu/mgu-store's 0.8.17 and 0.8.18 with this repository's 0.8.18: `status` asks systemctl about all
+tools' units in one run per question and reads the process list once (a faster status after each install); a source
+package's modules are checked to compile inside the deploy tool's own Node; `install`, `relay` and an app's `rollback`
+take `--keep-safe-mode`.
+
+## 0.8.22
+
+- While safe mode is on, a lost Store is still installed again once (`install --repair`), and safe mode stays on: the Store has the Leave safe mode button. Every other lost app stays held, and so does the Store under an updater before 0.8.47, whose repair would leave safe mode.
+
+## 0.8.21
+
+- iDrive 7: an app whose SOME/IP manifest asks for an interface instance, method, broadcast or field the head unit does not have (or a field access it lacks a getter, setter or notifier for) is refused before anything changes, with what is missing named. The app manager would reject it partway through its install or update.
+- iDrive 7: after an app's install, update, rollback or removal, every other app that was registered is checked. One the app manager dropped meanwhile gets its registry entry back and its listing for the fallback, and the app manager restarts once to load it; one whose files changed is left as it is.
+- A removal drops the app's record before anything else, so a removal cut short never counts the app as lost.
+- `install --repair` installs a lost app again from its kept package and holds it from then on: `status` lists it under `lost_held` (and "not installed again automatically") instead of `lost_apps`, with why, until the user installs it from the Store, or the app manager has it registered at a later start. A repair that fails, a reinstall (rollback or update after a firmware update) that leaves the app uninstalled, and every lost app while safe mode is on are held too.
+
+## 0.8.20
+
+- iDrive 8: when an install collects the appletIds in use, an installed app whose `rhmiData/application.json` is empty is passed over with a warning naming the file (it declares no appletId), and one that does not parse is kept clear of each `"appletId": <n>` in its text, warning. Neither fails the install with "cannot read … for the appletIds in use".
+
+## 0.8.19
+
+- iDrive 7 with MainApp 6.4.8: the provisioning fallback copy carries the in-place install hook, at its start-up's `Promise.all([mainApp.init(),bookmarkController.init()])`, so an app install or update restarts only that app instead of the app manager.
+
+## 0.8.18
+
+- iDrive 7: an app's SOME/IP manifest may ask an interface the firmware has for a field, method, broadcast or instance its version of it lacks, or a field's access without its getter, notifier or setter; MainApp refuses the whole app for it (MainApp 7.1.2: `Requested field 'statusClimateSystemOn' not found in interface 'de.bmw.infotainment.climate.climatemaster.ClimateMaster'` for eDrive, `actualSteeringAngleDriverNoCRC` of `de.bmw.chassis.SteeringAngle` for Live adjustments and Live data). What the interface lacks is taken out of the manifest, read against the firmware's interface database, and the output names it: `…, not in this unit's interfaces and taken out of manifest.json: de.bmw.chassis.SteeringAngle: actualSteeringAngleDriverNoCRC`. A proxy left with nothing to use goes, as an interface the unit lacks does.
+
+## 0.8.17
+
+robertnisipeanu/mgu-store's 0.8.16 with this repository's deploy tool:
+
+- Safe mode: when 4 starts of the head unit in a row end in a restart that recmgr or crashhandler asked for within 2 minutes, our tools' units stay off at the next starts, BMW's start as usual. A switch-off or a normal restart (the HMI's or the Store's) after 2 minutes, a restart our tools ask for and a start that stays up 5 minutes start the count again; a start that leaves no shutdown mark (a power cut, or `var-opt-ro.service` not running the mark) counts nothing. The next install or update that goes through as a whole, or `safe-mode off --yes`, leaves it, and the tools start at the next start. A unit whose `component.json` entry says `"runsInSafeMode": true` (the updater's) runs in safe mode. `status --json` reports `safe_mode`. An install of an older deploy tool, or a rollback to one, that has no safe mode takes the guard out and leaves safe mode. deploy/README.md, "Safe mode".
+- A rollback that puts units, links or drop-ins back reloads systemd, so they take effect: a failed uninstall, restore, fallback switch or app manager takeover. The boot step that removes the deploy tool at the start after `remove-all` on iDrive 8 reloads systemd too.
+
+## 0.8.16
+
+robertnisipeanu/mgu-store's 0.8.15 with this repository's deploy tool:
+
+- `restore` runs, before it puts anything back and with all of each version in place, the `deactivate` of each tool's current version the backup puts on another version, as a rollback does, and the hooks of the removal of each tool the backup shows absent, as a removal does (a restart one asks for is pending under the deploy tool). One that fails refuses the restore (exit 2, nothing restored), and the versions deactivated run their `activate` again, as they do when the restore fails after them, but for a tool it has removed by then. A tool the backup leaves on its version runs no hook.
+- An install of an older version after a firmware update runs the `deactivate` of the version it replaces, as any downgrade does: that version may have changed the new firmware's files through its own tool since. One that fails refuses the install (exit 2), and that version stays current, needing setup. An install of the same or a newer version from another source after a firmware update still records the version it replaces as deactivated without running it.
+
+## 0.8.15
+
+robertnisipeanu/mgu-store's 0.8.11-0.8.14 with this repository's deploy tool:
+
+- On iDrive 7 units whose Telematics reports iDrive 8, apps get their tile (the iDrive 7 UI, texts and images).
+- An app's update removes its earlier bundle's code cache (the head unit's Node took it for any bundle of the same length).
+- On iDrive 7, an app of ours registered without a `custom_apps.json` entry gets its tile again.
+- `--read-only` belongs to `status` alone.
+- `mgu-install.js`: while finding the head unit, a download, or the install or removal on the head unit takes longer than 30 s, a line about every 30 s says it is still going, such as `the head unit is still installing (2 min)`. Ctrl+C (or SIGTERM) prints `stopped; run the same command again to finish` and exits as the signal would.
+- `mgu-install.js` `first-install`, `status`, `uninstall` and `token`: when the head unit was found (its hotspot address answers on port 22 without SSH, or the ENET gateway reports its address) but its SSH does not answer, they say `found the head unit at <address>, but its SSH is closed: enable root SSH first, then run this again`.
+- `mgu-install.js usb-repo` copies each app icon a catalog lists beside the stick's `catalog.json`, checked against its `iconSha256`, so the Store shows it from the stick. An icon that cannot be read or does not match is left out, said, and the stick is written all the same.
+
+## 0.8.11
+
+robertnisipeanu/mgu-store's 0.8.10 with this repository's deploy tool:
+
+- `status --read-only` prints the same report and changes nothing (the repairs it would make say `pending (read-only)`).
+- `mgu-install.js status` prints the deploy tool's status from the head unit, for users to paste when an app's tile does not show.
+
+## 0.8.10
+
+robertnisipeanu/mgu-store's 0.8.9 with this repository's deploy tool:
+
+- A tool's new version is on disk, every file of it, before its `current` points to it, at every install and update and at the deploy tool's own; each switch of `current` is on disk before the deploy tool goes on. A power cut or ignition off right after an update leaves the version before or the new one whole, never a file the head unit had not written yet.
+- recmgr's restart list keeps the firmware's own entries: an update, rollback or uninstall takes out of each of its sections only the names the deploy tool put there, recorded in `/var/opt/mgu-deploy/recmgr-names.json`, and never a name the stock backup's copy of the list has. For tools installed before that record, a name goes only when the stock backup, taken on the firmware running, lacks it; without such a backup the name stays, and the run says so.
+
+## 0.8.9
+
+robertnisipeanu/mgu-store's 0.8.7 and 0.8.8 with this repository's deploy tool:
+
+- The deploy tool never creates the app manager's home or data folder (`/var/opt/public/oap/oap_12201`, its `data`), which the app manager creates at its first start after a factory reset. While they are missing, `custom_apps.json` and `local-only-apps.json` are not written (on iDrive 8 `relist` and `status` list our apps once the folder is there), app installs are refused, and `status` reports no lost app.
+- `status` (as root) and iDrive 8's `relist` give a home or data folder owned by root back to the app manager (uid 12201, modes 3770 and 0750), and log it to the journal.
+- iDrive 8: an app placed for MainApp-21 at a start that it does not install, because the head unit's provisioning comes from BMW's backend and does not list it, is reported as not registered (`status`), and the updater installs it in place.
+
 ## 0.8.6
 
 - The app manager (MainApp, iDrive 7) is restarted only once its install worker has been idle for 5 s (up to 3 minutes). Still busy then, it is not restarted: what needs the restart is left pending for the next head-unit start, and an app install or update that needed it fails and is rolled back. This stops a mid-install restart from losing an app's registry entry (which made MainApp reinstall it under a new uid).
@@ -234,7 +387,7 @@ From robertnisipeanu/mgu-store's 0.7.1 and 0.7.5.
 
 ## 0.5.8
 
-- Apps whose SOME/IP manifest does not name the certification service (`de.bmw.infotainment.certification.Certification`), which includes every idrive7-apps app, install: the deploy tool adds that entry when it prepares the package. Without it, the car does not let the new app's uid reach the service that creates its keychain: MainApp's install waited for a keychain that never came and failed. The emulator does not check those permissions.
+- Apps whose SOME/IP manifest does not name the certification service (`de.bmw.infotainment.certification.Certification`), which includes every idrive7-apps app, install: the deploy tool adds that entry when it prepares the package. Without it, the car does not let the new app's uid reach the service that creates its keychain: MainApp's install waited for a keychain that never came and failed.
 - What an interrupted app install left (the app listed for MainApp and its package in `preinstalled_apps`, which MainApp tries to install at every start) is removed before the next app install, when this tool put it there: its record of the install names a run that is gone, or its install snapshot shows the app was not listed and the package absent before. Anything else stays, said in the output.
 
 ## 0.5.7

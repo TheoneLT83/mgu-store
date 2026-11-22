@@ -1,4 +1,5 @@
 'use strict';
+const FILTER_APPS = 'app';
 /**
  * Offline check of src/store.js's flows against stand-ins: the oap-sdk
  * (OnlineApp, logging), the RHMI (components from the generated
@@ -146,6 +147,7 @@ const WIFI = { enabled: true, link: 'idle', saved: [], scanning: false, error: n
 const gpuLog = [];
 const bridges = [];             // bridge(on) asked, in order
 let fpsAsked = null;
+let busyAsked = null;
 const frames = [];
 const dropped = [];                     // layers the Store dropped
 class RenderClient extends EventEmitter {
@@ -165,6 +167,7 @@ class RenderClient extends EventEmitter {
     show(on) { this.visible = on; gpuLog.push(`show ${on}`); setImmediate(() => this.emit('state', { mode: this.wantMode, onScreen: on, front: on })); }
     claim(r) { this.claims = r; }
     fps(n) { fpsAsked = n; }
+    busy(on) { busyAsked = on; }
     grab(on) { this.grabbing = on; }
     bridge(on) { bridges.push(on); }
     frame(rec) { frames.push(rec); return true; }
@@ -306,6 +309,56 @@ function run() {
         app._restart();
         eq(sent.map(secretless), [{ op: 'reboot' }]);
         eq(sent[0].secret, 'deadbeef');
+        // while an install runs or waits: Restart head unit and its confirm step's Restart greyed out, and a press sends nothing
+        app._client.emit('state', ST);
+        return tick();
+    }).then(() => {
+        app._client.emit('state', Object.assign({}, ST, { busy: { id: 'doom', op: 'install', phase: 'download', progress: 0, total: 10 } }));
+        return tick();
+    }).then(() => {
+        // as last written: [Restart head unit shown, it can be pressed, its confirm step's Restart can be pressed]
+        const restartWidgets = () => ['storeRestart.visible', 'storeRestart.enabled', 'storeRestartConfirm.enabled'].map((k) => app._written[k]);
+        eq(restartWidgets(), [true, false, false], 'greyed out while an install runs');
+        reset();
+        app._restart();
+        eq(sent, [], 'no restart asked for while an install runs');
+        // a press on a greyed-out Restart now (its item has no act) does nothing
+        app._act(null);
+        eq([sent, app._drawn.stack.length], [[], 1], 'a greyed-out Restart now: nothing sent, no page opened');
+        app._client.emit('state', Object.assign({}, ST, { components: [comp({ queued: true })] }));
+        return tick().then(() => {
+            eq(restartWidgets(), [true, false, false], 'and while one waits');
+            app._client.emit('state', ST);
+            return tick();
+        }).then(() => {
+            eq(restartWidgets(), [true, true, true], 'pressable again after');
+            app._client.emit('state', Object.assign({}, ST, { rebooting: true }));
+            return tick();
+        }).then(() => eq(restartWidgets()[0], false, 'hidden while the unit restarts'));
+    }).then(() => {
+        app._client.emit('state', ST);
+        return tick();
+    }).then(() => {
+        // safe mode: the status line says so, Leave safe mode is shown, and it sends safe-mode-off with the secret
+        app._client.emit('state', Object.assign({}, ST, { safeMode: { at: '2026-11-09T10:00:00Z', reason: 'test' } }));
+        return tick();
+    }).then(() => {
+        eq(last(/storeStatus\.\d*\.?Text/).split('=')[1], 'Safe mode');
+        eq(last(/storeSafeModeOff\.Visible/), 'storeSafeModeOff.Visible=1', 'Leave safe mode shown in safe mode');
+        reset();
+        app._components.storeSafeModeOff.emit('action', {});
+        eq(sent.map(secretless), [{ op: 'safe-mode-off' }]);
+        eq(sent[0].secret, 'deadbeef');
+        // not while an install runs
+        app._client.emit('state', Object.assign({}, ST, { safeMode: { at: null, reason: null }, busy: { id: 'doom', op: 'install', phase: 'download' } }));
+        return tick();
+    }).then(() => {
+        eq(last(/storeSafeModeOff\.Visible/), 'storeSafeModeOff.Visible=0', 'Leave safe mode hidden while an install runs');
+        app._client.emit('state', ST);
+        return tick();
+    }).then(() => {
+        eq(last(/storeSafeModeOff\.Visible/), 'storeSafeModeOff.Visible=0', 'Leave safe mode hidden out of safe mode');
+        eq(last(/storeStatus\.\d*\.?Text/).split('=')[1] !== 'Safe mode', true, 'no safe mode in the status line');
         // an error of any length is written whole: the status line and a source's error wrap over their rows
         app._sourceId = 'idrive7-apps';
         app._client.emit('state', Object.assign({}, ST, { components: [comp({ error: LONG })],
@@ -936,6 +989,18 @@ function runWidgetsExtra() {
         reset();
         app._act({ do: 'remove', id: 'doom', tools: ['mgu-renderd'] });
         eq(sent.map(secretless), [{ op: 'uninstall', id: 'doom', tools: ['mgu-renderd'] }], 'as the drawn Remove all does');
+        // a refused Remove: the updater's reason, for that component's page, until its page or Remove opens again
+        app._client.emit('reply-error', 'Waze on cluster needs doom', 'uninstall');
+        eq(app._drawnModel().removeNote, { id: 'doom', error: 'Waze on cluster needs doom', by: null }, 'a refused Remove keeps the reason');
+        app._client.emit('reply-error', `${st.components[0].title} needs doom`, 'uninstall');
+        eq(app._drawnModel().removeNote.by, st.components[0].id, 'and the component that needs it, by its title');
+        app._act({ do: 'open', page: { name: 'confirm', kind: 'remove', id: 'doom' } });
+        eq(app._drawnModel().removeNote, null, 'a new Remove clears it');
+        app._client.emit('reply-error', 'Waze on cluster needs doom', 'uninstall');
+        app._act({ do: 'open', page: { name: 'app', id: 'doom' } });
+        eq(app._drawnModel().removeNote, null, 'so does opening a component\'s page');
+        app._back();
+        app._back();
         reset();
         app._client.emit('state', st);
         return tick();
@@ -993,9 +1058,11 @@ function runDrawn() {
     // an install of id running, then ending with its row changed by o
     const ends = (id, o) => {
         app._client.emit('state', Object.assign({}, st, { busy: { id, op: 'install', phase: 'install' } }));
+        eq([fpsAsked, busyAsked], [15, true], 'installing: 15 frames a second, the renderer told it is busy');
         const done = Object.assign({}, st, { components: st.components.map((c) => (c.id === id ? Object.assign({}, c, o) : c)) });
         app._client.emit('state', done);
         app._client.emit('state', done);
+        eq([fpsAsked, busyAsked], [60, false], 'the install ended: 60 frames a second, not busy');
     };
     app._entryUuid = 'entry';
     reset();
@@ -1213,7 +1280,8 @@ function runDrawn() {
         eq(drawn.stack.length, 1, 'BACK leaves the page');
         eq(gpu.visible, true, 'and the tabs show');
         eq(drawn.items[drawn.focus].label, 'DOOM', 'the focus back on the tile the page opened from');
-        // touch: a tap on Renderer's tile opens it; Install installs it beside the other renderer
+        // touch: under Tools, a tap on Renderer's tile opens it; Install installs it beside the other renderer
+        app._act({ do: 'filter', filter: 'tool' });
         reset();
         const tile = drawn.items.find((i) => i.label === 'Renderer');
         gpu.emit('touch', 'down', tile.x + 10, tile.y + 10);
@@ -1221,6 +1289,7 @@ function runDrawn() {
         return tick();
     }).then(() => {
         eq({ name: drawn.top().name, id: drawn.top().id }, { name: 'app', id: 'mgu-render' }, 'a tap opens the tile');
+        app._act({ do: 'filter', filter: FILTER_APPS });
         const install = drawn.items.find((i) => i.label === 'Install');
         eq(!!install && !drawn.items.some((i) => /Replace/.test(i.label || '')), true, 'Install on a second renderer\'s page, no Replace');
         reset();
@@ -1722,6 +1791,21 @@ function runDrawn() {
             app._states[host(1)].emit('focus', { focus: true });
             eq(bridges, [false], 'the focus back bridges nothing');
         }
+        // the deploy tool's safe mode: Leave safe mode on Store after the side menu; a press asks the updater to leave it
+        drawn.setTab('store');
+        const safe = Object.assign({}, st, { safeMode: { at: '2026-11-09T10:00:00Z', reason: 'test' } });
+        app._client.emit('state', safe);
+        // (its proxy unlabelled, as every proxy here)
+        eq([drawn.items[4].label, lastText(proxy(1, 4)).trim(), drawn.items.some((i) => i.label === 'Restart now')], ['Leave safe mode', '', false],
+            'safe mode: Leave safe mode after the side menu, in Restart now\'s place');
+        reset();
+        drawn.proxyPress(1, 4);
+        eq(sent.map(secretless), [{ op: 'safe-mode-off' }], 'safe mode: Leave safe mode sends safe-mode-off');
+        eq(sent[0].secret, 'deadbeef', 'with the secret');
+        app._client.emit('state', Object.assign({}, safe, { busy: { id: 'doom', op: 'install', phase: 'download' } }));
+        eq(drawn.items.some((i) => i.label === 'Leave safe mode'), false, 'safe mode: Leave safe mode hidden while an install runs');
+        app._client.emit('state', st);
+        eq(drawn.items.some((i) => i.label === 'Leave safe mode'), false, 'out of safe mode: no Leave safe mode');
         // Installed puts what runs or waits first; while the focus is on a row the rows stay where they are, so it stays on its row
         const inst = (doom) => Object.assign({}, st, { components: [
             comp({ id: 'alpha', title: 'Alpha', version: '1.0.0', installed: '1.0.0', status: 'installed' }),

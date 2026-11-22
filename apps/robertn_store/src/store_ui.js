@@ -16,7 +16,8 @@ const { t: tr } = require('./i18n.js');
  * status line), pick (the GitHub repo being added: { repo, probe (the
  * updater's answer, null while it looks), tokenNote (Add token's status
  * belongs on its page) }, or null), uplinkNote (the uplink's refusal of the
- * last Wi-Fi or preferred-connection request), held (the Installed lists'
+ * last Wi-Fi or preferred-connection request), removeNote (the updater's
+ * refusal of the last Remove: { id, error, by }, on that component's page), held (the Installed lists'
  * rows to keep in this order: { apps, services } ids, and restart: whether
  * its Restart now shows; or null) }.
  *
@@ -24,7 +25,7 @@ const { t: tr } = require('./i18n.js');
  * each nav, grid and list item, on each filter cell (acts). The acts:
  * { do: 'tab', tab }, { do: 'filter', filter }, { do: 'open', page },
  * { do: 'back' }, { do: 'check' }, { do: 'install', id }, { do: 'update-all' },
- * { do: 'remove', id, tools? }, { do: 'restart' },
+ * { do: 'remove', id, tools? }, { do: 'restart' }, { do: 'safe-mode-off' },
  * { do: 'source-remove', id }, { do: 'account-remove', id }, { do: 'add-source' },
  * { do: 'add-token' }, { do: 'sign-in' }, { do: 'sign-in-cancel' }, { do: 'phone' },
  * { do: 'pick', channel }, { do: 'pick-retry' }, { do: 'pick-add-token' }, { do: 'key', key } (typeKey),
@@ -48,7 +49,7 @@ const { t: tr } = require('./i18n.js');
  */
 const { PHASE, percent, rowAction, statusLine, sourceLabel, sourceState, sourceActions, sourceChannel, sourceAccount,
     tokenLabel, tokenState, tokenSources, accountsState, loginStatus, loginCode, phoneState, phoneAddress, hmiNames,
-    notForUnit, removable, requiredAlone, undoable, setupable, pickOptions, probeStatus, sourceNames, listed, startPending } = require('./store_view.js');
+    notForUnit, removable, requiredAlone, undoable, setupable, pickOptions, probeStatus, removeRefusal, sourceNames, listed, startPending } = require('./store_view.js');
 
 const GREEN = '#35d07f';
 const BLUE = '#3d9bff';
@@ -108,23 +109,37 @@ function find(list, id) {
 }
 const busyOf = (m) => (m.connected && m.st ? m.st.busy : null);
 
-/* Restart head unit is offered while nothing installs or waits, the updater
- * is there and not restarting the unit (one before 0.1.4 reports no
- * rebooting). */
+/* The Restart buttons show while the updater is there and not restarting
+ * the unit (one before 0.1.4 reports no rebooting). */
+function restartShown(m) {
+    return !!(m.connected && m.st && m.st.rebooting === false);
+}
+
+/* They can be pressed while nothing installs, updates, is removed or waits
+ * to; greyed out otherwise. */
 function canRestart(m) {
-    const st = m.st;
-    return !!(m.connected && st && !st.busy && st.rebooting === false && !comps(m).some((c) => c.queued));
+    return restartShown(m) && !m.st.busy && !rawComps(m).some((c) => c.queued);
 }
 
 /* Restart now on Store and Installed while a listed component waits for a
  * restart (an installed tool, or an iDrive 8 app change queued for the next
- * start) and the updater can restart the unit: it opens Restart head unit's
- * confirm step. It stays while an install runs, so the rows after it keep
- * their place (the focus is their index). keep: shown or not as drawn
- * (Installed's held rows). */
+ * start): it opens Restart head unit's confirm step. Greyed out while an
+ * install runs or waits, it keeps its place in the focus order, so the rows
+ * after it keep theirs (the focus is their index). keep: shown or not as
+ * drawn (Installed's held rows). */
 function restartNow(m, keep) {
-    return m.connected && m.st && m.st.rebooting === false && (typeof keep === 'boolean' ? keep : comps(m).some((c) => c.pendingReboot))
-        ? button(tr("Restart now"), { do: 'open', page: { name: 'confirm', kind: 'restart' } }, { vicon: 'refresh', style: 'primary', color: BLUE })
+    return restartShown(m) && (typeof keep === 'boolean' ? keep : comps(m).some((c) => c.pendingReboot))
+        ? button(tr("Restart now"), { do: 'open', page: { name: 'confirm', kind: 'restart' } },
+            { vicon: 'refresh', style: 'primary', color: BLUE, disabled: !canRestart(m), keepPlace: true })
+        : hidden;
+}
+
+/* Leave safe mode on Store while the deploy tool's safe mode keeps our
+ * tools off and nothing installs (the widget start screen's rule); Restart
+ * now gives it its place meanwhile. */
+function safeModeOff(m) {
+    return m.connected && m.st && m.st.safeMode && !m.st.busy
+        ? button(tr("Leave safe mode"), { do: 'safe-mode-off' }, { vicon: 'unlock', style: 'primary', color: BLUE })
         : hidden;
 }
 
@@ -247,7 +262,8 @@ function storeView(m) {
                 : { text: m.connected ? statusLine(st, true) : statusLine(null, false, m.secret), color: DIM },
         filter: { sel: Math.max(0, FILTERS.indexOf(m.filter)), acts: FILTERS.map((f) => ({ do: 'filter', filter: f })) },
         online: onlineChip(m),
-        restartNow: restartNow(m),
+        safeModeOff: safeModeOff(m),
+        restartNow: safeModeOff(m).hidden ? restartNow(m) : hidden,
         grid: { items: list.map((c) => tile(m, c, busy, name)), empty: m.connected ? tr("Nothing here") : '' }
     };
 }
@@ -358,8 +374,8 @@ function settingsView(m) {
         connLabel: { text: tr("ACCESS") },
         checkNow: m.connected ? button(st.catalog && st.catalog.checking ? tr("Checking") : tr("Check now"), { do: 'check' },
             { vicon: 'refresh', style: 'outline', size: 26 }) : hidden,
-        restart: canRestart(m) ? button(tr("Restart head unit"), { do: 'open', page: { name: 'confirm', kind: 'restart' } },
-            { vicon: 'refresh', style: 'outline', size: 26 }) : hidden
+        restart: restartShown(m) ? button(tr("Restart head unit"), { do: 'open', page: { name: 'confirm', kind: 'restart' } },
+            { vicon: 'refresh', style: 'outline', size: 26, disabled: !canRestart(m) }) : hidden
     };
 }
 
@@ -466,6 +482,9 @@ function appView(m, page) {
             notes.push(failed);
         }
     }
+    if (m.removeNote && m.removeNote.id === c.id && c.installed) {
+        notes.push(removeRefusal(m.removeNote, rawComps(m)));
+    }
     // in full, each its own line, wrapped
     v.notes = { text: notes.map(String).join('\n') };
     v.progress = mine ? { hidden: false, label: tr(PHASE[busy.phase] || 'Installing'), value: busy.phase === 'download' ? percent(busy) : 100,
@@ -482,9 +501,9 @@ function appView(m, page) {
             { vicon: c.error ? 'refresh' : 'arrowDown', style: 'primary', color: BLUE });
     } else if (action === 'setup') {
         v.primary = button(c.error ? tr("Try again") : tr("Set up"), { do: 'setup', id: c.id }, { vicon: 'refresh', style: 'primary', color: BLUE });
-    } else if (c.pendingReboot && canRestart(m)) {
+    } else if (c.pendingReboot && restartShown(m)) {
         v.primary = button(tr("Restart head unit"), { do: 'open', page: { name: 'confirm', kind: 'restart' } },
-            { vicon: 'refresh', style: 'primary', color: BLUE });
+            { vicon: 'refresh', style: 'primary', color: BLUE, disabled: !canRestart(m) });
     } else if (undoable(c, busy)) {
         v.primary = button(tr("Undo update"), { do: 'open', page: { name: 'confirm', kind: 'undo', id: c.id } },
             { vicon: 'back', style: 'outline' });
@@ -518,7 +537,7 @@ function confirmView(m, page) {
         now = button(tr("Undo update"), { do: 'undo', id: page.id }, { vicon: 'back', style: 'primary', color: BLUE });
     } else if (page.kind === 'restart') {
         title = tr("Restart head unit?");
-        // as Restart head unit, while the updater takes a restart
+        // greyed out as Restart head unit is
         now = button(tr("Restart"), { do: 'restart' }, { vicon: 'refresh', style: 'primary', color: BLUE, disabled: !canRestart(m) });
     } else if (page.kind === 'source-remove') {
         const s = find(sources(m), page.id);
@@ -906,4 +925,4 @@ function icons(v) {
     return out.filter((f, i) => out.indexOf(f) === i);
 }
 
-module.exports = { view, icons, typeKey, wifiOf, proxyOf, TABS, FILTERS, canRestart };
+module.exports = { view, icons, typeKey, wifiOf, proxyOf, TABS, FILTERS, restartShown, canRestart };

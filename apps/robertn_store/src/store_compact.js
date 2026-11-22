@@ -86,6 +86,7 @@ function compact(W, H0, look, opts) {
     const restartNow = (x, shift) => button('restartNow', x, M, HB_W, HB_H, 'Restart now', 'primary', 25,
         { vicon: 'refresh', color: BLUE, hidden: true, shift });
 
+    const SAFE_W = 470;
     const FILTER_W = 420;
     const ONLINE_W = 190;
     // the iDrive 7 look: the online state after the title, the filters at the right edge
@@ -96,6 +97,9 @@ function compact(W, H0, look, opts) {
         title('Store'),
         status('subtitle', subX, filterX - subX - 20),
         restartNow(filterX - 16 - HB_W, { subtitle: [0, -HB_W - 16] }),
+        // Leave safe mode in Restart now's place (store_ui.js safeModeOff), wider for its longer words
+        button('safeModeOff', filterX - 16 - SAFE_W, M, SAFE_W, HB_H, 'Leave safe mode', 'primary', 25,
+            { vicon: 'unlock', color: BLUE, hidden: true, shift: { subtitle: [0, -SAFE_W - 16] } }),
         el('filter', 'tabs', filterX, M + 2, FILTER_W, 60, { items: 'All,Apps,Tools', sel: 0, style: 'joined', size: 24 }),
         el('online', 'chips', onlineX, M + 8, ONLINE_W, 48, { items: '', align: low ? 'left' : 'right' }),
         grid()

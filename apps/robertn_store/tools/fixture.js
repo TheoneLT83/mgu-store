@@ -109,12 +109,16 @@ function screens() {
             focus: 0 }],
         ['confirm-remove-tools', { stack: main.concat([{ name: 'app', id: 'gauges' }, { name: 'confirm', kind: 'remove', id: 'gauges' }]),
             focus: 0 }, { components: st.components.map((c) => (c.id === 'gauges' ? Object.assign({}, c, { requiredAlone: ['display-bridge', 'mgu-renderd', 'mgu-uplink', 'mgu-render'] }) : c)) }],
+        ['app-remove-refused', { stack: main.concat([{ name: 'app', id: 'mgu-uplink' }]),
+            removeNote: { id: 'mgu-uplink', error: 'Vehicle control needs mgu-uplink', by: 'vehicle_control' } }],
         ['tool-undo', { tab: 'installed', stack: main.concat([{ name: 'app', id: 'mgu-uplink' }]) }],
         ['confirm-undo', { tab: 'installed', stack: main.concat([{ name: 'app', id: 'mgu-uplink' }, { name: 'confirm', kind: 'undo', id: 'mgu-uplink' }]),
             focus: 0 }],
         ['installed', { tab: 'installed', stack: main }],
         // nothing installing, a restart pending: Restart now on Store and Installed (with a tool that does not work)
         ['store-restart', { tab: 'store', stack: main }, idleSt(st)],
+        // the deploy tool's safe mode, nothing installing, a restart pending: Leave safe mode in Restart now's place
+        ['store-safe-mode', { tab: 'store', stack: main, focus: 4 }, Object.assign(idleSt(st), { safeMode: { at: '2026-11-09T10:00:00Z', reason: '4 starts' } })],
         ['installed-restart', { tab: 'installed', stack: main }, failedSt(idleSt(st), 'mgu-uplink', { repair: 'installed under firmware 23-07' })],
         ['usb', { tab: 'settings', stack: main.concat([{ name: 'usb' }]) }],
         ['settings', { tab: 'settings', stack: main }],

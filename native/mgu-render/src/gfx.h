@@ -34,9 +34,10 @@ typedef struct gfx_image {
 #define GFX_IMG_ALL (96u << 20)
 #define GFX_PIXELS_RECTS 64
 
-/* a video (proto.h MI_VIDEO): its frame file, the newest frame on the GPU as Y, U, V luminance textures */
+/* a video (proto.h MI_VIDEO): its frame file, the newest frame on the GPU as Y, U, V luminance textures (NV12: Y, and
+   U V as one luminance-alpha texture) */
 typedef struct gfx_video {
-    uint32_t id; int fd; unsigned tex[3]; int w, h, matrix, full; uint32_t seq;
+    uint32_t id; int fd; unsigned tex[3]; int w, h, matrix, full, nv12; uint32_t seq;
     uint8_t *buf; size_t cap;            /* the frame being uploaded */
     size_t bytes;                        /* counted towards the video limits */
     uint32_t bad_seq;                    /* a frame that could not be read or had no room: not pending (= seq once a
@@ -55,8 +56,8 @@ typedef struct gfx_video {
 typedef struct gfx_xf { float s, ox, oy; } gfx_xf;      /* device = logical * s + (ox, oy) */
 
 typedef struct gfx_client {
-    /* glyph atlases are packed into one shared texture; this maps atlas id -> position there */
-    struct { uint32_t id; int x, y, w, h; } atlas[64];
+    /* Content-keyed textures are shared while clients reference them. */
+    struct { uint32_t id; int slot; } atlas[64];
     int natlas;
     struct { uint32_t id; int row; } ramp[64];
     int nramp;

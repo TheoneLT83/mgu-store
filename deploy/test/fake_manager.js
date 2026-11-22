@@ -10,7 +10,8 @@
  * - provisioning, with the fallback active (its copy and unit present):
  *   every app in custom_apps.json without a registry entry gets a fresh
  *   install from its preinstalled package, as the lowest uid in base.json's
- *   range with no registry entry (getFreeUserId): source, acl.json,
+ *   range with no registry entry (getFreeUserId; with $FAKE_MGR_HOMES_HELD
+ *   set, none with a home either, as repquota lists it): source, acl.json,
  *   keychain, a uids.txt line, then the entry; an app listed without a
  *   package is asked of the backend;
  * - update: an entry whose installationSource is null takes a newer
@@ -30,8 +31,11 @@
  * $FAKE_MGR_CRASH_AT-th kill, counted from the first, when set) dies that
  * many ms after its start and oapcontroller starts another (the next pid),
  * logged as "crash <pid> <time in ms>".
- * With $FAKE_MGR_REJECT set, a fresh install is rejected (a manifest naming
- * an interface the unit does not have) and leaves nothing.
+ * With $FAKE_MGR_REJECT set ("1", or the ids it is for, comma-separated), a
+ * fresh install is rejected (a manifest naming an interface the unit does
+ * not have) and leaves nothing.
+ * With $FAKE_MGR_DROP set to an app id, every update first deletes that
+ * app's registry entry, as MainApp drops an app whose start fails.
  * With $FAKE_MGR_UID_ONLY set, a fresh install stops after its uids.txt
  * line, with no registry entry.
  * With $FAKE_MGR_NO_KEYCHAIN set, a fresh install writes no keychain. With
@@ -98,6 +102,15 @@ const fallbackActive = () => fs.existsSync(path.join(env.MGU_DEPLOY_VAR_OPT, 'mg
 const customApps = () => (fallbackActive() ? (readJson(path.join(mgr, 'data', 'custom_apps.json')) || {}) : {});
 const sectionsOf = () => (env.FAKE_MGR_SECTIONS && readJson(env.FAKE_MGR_SECTIONS)) || {};
 
+/* What MainApp does to an app whose start fails, done to $FAKE_MGR_DROP's
+ * app during another app's update. */
+function dropOther() {
+    const f = env.FAKE_MGR_DROP ? path.join(appsDir, `${env.FAKE_MGR_DROP}.json`) : null;
+    if (f && fs.existsSync(f)) {
+        fs.unlinkSync(f);
+        log(`dropped ${env.FAKE_MGR_DROP}`);
+    }
+}
 /* A fresh install of id from its preinstalled package, as the lowest free
  * uid; the uid, or null when there is no package (a backend query). The
  * entry's installationSource is source when given (null: the install has
@@ -111,9 +124,14 @@ function install(id, how, source) {
     const range = readJson(path.join(mainapp, 'config', 'base.json')).usableUidsAndGids;
     const used = new Set(entries().map((e) => e.entry && e.entry.userId));
     let uid = range.min;
-    while (used.has(uid)) uid += 1;
+    // $FAKE_MGR_HOMES_HELD: a uid whose home is there is held (repquota lists it)
+    while (used.has(uid) || (env.FAKE_MGR_HOMES_HELD && fs.existsSync(home(uid)))) uid += 1;
+    if (uid > range.max) {
+        log(`no free uid for ${id}`);
+        return null;
+    }
     const h = home(uid);
-    if (env.FAKE_MGR_REJECT) {
+    if (env.FAKE_MGR_REJECT && (env.FAKE_MGR_REJECT === '1' || env.FAKE_MGR_REJECT.split(',').indexOf(id) >= 0)) {
         log(`rejected install ${id} ${pkg.version}`);
         return null;
     }
@@ -138,6 +156,7 @@ function install(id, how, source) {
 /* The update of a registered app to a newer preinstalled package, its uid
  * kept; whether it updated. */
 function update(id, how) {
+    dropOther();
     const e = entries().find((x) => x.id === id);
     const pkg = packageOf(id);
     if (!e || !e.entry || !pkg) return false;

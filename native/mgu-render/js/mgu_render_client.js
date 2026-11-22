@@ -25,9 +25,10 @@
  * Video (info.video; kept and sent again like pixmaps): video(id, '/dev/shm/mgu-video-<name>') names the frame file
  * a player writes (PROTOCOL.md, "Video"), a VIDEO op in each frame (videoOp()) shows its newest frame there; each new
  * frame draws the app's last frame again, but the app still sends at least one message a second while shown (an app
- * silent for 3 s is hidden). video(id, null) forgets it.
+ * silent for 3 s is hidden). video(id, null) forgets it. Frames are I420, or NV12 where info.videoNv12 says the renderer
+ * reads it (the file header's format word).
  *
- * Events: ready (screen, info), tick (n, ms), touch (phase, x, y), closed, state ({ mode, onScreen,
+ * Events: ready (screen, info), tick (n, ms), touch (phase, x, y), finger (phase, id, x, y), closed, state ({ mode, onScreen,
  * front }), ccu ({ seq, knob, press, tilt, raw }), stats, close. With `kit` (idrive7-apps / IterioDev
  * record.js), frame(recorder) uploads the fonts, ramps, layers and pictures a recording uses once per
  * connection; least-recently-used pictures are dropped to stay in the renderer's limits.
@@ -46,13 +47,16 @@ const SOCKETS = process.env.MGU_RENDERD_SOCKET ? [process.env.MGU_RENDERD_SOCKET
 const M = { HELLO: 1, PLACE: 2, SHOW: 3, ATLAS: 4, RAMP: 5, LAYER: 6, FRAME: 7, DROP_LAYER: 8, CLAIM: 9, IMAGE: 10, DROP_IMAGE: 11, FPS: 12,
     VIDEO: 13, DROP_VIDEO: 14 };
 const X = { MODE: 0x4d520001, GRAB: 0x4d520002, PIXMAP: 0x4d520003, PIXELS: 0x4d520004, PALETTE: 0x4d520005, BRIDGE: 0x4d520006,
-    READY: 0x4d520101, STATE: 0x4d520102, CCU: 0x4d520103 };
+    FINGERS: 0x4d520007, BUSY: 0x4d520040, READY: 0x4d520101, STATE: 0x4d520102, CCU: 0x4d520103, FINGER: 0x4d520104 };
 const E = { READY: 101, TICK: 102, ERROR: 103, STATS: 104, TOUCH: 105, CLOSED: 106 };
 const MODES = { layer: 1, embed: 2 };
 const MODE_NAMES = [null, 'layer', 'embed'];
 const FORMATS = { rgba: 1, rgbx: 2, index8: 3 };
-const CAPS = { touch: 1, controller: 2, frontGate: 4, pixmap: 8, video: 16, zeroCopy: 32, bridge: 64 };
-const PHASES = [null, 'down', 'move', 'up'];
+const CAPS = { touch: 1, controller: 2, frontGate: 4, pixmap: 8, video: 16, zeroCopy: 32, bridge: 64, fingers: 128, controllerHold: 256,
+    videoNv12: 512 };
+// X_GRAB's hold: the parts of the controller the HMI doesn't get while the app grabs it (none named: all three)
+const HOLD = { knob: 1, press: 2, tilt: 4 };
+const PHASES = [null, 'down', 'move', 'up', 'cancel'];
 const IMG_MAX = 64, IMG_BYTES = 32 << 20;
 const OP_IMAGE = 18, OP_VIDEO = 19;
 
@@ -107,7 +111,9 @@ class RenderClient extends EventEmitter {
         this.wantMode = this.opts.mode || 'layer';
         this.claims = [];
         this.grabbing = false;
+        this.wantFingers = false;     // every finger as `finger` events (X_FINGERS)
         this.maxFps = null;           // fps(): the frame cap, sent again after a reconnect
+        this.busyOn = false;          // busy(): sent again after a reconnect
         this.inbuf = Buffer.alloc(0);
         this.sent = { atlas: new Set(), ramp: new Set(), layer: new Set(), image: new Map() };
         this.imageBytes = 0;
@@ -196,7 +202,8 @@ class RenderClient extends EventEmitter {
                 pixmapSide: p.readUInt32LE(44), refreshMhz: p.readUInt32LE(48),
                 touch: !!(caps & CAPS.touch), controller: !!(caps & CAPS.controller),
                 frontGate: !!(caps & CAPS.frontGate), pixmap: !!(caps & CAPS.pixmap), video: !!(caps & CAPS.video),
-                zeroCopy: !!(caps & CAPS.zeroCopy), bridge: !!(caps & CAPS.bridge),
+                zeroCopy: !!(caps & CAPS.zeroCopy), bridge: !!(caps & CAPS.bridge), fingers: !!(caps & CAPS.fingers), controllerHold: !!(caps & CAPS.controllerHold),
+                videoNv12: !!(caps & CAPS.videoNv12),
             };
         } else if (type === E.READY) {
             this.ready = true; this.errLogged = false;
@@ -211,12 +218,16 @@ class RenderClient extends EventEmitter {
                 this._sendVideos();
                 if (this.claims.length) this._sendClaim();
                 if (this.visible) this._write(u32msg(M.SHOW, [1]));
-                if (this.grabbing) this._write(u32msg(X.GRAB, [1]));
+                if (this.grabbing) this._write(this._grabMsg(1));
+                if (this.wantFingers) this._write(u32msg(X.FINGERS, [1]));
                 if (this.maxFps !== null) this._write(u32msg(M.FPS, [this.maxFps]));
+                if (this.busyOn) this._write(u32msg(X.BUSY, [1]));
             }
             this.emit('ready', this.screen, this.info);
         } else if (type === E.TOUCH) {
             if (PHASES[p.readUInt32LE(0)]) this.emit('touch', PHASES[p.readUInt32LE(0)], p.readFloatLE(4), p.readFloatLE(8));
+        } else if (type === X.FINGER && p.length >= 16) {
+            if (PHASES[p.readUInt32LE(0)]) this.emit('finger', PHASES[p.readUInt32LE(0)], p.readUInt32LE(4), p.readFloatLE(8), p.readFloatLE(12));
         } else if (type === E.CLOSED) {
             this.visible = false;
             this.emit('closed');
@@ -274,6 +285,15 @@ class RenderClient extends EventEmitter {
         this.maxFps = Math.max(0, Math.min(1000, n | 0));
         if (this.ready && this.native) this._write(u32msg(M.FPS, [this.maxFps]));
     }
+    /** Slow on purpose (true; the Store installing): inputs that leave the picture as it is don't hand touch and the
+     *  controller to the HMI, for 3 min after the last busy(true), which each call renews. A renderer without
+     *  X_BUSY ignores it. */
+    busy(on) {
+        on = !!on;
+        if (on === this.busyOn && !on) return;
+        this.busyOn = on;
+        if (this.ready && this.native) this._write(u32msg(X.BUSY, [on ? 1 : 0]));
+    }
     /** Touch areas, logical px ([] = none): while shown, touch there is this app's. */
     claim(rects) {
         this.claims = (rects || []).slice(0, 16);
@@ -290,15 +310,32 @@ class RenderClient extends EventEmitter {
     bridge(on) {
         if (this.ready && this.native && this.info && this.info.bridge) this._write(u32msg(X.BRIDGE, [on ? 1 : 0]));
     }
-    /** The iDrive controller to this app while it is shown (needs the HMI's controller gate: info.controller). */
-    grab(on) {
-        on = !!on;
-        if (on === this.grabbing) return;
-        this.grabbing = on;
-        if (this.grabTimer) { clearInterval(this.grabTimer); this.grabTimer = null; }
-        if (on) this.grabTimer = setInterval(() => { if (this.ready && this.native) this._write(u32msg(X.GRAB, [1])); }, 500);
-        if (this.ready && this.native) this._write(u32msg(X.GRAB, [on ? 1 : 0]));
+    /** Every finger (info.fingers): `finger` (phase, id, x, y) events for each finger of a gesture in the claims,
+     *  instead of `touch` for the first one only. */
+    fingers(on) {
+        this.wantFingers = !!on;
+        if (this.ready && this.native) this._write(u32msg(X.FINGERS, [on ? 1 : 0]));
     }
+    /**
+     * The iDrive controller to this app while it is shown (needs the HMI's controller gate: info.controller).
+     * hold: the part or parts the HMI doesn't get meanwhile, 'knob', 'press', 'tilt' (a string or an array; any other
+     * name throws); none named, all three. Only where info.controllerHold: elsewhere all three are held.
+     */
+    grab(on, hold) {
+        on = !!on;
+        let mask = 0;
+        for (const part of hold == null ? [] : [].concat(hold)) {
+            if (!Object.prototype.hasOwnProperty.call(HOLD, part)) throw new TypeError(`grab: no controller part '${part}'`);
+            mask |= HOLD[part];
+        }
+        if (on === this.grabbing && mask === (this.holdMask || 0)) return;
+        this.grabbing = on;
+        this.holdMask = mask;
+        if (this.grabTimer) { clearInterval(this.grabTimer); this.grabTimer = null; }
+        if (on) this.grabTimer = setInterval(() => { if (this.ready && this.native) this._write(this._grabMsg(1)); }, 500);
+        if (this.ready && this.native) this._write(this._grabMsg(on ? 1 : 0));
+    }
+    _grabMsg(on) { return u32msg(X.GRAB, on && this.holdMask ? [1, this.holdMask] : [on]); }
 
     /* ---- pixel images ---- */
     pixmap(id, w, h, format, filter) {

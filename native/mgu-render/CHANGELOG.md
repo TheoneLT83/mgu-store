@@ -1,8 +1,80 @@
 # mgu-render changelog
 
+## 0.6.32
+
+robertnisipeanu/mgu-store's 0.6.25 with this repository's 0.6.31:
+- iDrive 7: `touch_area = auto` is the whole screen, 0,0,1920,720. Apps may claim any part of the screen, the back column included; a tap no app claims goes to the HMI. `touch_area` in the configuration sets any other area.
+
+## 0.6.31
+
+robertnisipeanu/mgu-store's 0.6.24: video frame files can be NV12, the layout hardware decoders write (the header's
+format word 1), so a player hands over decoded frames without converting them to I420 on the CPU. X_READY caps 512 here
+(`info.videoNv12` in the JS client; 256 upstream, this fork's controller hold) tells a player the renderer reads NV12;
+I420 files stay as they are.
+
+## 0.6.30
+
+robertnisipeanu/mgu-store's comment changes in the configuration and source: no change on the unit.
+
+## 0.6.29
+
+- An app that says it is busy (X_BUSY; the Store while it installs) keeps touch and the controller when its picture
+  is slow to change, for at most 3 minutes after it last said so.
+
+## 0.6.28
+
+robertnisipeanu/mgu-store's 0.6.23 with this repository's renderer:
+
+- Text stays drawn when several apps with large fonts (Chinese, Japanese, Korean) are open or opened one after another:
+  an app's glyphs are freed when it closes.
+
+## 0.6.27
+
+robertnisipeanu/mgu-store's 0.6.22 with this repository's renderer:
+
+- An app can hold only some parts of the iDrive controller: X_GRAB's second word (1 knob, 2 press, 4 tilt; 0 or left
+  out: all three), `grab(on, 'knob')` or `grab(on, ['knob', 'press'])` in the JS client. Where the HMI's gate reads the
+  parts (X_READY caps 256 here, `info.controllerHold`), the others stay the HMI's: a tilt still leaves an app that holds the
+  knob and the press. Every other gate holds all three, as before.
+
+## 0.6.26
+
+robertnisipeanu/mgu-store's 0.6.20 and 0.6.21 with this repository's renderer:
+
+- Multi-touch: a gesture in a claim keeps every finger until the last one is up; a native app that sends X_FINGERS 1
+  gets each finger with its id (X_FINGER, `fingers()` / `finger` in the JS client). Here X_FINGERS is 0x4d520007 and its
+  caps bit 128: upstream's 0x4d520006 and 64 are this repository's X_BRIDGE, which the Store uses.
+- A finger whose UP was lost is let go before the next gesture with no TOUCH (X_FINGER cancel to an app that asked).
+- Touch and the iDrive controller go back to the HMI as soon as it shows something over an app that takes the input
+  (a popup, the header menu, the voice assistant); an app whose picture does not change through 4 inputs in a row gets
+  none for 10 s.
+- The build image's tag is a hash of its definition.
+
+## 0.6.25
+
+- robertnisipeanu/mgu-store's car-test kit: its `reboot` records the restart for the deploy tool's safe mode before it
+  asks for it (no change on the car).
+
+## 0.6.24
+
+- robertnisipeanu/mgu-store's build image tag from the build files' hash (no change on the car).
+
+## 0.6.23
+
+- robertnisipeanu/mgu-store's 0.6.19 with this repository's renderer: no Remove in the Store, the renderer stays while the
+  Store is installed.
+
+## 0.6.22
+
+- robertnisipeanu/mgu-store's 0.6.18 with this repository's renderer:
+  - The page template stops being mounted into the HMI after two boots that mounted it and ended in an HMI failure, with no healthy boot between them: a restart record of recmgr (`hmi.service`) or crashhandler (`HmiMain3D`) written after the mount, read at the shutdown (a drop-in of `var-opt-ro.service`) or at the next boot. A boot counts only on such a record; a switch-off, a restart from BMW's menu, the Store or an update, `systemctl reboot`, a power cut or a slow HMI counts nothing, and an HMI that ran 120 s unbroken with the template clears the count. The HMI then starts with its stock widgets, apps get their layer, and the Renderer's page says `In-page drawing unavailable: the HMI failed with the page template` until another HmiMain3D or template comes. README.md, "The HMI and the page template".
+
 ## 0.6.21
 
-- iDrive 7: `touch_area = auto` is the whole screen, 0,0,1920,720 (it was 84,0,1836,720). The area only limits what apps may claim; a tap nobody claims goes to the HMI as before, and no current layout claims the back column, so nothing changes for them. An app drawn over the column (a fill layout) can now claim it: before, a tap there went to the HMI's hidden back arrow, which closed the app. `touch_area` in the conf still sets any other area.
+- robertnisipeanu/mgu-store's 0.6.16 and 0.6.17 with this repository's renderer (its own touch table and ports kept, `touch_table`, `touch_port`):
+  - The touch divert rule's nft commands run beside the render loop, never in it: the renderer keeps drawing, answering apps and beating to its guard while nft works. An nft run that takes longer than 10 s is stopped and counts as failed. A failed load is logged once and tried again every 5 s (`touch: loading the nft rule failed, touch stays the HMI's; trying again every 5 s`). At exit the guard takes the rule out. A slow nft (over 1.5 s per run) blocked the loop while touch was diverted, so the guard killed the renderer each time an app gave up its touch area; repeated kills hit the service's start limit, and the deploy check after an update failed with `render.sock: EPIPE`.
+  - The car-test guide rehearses on any test head unit reached over SSH.
+  - An idrive7-apps kit app on our socket goes back to the community socket `/run/mgu-renderd/renderd.sock` once another renderer (idrive7-renderd) has listened there for 5 s: its connection is closed, and the kit connects again, to that socket unless an earlier failed try there turned it to ours (`<app>: kit app sent back to /run/mgu-renderd/renderd.sock, which has its own renderer again`). Kit apps came to us whenever idrive7-renderd restarted (each of its updates, a crash) and stayed until mgu-render restarted, drawn for the wrong screen on cars whose display differs. An app that comes back within 60 s is sent again only after 30 s, then 2 min; after a third time it stays. Without another renderer there, and for every app that is not a kit app (the Store included), nothing changes.
 
 ## 0.6.20
 
@@ -11,6 +83,12 @@
 ## 0.6.19
 
 - 0.6.18 built again: a change to its car-test tool, since taken back, gave 0.6.18's tree a newer date, and a release publishes no other content under a published version.
+
+No changes.
+
+## 0.6.19
+
+- No Remove in the Store: the Renderer stays while the Store is installed.
 
 ## 0.6.18
 
