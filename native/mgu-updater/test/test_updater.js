@@ -4621,7 +4621,7 @@ function testSelfRepair() {
         .then(() => {
             ok('self-repair: the next start installs them again, the Store (missing at the start, its package kept) first',
                 installs().length === 6 && fs.existsSync(reg('robertn_store')) && fs.existsSync(reg('cat_app')) &&
-                /verified\/robertn_store@0\.9\.0\.tgz --yes --keep-safe-mode$/.test(installs()[4]), installs().join('\n'));
+                /verified\/robertn_store@0\.9\.0\.tgz --yes --keep-safe-mode --repair$/.test(installs()[4]), installs().join('\n'));
             ok('tile: the next start clears the tile line, and an install without a restart of the app manager sets none',
                 comp('cat_app').installed === '1.1.0' && comp('cat_app').tileHidden === false, JSON.stringify(comp('cat_app')));
             // going back stopped by the guard: the version it goes to comes back at the next start
@@ -4672,7 +4672,7 @@ function testSelfRepair() {
         .then(() => {
             const i = installs();
             ok('stale offline: an app a firmware update left not working is installed again from its kept package',
-                i.length === 9 && /verified\/robertn_store@0\.9\.0\.tgz --yes --keep-safe-mode$/.test(i[8]) &&
+                i.length === 9 && /verified\/robertn_store@0\.9\.0\.tgz --yes --keep-safe-mode --repair$/.test(i[8]) &&
                 !comp('robertn_store').error && !fs.existsSync(path.join(conf.state_dir, 'verified', 'robertn_store@0.9.0.tgz')), i.join('\n'));
             return u.check().then(() => idle('checked again'));
         })
