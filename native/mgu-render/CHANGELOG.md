@@ -1,5 +1,9 @@
 # mgu-render changelog
 
+## 0.6.21
+
+- iDrive 7: `touch_area = auto` is the whole screen, 0,0,1920,720 (it was 84,0,1836,720). The area only limits what apps may claim; a tap nobody claims goes to the HMI as before, and no current layout claims the back column, so nothing changes for them. An app drawn over the column (a fill layout) can now claim it: before, a tap there went to the HMI's hidden back arrow, which closed the app. `touch_area` in the conf still sets any other area.
+
 ## 0.6.20
 
 - robertnisipeanu/mgu-store's touch-divert fix with this repository's renderer: the rule is removed with `nft delete table` straight (no file), so it comes out even when /tmp is full, and an absent table is not an error. The rule still goes to nft in a file and counts only when its table is there afterwards.
