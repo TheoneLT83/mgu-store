@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.71
+
+The Store page opens on All, apps and head-unit tools together.
+
 ## 0.9.70
 
 Settings has no Share usage statistics row or page: the Store sends no usage statistics.
