@@ -4498,9 +4498,9 @@ class Updater {
     /* The day's ping, once a check has read a network source: sent in the
      * background, its outcome changes nothing but the day it was sent. */
     ping() {
-        const url = this.conf.stats_url;
+        const url = this.conf && this.conf.stats_url;
         const now = Date.now();
-        if (!url || this.pinging || !this.stats.due(now)) {
+        if (!url || this.pinging || !this.stats || !this.stats.due(now)) {
             return;
         }
         const read = this.defs().some((d) => {

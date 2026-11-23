@@ -1,5 +1,9 @@
 # Updater changelog
 
+## 0.8.57
+
+- The daily usage ping is skipped, not an error, where the updater runs without its settings or statistics file.
+
 ## 0.8.56
 
 robertnisipeanu/mgu-store's 0.8.52 and 0.8.53 with this repository's 0.8.55:
