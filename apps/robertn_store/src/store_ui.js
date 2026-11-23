@@ -30,8 +30,7 @@ const { t: tr } = require('./i18n.js');
  * { do: 'add-token' }, { do: 'sign-in' }, { do: 'sign-in-cancel' }, { do: 'phone' },
  * { do: 'pick', channel }, { do: 'pick-retry' }, { do: 'pick-add-token' }, { do: 'key', key } (typeKey),
  * { do: 'wifi-power' }, { do: 'wifi-5ghz' }, { do: 'wifi-scan' }, { do: 'wifi-join', ssid }, { do: 'wifi-password', ssid },
- * { do: 'wifi-forget', ssid }, { do: 'uplink-prefer', kind }, { do: 'usb-phone' }, { do: 'proxy-toggle' }, { do: 'proxy-edit' },
- * { do: 'stats-toggle' }.
+ * { do: 'wifi-forget', ssid }, { do: 'uplink-prefer', kind }, { do: 'usb-phone' }, { do: 'proxy-toggle' }, { do: 'proxy-edit' }.
  *
  * The type page ({ name: 'type', title, text, shift, sym, layout, symbols,
  * go, secret, max, min, label }) is text typed on the drawn keyboard: layout 'url'
@@ -47,9 +46,6 @@ const { t: tr } = require('./i18n.js');
  * The proxy (state.proxy: { on, kind, address, error }, an updater from
  * 0.8.28) is a row in Settings and its page (proxy): on or off, and its
  * address; model.proxyNote is the refusal of the last change.
- *
- * Usage statistics (state.stats: { on }, an updater that sends them) are
- * a row in Settings and its page (stats): the switch and what is sent.
  */
 const { PHASE, percent, rowAction, statusLine, sourceLabel, sourceState, sourceActions, sourceChannel, sourceAccount,
     tokenLabel, tokenState, tokenSources, accountsState, loginStatus, loginCode, phoneState, phoneAddress, hmiNames,
@@ -366,11 +362,6 @@ function settingsView(m) {
     const sticks = (srcs || []).filter((s) => s.usb), fresh = usbNew(m);
     access.push({ id: 'usb', title: 'USB', sub: sticks.length ? sticks.map(sourceLabel).join(', ') : tr("No USB stick"), plain: true, vicon: 'usb',
         iconColor: 'text', right: fresh ? `chip:${fresh}+chevron` : 'chevron', chipColor: BLUE, act: { do: 'open', page: { name: 'usb' } } });
-    const usage = statsOf(m);
-    if (usage) {
-        access.push({ id: 'stats', title: tr("Share usage statistics"), sub: usage.on ? tr("On") : tr("Off"), plain: true, vicon: 'gauge',
-            iconColor: 'text', right: 'chevron', act: { do: 'open', page: { name: 'stats' } } });
-    }
     const unit = st && st.unit;
     access.push({ id: 'info', title: 'Information', sub: unit && unit.hmi ? [hmiNames([unit.hmi]), unit.firmware].filter(Boolean).join(' · ') : 'Versions',
         plain: true, vicon: 'display', iconColor: 'text', right: 'chevron', act: { do: 'open', page: { name: 'information' } } });
@@ -754,23 +745,6 @@ function proxyView(m) {
     };
 }
 
-/* ---- usage statistics (state.stats) ---- */
-
-/* The updater's usage statistics ({ on }), null with an updater that sends none. */
-function statsOf(m) {
-    const s = m.connected && m.st && m.st.stats;
-    return s && typeof s === 'object' && typeof s.on === 'boolean' ? s : null;
-}
-function statsView(m) {
-    const s = statsOf(m) || { on: false };
-    return {
-        rows: { items: [{ id: 'stats', title: tr("Share anonymous usage statistics"), sub: '', plain: true, vicon: 'gauge', iconColor: 'text',
-            right: `toggle:${s.on ? 'on' : 'off'}`, act: { do: 'stats-toggle' } }], empty: '' },
-        about: { text: [tr("The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected."),
-            tr("You can turn this off here. Questions: {0}", 'github.com/robertnisipeanu/mgu-store')].join('\n') }
-    };
-}
-
 /* ---- the uplink: Wi-Fi and the preferred connection (state.uplink, mgu-uplink 0.7.0's status.json) ---- */
 
 /* The uplink's Wi-Fi (status.json's wifi), null without it (an uplink before
@@ -925,7 +899,6 @@ function view(m) {
     case 'wifi': values = wifiView(m); break;
     case 'prefer': values = preferView(m); break;
     case 'proxy': values = proxyView(m); break;
-    case 'stats': values = statsView(m); break;
     default: screen = 'store'; values = storeView(m);
     }
     // the Wi-Fi page lights its menu item; USB is Settings' (Access)
@@ -952,4 +925,4 @@ function icons(v) {
     return out.filter((f, i) => out.indexOf(f) === i);
 }
 
-module.exports = { view, icons, typeKey, wifiOf, proxyOf, statsOf, TABS, FILTERS, restartShown, canRestart };
+module.exports = { view, icons, typeKey, wifiOf, proxyOf, TABS, FILTERS, restartShown, canRestart };

@@ -1,5 +1,9 @@
 # Updater changelog
 
+## 0.8.58
+
+- Sends no usage statistics: the daily ping and its settings are gone.
+
 ## 0.8.57
 
 - The daily usage ping is skipped, not an error, where the updater runs without its settings or statistics file.

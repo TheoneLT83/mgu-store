@@ -201,12 +201,7 @@ module.exports = [
    "Internet": "الإنترنت",
    "Information": "معلومات",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "الهاتف عبر USB",
-   "Usage statistics": "إحصاءات الاستخدام",
-   "Share usage statistics": "مشاركة إحصاءات الاستخدام",
-   "Share anonymous usage statistics": "مشاركة إحصاءات الاستخدام المجهولة",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "يرسل Store إحصاءات استخدام مجهولة الهوية مرة واحدة يوميًا، مثل التطبيقات والمصادر العامة المستخدمة وإصدار برنامج الوحدة الرئيسية، للمساعدة في تحسينه. لا يتم جمع أي شيء يحدد هويتك أو هوية سيارتك.",
-   "You can turn this off here. Questions: {0}": "يمكنك إيقاف ذلك من هنا. للاستفسارات: {0}"
+   "Phone over USB": "الهاتف عبر USB"
   }
  },
  {
@@ -409,12 +404,7 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informace",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefon přes USB",
-   "Usage statistics": "Statistiky používání",
-   "Share usage statistics": "Sdílet statistiky používání",
-   "Share anonymous usage statistics": "Sdílet anonymní statistiky používání",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Store jednou denně odesílá anonymní statistiky používání, například které aplikace a veřejné zdroje se používají a verzi softwaru jednotky, aby se mohl zlepšovat. Neshromažďuje se nic, co by identifikovalo vás nebo vaše auto.",
-   "You can turn this off here. Questions: {0}": "Zde to můžete vypnout. Dotazy: {0}"
+   "Phone over USB": "Telefon přes USB"
   }
  },
  {
@@ -617,12 +607,7 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Information",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefon via USB",
-   "Usage statistics": "Brugsstatistik",
-   "Share usage statistics": "Del brugsstatistik",
-   "Share anonymous usage statistics": "Del anonym brugsstatistik",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Store sender én gang om dagen anonym brugsstatistik, f.eks. hvilke apps og offentlige kilder der bruges og enhedens softwareversion, så den kan blive bedre. Intet, der identificerer dig eller din bil, indsamles.",
-   "You can turn this off here. Questions: {0}": "Du kan slå det fra her. Spørgsmål: {0}"
+   "Phone over USB": "Telefon via USB"
   }
  },
  {
@@ -825,12 +810,7 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informationen",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefon über USB",
-   "Usage statistics": "Nutzungsstatistik",
-   "Share usage statistics": "Nutzungsstatistik teilen",
-   "Share anonymous usage statistics": "Anonyme Nutzungsstatistik teilen",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Der Store sendet einmal täglich eine anonyme Nutzungsstatistik, etwa welche Apps und öffentlichen Quellen genutzt werden und die Softwareversion des Geräts, um ihn zu verbessern. Nichts, was Sie oder Ihr Auto identifiziert, wird erfasst.",
-   "You can turn this off here. Questions: {0}": "Hier können Sie das ausschalten. Fragen: {0}"
+   "Phone over USB": "Telefon über USB"
   }
  },
  {
@@ -1033,12 +1013,7 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Πληροφορίες",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Τηλέφωνο μέσω USB",
-   "Usage statistics": "Στατιστικά χρήσης",
-   "Share usage statistics": "Κοινοποίηση στατιστικών χρήσης",
-   "Share anonymous usage statistics": "Κοινοποίηση ανώνυμων στατιστικών χρήσης",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Το Store στέλνει μία φορά την ημέρα ανώνυμα στατιστικά χρήσης, όπως ποιες εφαρμογές και δημόσιες πηγές χρησιμοποιούνται και την έκδοση λογισμικού της μονάδας, για να βελτιωθεί. Δεν συλλέγεται τίποτα που να ταυτοποιεί εσάς ή το αυτοκίνητό σας.",
-   "You can turn this off here. Questions: {0}": "Μπορείτε να το απενεργοποιήσετε εδώ. Ερωτήσεις: {0}"
+   "Phone over USB": "Τηλέφωνο μέσω USB"
   }
  },
  {
@@ -1241,12 +1216,7 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Información",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Teléfono por USB",
-   "Usage statistics": "Estadísticas de uso",
-   "Share usage statistics": "Compartir estadísticas de uso",
-   "Share anonymous usage statistics": "Compartir estadísticas de uso anónimas",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Store envía una vez al día estadísticas de uso anónimas, como qué apps y fuentes públicas se usan y la versión de software de la unidad, para ayudar a mejorarlo. No se recopila nada que te identifique a ti o a tu auto.",
-   "You can turn this off here. Questions: {0}": "Puedes desactivarlo aquí. Preguntas: {0}"
+   "Phone over USB": "Teléfono por USB"
   }
  },
  {
@@ -1449,12 +1419,7 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Información",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Móvil por USB",
-   "Usage statistics": "Estadísticas de uso",
-   "Share usage statistics": "Compartir estadísticas de uso",
-   "Share anonymous usage statistics": "Compartir estadísticas de uso anónimas",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Store envía una vez al día estadísticas de uso anónimas, como qué apps y fuentes públicas se usan y la versión de software de la unidad, para ayudar a mejorarlo. No se recoge nada que te identifique a ti o a tu coche.",
-   "You can turn this off here. Questions: {0}": "Puedes desactivarlo aquí. Preguntas: {0}"
+   "Phone over USB": "Móvil por USB"
   }
  },
  {
@@ -1657,12 +1622,7 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Tiedot",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Puhelin USB:n kautta",
-   "Usage statistics": "Käyttötilastot",
-   "Share usage statistics": "Jaa käyttötilastot",
-   "Share anonymous usage statistics": "Jaa anonyymit käyttötilastot",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Store lähettää kerran päivässä anonyymejä käyttötilastoja, kuten mitä sovelluksia ja julkisia lähteitä käytetään ja yksikön ohjelmistoversion, kehittämisen tueksi. Mitään sinut tai autosi tunnistavaa ei kerätä.",
-   "You can turn this off here. Questions: {0}": "Voit poistaa tämän käytöstä täällä. Kysymykset: {0}"
+   "Phone over USB": "Puhelin USB:n kautta"
   }
  },
  {
@@ -1865,12 +1825,7 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informations",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Cellulaire par USB",
-   "Usage statistics": "Statistiques d'utilisation",
-   "Share usage statistics": "Partager les statistiques d'utilisation",
-   "Share anonymous usage statistics": "Partager les statistiques d'utilisation anonymes",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Le Store envoie une fois par jour des statistiques d'utilisation anonymes, comme les applis et sources publiques utilisées et la version logicielle de l'unité, pour l'améliorer. Rien qui vous identifie, vous ou votre véhicule, n'est recueilli.",
-   "You can turn this off here. Questions: {0}": "Vous pouvez désactiver cette option ici. Questions : {0}"
+   "Phone over USB": "Cellulaire par USB"
   }
  },
  {
@@ -2073,12 +2028,7 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informations",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Téléphone par USB",
-   "Usage statistics": "Statistiques d'utilisation",
-   "Share usage statistics": "Partager les statistiques d'utilisation",
-   "Share anonymous usage statistics": "Partager les statistiques d'utilisation anonymes",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Le Store envoie une fois par jour des statistiques d'utilisation anonymes, comme les apps et sources publiques utilisées et la version logicielle de l'unité, pour l'améliorer. Rien qui vous identifie, vous ou votre voiture, n'est collecté.",
-   "You can turn this off here. Questions: {0}": "Vous pouvez désactiver cette option ici. Questions : {0}"
+   "Phone over USB": "Téléphone par USB"
   }
  },
  {
@@ -2281,12 +2231,7 @@ module.exports = [
    "Internet": "אינטרנט",
    "Information": "מידע",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "טלפון דרך USB",
-   "Usage statistics": "סטטיסטיקות שימוש",
-   "Share usage statistics": "שיתוף סטטיסטיקות שימוש",
-   "Share anonymous usage statistics": "שיתוף סטטיסטיקות שימוש אנונימיות",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "ה-Store שולח פעם ביום סטטיסטיקות שימוש אנונימיות, כגון אילו אפליקציות ומקורות ציבוריים נמצאים בשימוש וגרסת התוכנה של היחידה, כדי לעזור לשפר אותו. לא נאסף שום מידע שמזהה אותך או את הרכב שלך.",
-   "You can turn this off here. Questions: {0}": "אפשר לכבות את זה כאן. שאלות: {0}"
+   "Phone over USB": "טלפון דרך USB"
   }
  },
  {
@@ -2489,12 +2434,7 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Információ",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefon USB-n keresztül",
-   "Usage statistics": "Használati statisztika",
-   "Share usage statistics": "Használati statisztika megosztása",
-   "Share anonymous usage statistics": "Névtelen használati statisztika megosztása",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "A Store naponta egyszer névtelen használati statisztikát küld, például hogy mely alkalmazásokat és nyilvános forrásokat használják, valamint az egység szoftververzióját, a fejlesztés érdekében. Semmi olyat nem gyűjt, ami Önt vagy az autóját azonosítaná.",
-   "You can turn this off here. Questions: {0}": "Itt kikapcsolhatja. Kérdések: {0}"
+   "Phone over USB": "Telefon USB-n keresztül"
   }
  },
  {
@@ -2697,12 +2637,7 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informasi",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Ponsel lewat USB",
-   "Usage statistics": "Statistik penggunaan",
-   "Share usage statistics": "Bagikan statistik penggunaan",
-   "Share anonymous usage statistics": "Bagikan statistik penggunaan anonim",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Store mengirim statistik penggunaan anonim sekali sehari, seperti aplikasi dan sumber publik yang digunakan serta versi perangkat lunak unit, untuk membantu meningkatkannya. Tidak ada yang mengidentifikasi Anda atau mobil Anda yang dikumpulkan.",
-   "You can turn this off here. Questions: {0}": "Anda dapat menonaktifkannya di sini. Pertanyaan: {0}"
+   "Phone over USB": "Ponsel lewat USB"
   }
  },
  {
@@ -2905,12 +2840,7 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informazioni",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefono tramite USB",
-   "Usage statistics": "Statistiche d'uso",
-   "Share usage statistics": "Condividi statistiche d'uso",
-   "Share anonymous usage statistics": "Condividi statistiche d'uso anonime",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Lo Store invia una volta al giorno statistiche d'uso anonime, ad esempio quali app e fonti pubbliche vengono usate e la versione software dell'unità, per aiutare a migliorarlo. Non viene raccolto nulla che identifichi te o la tua auto.",
-   "You can turn this off here. Questions: {0}": "Puoi disattivarlo qui. Domande: {0}"
+   "Phone over USB": "Telefono tramite USB"
   }
  },
  {
@@ -3113,12 +3043,7 @@ module.exports = [
    "Internet": "インターネット",
    "Information": "情報",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "USB接続のスマートフォン",
-   "Usage statistics": "使用統計",
-   "Share usage statistics": "使用統計を共有",
-   "Share anonymous usage statistics": "匿名の使用統計を共有",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Store は改善のため、アプリや公開ソース、ソフトウェアのバージョンなどの匿名の使用統計を1日1回送ります。あなたや車を特定する情報は集めません。",
-   "You can turn this off here. Questions: {0}": "ここでオフにできます。質問: {0}"
+   "Phone over USB": "USB接続のスマートフォン"
   }
  },
  {
@@ -3321,12 +3246,7 @@ module.exports = [
    "Internet": "인터넷",
    "Information": "정보",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "USB로 연결한 휴대폰",
-   "Usage statistics": "사용 통계",
-   "Share usage statistics": "사용 통계 공유",
-   "Share anonymous usage statistics": "익명 사용 통계 공유",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Store는 개선을 위해 사용 중인 앱과 공개 소스, 장치의 소프트웨어 버전 등 익명 사용 통계를 하루에 한 번 보냅니다. 사용자나 차량을 식별하는 정보는 수집하지 않습니다.",
-   "You can turn this off here. Questions: {0}": "여기에서 끌 수 있습니다. 문의: {0}"
+   "Phone over USB": "USB로 연결한 휴대폰"
   }
  },
  {
@@ -3529,12 +3449,7 @@ module.exports = [
    "Internet": "Internett",
    "Information": "Informasjon",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefon via USB",
-   "Usage statistics": "Bruksstatistikk",
-   "Share usage statistics": "Del bruksstatistikk",
-   "Share anonymous usage statistics": "Del anonym bruksstatistikk",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Store sender anonym bruksstatistikk én gang om dagen, for eksempel hvilke apper og offentlige kilder som brukes og enhetens programvareversjon, for å bli bedre. Ingenting som identifiserer deg eller bilen din, samles inn.",
-   "You can turn this off here. Questions: {0}": "Du kan slå dette av her. Spørsmål: {0}"
+   "Phone over USB": "Telefon via USB"
   }
  },
  {
@@ -3739,12 +3654,7 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informatie",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefoon via USB",
-   "Usage statistics": "Gebruiksstatistieken",
-   "Share usage statistics": "Gebruiksstatistieken delen",
-   "Share anonymous usage statistics": "Anonieme gebruiksstatistieken delen",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "De Store stuurt eenmaal per dag anonieme gebruiksstatistieken, zoals welke apps en openbare bronnen worden gebruikt en de softwareversie van het apparaat, om hem te verbeteren. Er wordt niets verzameld dat jou of je auto identificeert.",
-   "You can turn this off here. Questions: {0}": "Je kunt dit hier uitzetten. Vragen: {0}"
+   "Phone over USB": "Telefoon via USB"
   }
  },
  {
@@ -3947,12 +3857,7 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informacje",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefon przez USB",
-   "Usage statistics": "Statystyki użycia",
-   "Share usage statistics": "Udostępniaj statystyki użycia",
-   "Share anonymous usage statistics": "Udostępniaj anonimowe statystyki użycia",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Store raz dziennie wysyła anonimowe statystyki użycia, np. jakie aplikacje i publiczne źródła są używane oraz wersję oprogramowania jednostki, aby pomóc go ulepszać. Nie zbiera niczego, co identyfikuje Ciebie lub Twój samochód.",
-   "You can turn this off here. Questions: {0}": "Możesz to tutaj wyłączyć. Pytania: {0}"
+   "Phone over USB": "Telefon przez USB"
   }
  },
  {
@@ -4155,12 +4060,7 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informações",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Celular via USB",
-   "Usage statistics": "Estatísticas de uso",
-   "Share usage statistics": "Compartilhar estatísticas de uso",
-   "Share anonymous usage statistics": "Compartilhar estatísticas de uso anônimas",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "A Store envia uma vez por dia estatísticas de uso anônimas, como quais apps e fontes públicas são usados e a versão de software da unidade, para ajudar a melhorá-la. Nada que identifique você ou seu carro é coletado.",
-   "You can turn this off here. Questions: {0}": "Você pode desativar isso aqui. Dúvidas: {0}"
+   "Phone over USB": "Celular via USB"
   }
  },
  {
@@ -4363,12 +4263,7 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informações",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telemóvel por USB",
-   "Usage statistics": "Estatísticas de utilização",
-   "Share usage statistics": "Partilhar estatísticas de utilização",
-   "Share anonymous usage statistics": "Partilhar estatísticas de utilização anónimas",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "A Store envia uma vez por dia estatísticas de utilização anónimas, como as apps e fontes públicas utilizadas e a versão de software da unidade, para ajudar a melhorá-la. Não é recolhido nada que identifique o utilizador ou o carro.",
-   "You can turn this off here. Questions: {0}": "Pode desativar esta opção aqui. Perguntas: {0}"
+   "Phone over USB": "Telemóvel por USB"
   }
  },
  {
@@ -4571,12 +4466,7 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informații",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefon prin USB",
-   "Usage statistics": "Statistici de utilizare",
-   "Share usage statistics": "Trimite statistici de utilizare",
-   "Share anonymous usage statistics": "Trimite statistici de utilizare anonime",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Store trimite o dată pe zi statistici de utilizare anonime, cum ar fi ce aplicații și surse publice sunt folosite și versiunea de software a unității, pentru a-l îmbunătăți. Nu se colectează nimic care să vă identifice pe dumneavoastră sau mașina.",
-   "You can turn this off here. Questions: {0}": "Puteți dezactiva acest lucru aici. Întrebări: {0}"
+   "Phone over USB": "Telefon prin USB"
   }
  },
  {
@@ -4779,12 +4669,7 @@ module.exports = [
    "May cause CarPlay issues": "Возможны проблемы с CarPlay",
    "On the iPhone, turn on Maximize Compatibility": "На iPhone включите «Максимальная совместимость»",
    "This network is 5 GHz only: CarPlay audio may drop": "Эта сеть только 5 ГГц: звук CarPlay может прерываться",
-   "Phone over USB": "Телефон через USB",
-   "Usage statistics": "Статистика использования",
-   "Share usage statistics": "Отправлять статистику использования",
-   "Share anonymous usage statistics": "Отправлять анонимную статистику использования",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Store раз в день отправляет анонимную статистику использования, например какие приложения и публичные источники используются и версию ПО устройства, чтобы его улучшать. Ничего, что идентифицирует вас или ваш автомобиль, не собирается.",
-   "You can turn this off here. Questions: {0}": "Это можно отключить здесь. Вопросы: {0}"
+   "Phone over USB": "Телефон через USB"
   }
  },
  {
@@ -4987,12 +4872,7 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informácie",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefón cez USB",
-   "Usage statistics": "Štatistiky používania",
-   "Share usage statistics": "Zdieľať štatistiky používania",
-   "Share anonymous usage statistics": "Zdieľať anonymné štatistiky používania",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Store raz denne odosiela anonymné štatistiky používania, napríklad ktoré aplikácie a verejné zdroje sa používajú a verziu softvéru jednotky, aby sa mohol zlepšovať. Nezhromažďuje sa nič, čo by identifikovalo vás alebo vaše auto.",
-   "You can turn this off here. Questions: {0}": "Tu to môžete vypnúť. Otázky: {0}"
+   "Phone over USB": "Telefón cez USB"
   }
  },
  {
@@ -5195,12 +5075,7 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informacije",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefon prek USB",
-   "Usage statistics": "Statistika uporabe",
-   "Share usage statistics": "Deli statistiko uporabe",
-   "Share anonymous usage statistics": "Deli anonimno statistiko uporabe",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Store enkrat na dan pošlje anonimno statistiko uporabe, na primer katere aplikacije in javni viri se uporabljajo ter različico programske opreme enote, da se lahko izboljšuje. Nič, kar bi identificiralo vas ali vaš avto, se ne zbira.",
-   "You can turn this off here. Questions: {0}": "To lahko izklopite tukaj. Vprašanja: {0}"
+   "Phone over USB": "Telefon prek USB"
   }
  },
  {
@@ -5403,12 +5278,7 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Information",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefon via USB",
-   "Usage statistics": "Användningsstatistik",
-   "Share usage statistics": "Dela användningsstatistik",
-   "Share anonymous usage statistics": "Dela anonym användningsstatistik",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Store skickar anonym användningsstatistik en gång om dagen, till exempel vilka appar och offentliga källor som används och enhetens programvaruversion, för att kunna förbättras. Inget som identifierar dig eller din bil samlas in.",
-   "You can turn this off here. Questions: {0}": "Du kan stänga av det här. Frågor: {0}"
+   "Phone over USB": "Telefon via USB"
   }
  },
  {
@@ -5611,12 +5481,7 @@ module.exports = [
    "Internet": "อินเทอร์เน็ต",
    "Information": "ข้อมูล",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "โทรศัพท์ผ่าน USB",
-   "Usage statistics": "สถิติการใช้งาน",
-   "Share usage statistics": "แชร์สถิติการใช้งาน",
-   "Share anonymous usage statistics": "แชร์สถิติการใช้งานแบบไม่ระบุตัวตน",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Store จะส่งสถิติการใช้งานแบบไม่ระบุตัวตนวันละครั้ง เช่น แอปและแหล่งที่มาสาธารณะที่ใช้ และเวอร์ชันซอฟต์แวร์ของเครื่อง เพื่อช่วยปรับปรุง ไม่มีการเก็บข้อมูลใดที่ระบุตัวคุณหรือรถของคุณ",
-   "You can turn this off here. Questions: {0}": "คุณปิดได้ที่นี่ สอบถาม: {0}"
+   "Phone over USB": "โทรศัพท์ผ่าน USB"
   }
  },
  {
@@ -5819,12 +5684,7 @@ module.exports = [
    "Internet": "İnternet",
    "Information": "Bilgi",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "USB üzerinden telefon",
-   "Usage statistics": "Kullanım istatistikleri",
-   "Share usage statistics": "Kullanım istatistiklerini paylaş",
-   "Share anonymous usage statistics": "Anonim kullanım istatistiklerini paylaş",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Store, geliştirilmesine yardımcı olmak için günde bir kez anonim kullanım istatistikleri gönderir; örneğin hangi uygulamaların ve herkese açık kaynakların kullanıldığı ve ünitenin yazılım sürümü. Sizi veya aracınızı tanımlayan hiçbir şey toplanmaz.",
-   "You can turn this off here. Questions: {0}": "Bunu buradan kapatabilirsiniz. Sorular: {0}"
+   "Phone over USB": "USB üzerinden telefon"
   }
  },
  {
@@ -6027,12 +5887,7 @@ module.exports = [
    "May cause CarPlay issues": "Можливі проблеми з CarPlay",
    "On the iPhone, turn on Maximize Compatibility": "На iPhone увімкніть «Максимальна сумісність»",
    "This network is 5 GHz only: CarPlay audio may drop": "Ця мережа лише 5 ГГц: звук CarPlay може перериватися",
-   "Phone over USB": "Телефон через USB",
-   "Usage statistics": "Статистика використання",
-   "Share usage statistics": "Надсилати статистику використання",
-   "Share anonymous usage statistics": "Надсилати анонімну статистику використання",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Store раз на день надсилає анонімну статистику використання, наприклад які застосунки та публічні джерела використовуються і версію ПЗ пристрою, щоб його покращувати. Нічого, що ідентифікує вас або ваш автомобіль, не збирається.",
-   "You can turn this off here. Questions: {0}": "Це можна вимкнути тут. Питання: {0}"
+   "Phone over USB": "Телефон через USB"
   }
  },
  {
@@ -6235,12 +6090,7 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Thông tin",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Điện thoại qua USB",
-   "Usage statistics": "Thống kê sử dụng",
-   "Share usage statistics": "Chia sẻ thống kê sử dụng",
-   "Share anonymous usage statistics": "Chia sẻ thống kê sử dụng ẩn danh",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Store gửi thống kê sử dụng ẩn danh mỗi ngày một lần, chẳng hạn ứng dụng và nguồn công khai nào được dùng và phiên bản phần mềm của thiết bị, để giúp cải thiện. Không thu thập thông tin nào nhận dạng bạn hoặc xe của bạn.",
-   "You can turn this off here. Questions: {0}": "Bạn có thể tắt tính năng này tại đây. Thắc mắc: {0}"
+   "Phone over USB": "Điện thoại qua USB"
   }
  },
  {
@@ -6445,12 +6295,7 @@ module.exports = [
    "new build": "新构建",
    "Phone over USB": "通过 USB 连接手机",
    "Safe mode": "安全启动",
-   "Leave safe mode": "离开安全启动",
-   "Usage statistics": "使用信息",
-   "Share usage statistics": "共享使用信息",
-   "Share anonymous usage statistics": "共享匿名使用信息",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "应用商店每日共享匿名使用信息：使用中的应用、来源及版本。不会共享可用来找到用户的信息。",
-   "You can turn this off here. Questions: {0}": "可在此关闭。问题：{0}"
+   "Leave safe mode": "离开安全启动"
   }
  },
  {
@@ -6655,12 +6500,7 @@ module.exports = [
    "May cause CarPlay issues": "可能導致 CarPlay 出現問題",
    "On the iPhone, turn on Maximize Compatibility": "請在 iPhone 上開啟「最大相容性」",
    "This network is 5 GHz only: CarPlay audio may drop": "此網路僅支援 5 GHz：CarPlay 音訊可能中斷",
-   "Phone over USB": "透過 USB 使用手機",
-   "Usage statistics": "使用統計",
-   "Share usage statistics": "分享使用統計",
-   "Share anonymous usage statistics": "分享匿名使用統計",
-   "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "Store 每天提供匿名使用統計：使用中的應用程式、公開來源及版本。不會提供可用來找到使用者的資訊。",
-   "You can turn this off here. Questions: {0}": "可在此關閉。問題：{0}"
+   "Phone over USB": "透過 USB 使用手機"
   }
  }
 ];

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.70
+
+Settings has no Share usage statistics row or page: the Store sends no usage statistics.
+
 ## 0.9.69
 
 robertnisipeanu/mgu-store's Store 0.9.42: Settings has Share usage statistics, the updater's daily anonymous ping on
