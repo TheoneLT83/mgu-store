@@ -202,7 +202,20 @@ module.exports = [
    "Information": "معلومات",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "الهاتف عبر USB",
-   "Updating {0} of {1}": "جارٍ التحديث {0} من {1}"
+   "Updating {0} of {1}": "جارٍ التحديث {0} من {1}",
+   "What's new": "الجديد",
+   "Loading history": "جارٍ تحميل السجل",
+   "History needs internet": "السجل يحتاج إلى الإنترنت",
+   "No history": "لا يوجد سجل",
+   "Full changelog": "سجل التغييرات كاملاً",
+   "All": "الكل",
+   "Tools": "الأدوات",
+   "All apps and tools": "كل التطبيقات والأدوات",
+   "Needs attention": "يحتاج إلى انتباه",
+   "Checks automatically when online": "يتحقق تلقائيًا عند الاتصال",
+   "Updating…": "جارٍ التحديث…",
+   "Queue": "قائمة الانتظار",
+   "Restart to finish": "أعد التشغيل للإنهاء"
   }
  },
  {
@@ -406,7 +419,20 @@ module.exports = [
    "Information": "Informace",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "Telefon přes USB",
-   "Updating {0} of {1}": "Aktualizace {0} z {1}"
+   "Updating {0} of {1}": "Aktualizace {0} z {1}",
+   "What's new": "Novinky",
+   "Loading history": "Načítání historie",
+   "History needs internet": "Historie vyžaduje internet",
+   "No history": "Žádná historie",
+   "Full changelog": "Celý seznam změn",
+   "All": "Vše",
+   "Tools": "Nástroje",
+   "All apps and tools": "Všechny aplikace a nástroje",
+   "Needs attention": "Vyžaduje pozornost",
+   "Checks automatically when online": "Kontroluje automaticky při připojení",
+   "Updating…": "Aktualizace…",
+   "Queue": "Fronta",
+   "Restart to finish": "Dokončit restartem"
   }
  },
  {
@@ -610,7 +636,20 @@ module.exports = [
    "Information": "Information",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "Telefon via USB",
-   "Updating {0} of {1}": "Opdaterer {0} af {1}"
+   "Updating {0} of {1}": "Opdaterer {0} af {1}",
+   "What's new": "Nyheder",
+   "Loading history": "Indlæser historik",
+   "History needs internet": "Historik kræver internet",
+   "No history": "Ingen historik",
+   "Full changelog": "Hele ændringsloggen",
+   "All": "Alle",
+   "Tools": "Værktøjer",
+   "All apps and tools": "Alle apps og værktøjer",
+   "Needs attention": "Kræver opmærksomhed",
+   "Checks automatically when online": "Tjekker automatisk, når online",
+   "Updating…": "Opdaterer…",
+   "Queue": "Kø",
+   "Restart to finish": "Genstart for at afslutte"
   }
  },
  {
@@ -814,7 +853,20 @@ module.exports = [
    "Information": "Informationen",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "Telefon über USB",
-   "Updating {0} of {1}": "Aktualisiere {0} von {1}"
+   "Updating {0} of {1}": "Aktualisiere {0} von {1}",
+   "What's new": "Neu",
+   "Loading history": "Verlauf wird geladen",
+   "History needs internet": "Verlauf braucht Internet",
+   "No history": "Kein Verlauf",
+   "Full changelog": "Alle Änderungen",
+   "All": "Alle",
+   "Tools": "Tools",
+   "All apps and tools": "Alle Apps und Tools",
+   "Needs attention": "Braucht Aufmerksamkeit",
+   "Checks automatically when online": "Prüft automatisch, wenn online",
+   "Updating…": "Wird aktualisiert…",
+   "Queue": "Warteschlange",
+   "Restart to finish": "Zum Abschließen neu starten"
   }
  },
  {
@@ -1018,7 +1070,20 @@ module.exports = [
    "Information": "Πληροφορίες",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "Τηλέφωνο μέσω USB",
-   "Updating {0} of {1}": "Ενημέρωση {0} από {1}"
+   "Updating {0} of {1}": "Ενημέρωση {0} από {1}",
+   "What's new": "Τι νέο υπάρχει",
+   "Loading history": "Φόρτωση ιστορικού",
+   "History needs internet": "Το ιστορικό χρειάζεται internet",
+   "No history": "Χωρίς ιστορικό",
+   "Full changelog": "Όλες οι αλλαγές",
+   "All": "Όλα",
+   "Tools": "Εργαλεία",
+   "All apps and tools": "Όλες οι εφαρμογές και τα εργαλεία",
+   "Needs attention": "Χρειάζεται προσοχή",
+   "Checks automatically when online": "Ελέγχει αυτόματα όταν υπάρχει σύνδεση",
+   "Updating…": "Ενημέρωση…",
+   "Queue": "Ουρά",
+   "Restart to finish": "Επανεκκίνηση για ολοκλήρωση"
   }
  },
  {
@@ -1222,7 +1287,20 @@ module.exports = [
    "Information": "Información",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "Teléfono por USB",
-   "Updating {0} of {1}": "Actualizando {0} de {1}"
+   "Updating {0} of {1}": "Actualizando {0} de {1}",
+   "What's new": "Novedades",
+   "Loading history": "Cargando historial",
+   "History needs internet": "El historial necesita internet",
+   "No history": "Sin historial",
+   "Full changelog": "Todos los cambios",
+   "All": "Todo",
+   "Tools": "Herramientas",
+   "All apps and tools": "Todas las apps y herramientas",
+   "Needs attention": "Requiere atención",
+   "Checks automatically when online": "Comprueba automáticamente con conexión",
+   "Updating…": "Actualizando…",
+   "Queue": "Cola",
+   "Restart to finish": "Reinicia para terminar"
   }
  },
  {
@@ -1426,7 +1504,20 @@ module.exports = [
    "Information": "Información",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "Móvil por USB",
-   "Updating {0} of {1}": "Actualizando {0} de {1}"
+   "Updating {0} of {1}": "Actualizando {0} de {1}",
+   "What's new": "Novedades",
+   "Loading history": "Cargando historial",
+   "History needs internet": "El historial necesita internet",
+   "No history": "Sin historial",
+   "Full changelog": "Todos los cambios",
+   "All": "Todo",
+   "Tools": "Herramientas",
+   "All apps and tools": "Todas las apps y herramientas",
+   "Needs attention": "Requiere atención",
+   "Checks automatically when online": "Comprueba automáticamente con conexión",
+   "Updating…": "Actualizando…",
+   "Queue": "Cola",
+   "Restart to finish": "Reinicia para terminar"
   }
  },
  {
@@ -1630,7 +1721,20 @@ module.exports = [
    "Information": "Tiedot",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "Puhelin USB:n kautta",
-   "Updating {0} of {1}": "Päivitetään {0}/{1}"
+   "Updating {0} of {1}": "Päivitetään {0}/{1}",
+   "What's new": "Uutta",
+   "Loading history": "Ladataan historiaa",
+   "History needs internet": "Historia tarvitsee internetin",
+   "No history": "Ei historiaa",
+   "Full changelog": "Kaikki muutokset",
+   "All": "Kaikki",
+   "Tools": "Työkalut",
+   "All apps and tools": "Kaikki sovellukset ja työkalut",
+   "Needs attention": "Vaatii huomiota",
+   "Checks automatically when online": "Tarkistaa automaattisesti verkossa",
+   "Updating…": "Päivitetään…",
+   "Queue": "Jono",
+   "Restart to finish": "Viimeistele käynnistämällä uudelleen"
   }
  },
  {
@@ -1834,7 +1938,20 @@ module.exports = [
    "Information": "Informations",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "Cellulaire par USB",
-   "Updating {0} of {1}": "Mise à jour {0} sur {1}"
+   "Updating {0} of {1}": "Mise à jour {0} sur {1}",
+   "What's new": "Nouveautés",
+   "Loading history": "Chargement de l'historique",
+   "History needs internet": "L'historique requiert Internet",
+   "No history": "Aucun historique",
+   "Full changelog": "Tous les changements",
+   "All": "Tout",
+   "Tools": "Outils",
+   "All apps and tools": "Toutes les applis et outils",
+   "Needs attention": "Requiert votre attention",
+   "Checks automatically when online": "Vérifie automatiquement en ligne",
+   "Updating…": "Mise à jour…",
+   "Queue": "File d'attente",
+   "Restart to finish": "Redémarrer pour terminer"
   }
  },
  {
@@ -2038,7 +2155,20 @@ module.exports = [
    "Information": "Informations",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "Téléphone par USB",
-   "Updating {0} of {1}": "Mise à jour {0} sur {1}"
+   "Updating {0} of {1}": "Mise à jour {0} sur {1}",
+   "What's new": "Nouveautés",
+   "Loading history": "Chargement de l'historique",
+   "History needs internet": "L'historique requiert Internet",
+   "No history": "Aucun historique",
+   "Full changelog": "Tous les changements",
+   "All": "Tout",
+   "Tools": "Outils",
+   "All apps and tools": "Toutes les apps et outils",
+   "Needs attention": "Requiert votre attention",
+   "Checks automatically when online": "Vérifie automatiquement en ligne",
+   "Updating…": "Mise à jour…",
+   "Queue": "File d'attente",
+   "Restart to finish": "Redémarrer pour terminer"
   }
  },
  {
@@ -2242,7 +2372,20 @@ module.exports = [
    "Information": "מידע",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "טלפון דרך USB",
-   "Updating {0} of {1}": "מעדכן {0} מתוך {1}"
+   "Updating {0} of {1}": "מעדכן {0} מתוך {1}",
+   "What's new": "מה חדש",
+   "Loading history": "טוען היסטוריה",
+   "History needs internet": "ההיסטוריה צריכה אינטרנט",
+   "No history": "אין היסטוריה",
+   "Full changelog": "יומן שינויים מלא",
+   "All": "הכול",
+   "Tools": "כלים",
+   "All apps and tools": "כל האפליקציות והכלים",
+   "Needs attention": "דורש תשומת לב",
+   "Checks automatically when online": "בודק אוטומטית כשיש חיבור",
+   "Updating…": "מעדכן…",
+   "Queue": "תור",
+   "Restart to finish": "הפעל מחדש לסיום"
   }
  },
  {
@@ -2446,7 +2589,20 @@ module.exports = [
    "Information": "Információ",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "Telefon USB-n keresztül",
-   "Updating {0} of {1}": "Frissítés: {0}/{1}"
+   "Updating {0} of {1}": "Frissítés: {0}/{1}",
+   "What's new": "Újdonságok",
+   "Loading history": "Előzmények betöltése",
+   "History needs internet": "Az előzményekhez internet kell",
+   "No history": "Nincsenek előzmények",
+   "Full changelog": "Összes változás",
+   "All": "Összes",
+   "Tools": "Eszközök",
+   "All apps and tools": "Összes alkalmazás és eszköz",
+   "Needs attention": "Figyelmet igényel",
+   "Checks automatically when online": "Online automatikusan ellenőriz",
+   "Updating…": "Frissítés…",
+   "Queue": "Sor",
+   "Restart to finish": "Újraindítás a befejezéshez"
   }
  },
  {
@@ -2650,7 +2806,20 @@ module.exports = [
    "Information": "Informasi",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "Ponsel lewat USB",
-   "Updating {0} of {1}": "Memperbarui {0} dari {1}"
+   "Updating {0} of {1}": "Memperbarui {0} dari {1}",
+   "What's new": "Yang baru",
+   "Loading history": "Memuat riwayat",
+   "History needs internet": "Riwayat perlu internet",
+   "No history": "Tidak ada riwayat",
+   "Full changelog": "Log perubahan lengkap",
+   "All": "Semua",
+   "Tools": "Alat",
+   "All apps and tools": "Semua aplikasi dan alat",
+   "Needs attention": "Perlu perhatian",
+   "Checks automatically when online": "Memeriksa otomatis saat online",
+   "Updating…": "Memperbarui…",
+   "Queue": "Antrean",
+   "Restart to finish": "Mulai ulang untuk menyelesaikan"
   }
  },
  {
@@ -2854,7 +3023,20 @@ module.exports = [
    "Information": "Informazioni",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "Telefono tramite USB",
-   "Updating {0} of {1}": "Aggiornamento {0} di {1}"
+   "Updating {0} of {1}": "Aggiornamento {0} di {1}",
+   "What's new": "Novità",
+   "Loading history": "Caricamento cronologia",
+   "History needs internet": "La cronologia richiede internet",
+   "No history": "Nessuna cronologia",
+   "Full changelog": "Tutte le modifiche",
+   "All": "Tutto",
+   "Tools": "Strumenti",
+   "All apps and tools": "Tutte le app e gli strumenti",
+   "Needs attention": "Richiede attenzione",
+   "Checks automatically when online": "Controlla automaticamente quando online",
+   "Updating…": "Aggiornamento…",
+   "Queue": "Coda",
+   "Restart to finish": "Riavvia per completare"
   }
  },
  {
@@ -3058,7 +3240,20 @@ module.exports = [
    "Information": "情報",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "USB接続のスマートフォン",
-   "Updating {0} of {1}": "更新中 {0}/{1}"
+   "Updating {0} of {1}": "更新中 {0}/{1}",
+   "What's new": "新機能",
+   "Loading history": "履歴をロード中",
+   "History needs internet": "履歴はオンライン時のみ",
+   "No history": "履歴なし",
+   "Full changelog": "すべての変更履歴",
+   "All": "すべて",
+   "Tools": "ツール",
+   "All apps and tools": "すべてのアプリとツール",
+   "Needs attention": "確認してください",
+   "Checks automatically when online": "オンライン時に自動確認",
+   "Updating…": "更新中…",
+   "Queue": "待機中",
+   "Restart to finish": "再起動して完了"
   }
  },
  {
@@ -3262,7 +3457,20 @@ module.exports = [
    "Information": "정보",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "USB로 연결한 휴대폰",
-   "Updating {0} of {1}": "업데이트 중 {0}/{1}"
+   "Updating {0} of {1}": "업데이트 중 {0}/{1}",
+   "What's new": "새로운 기능",
+   "Loading history": "기록 불러오는 중",
+   "History needs internet": "인터넷에 연결하세요",
+   "No history": "기록 없음",
+   "Full changelog": "전체 변경 내역",
+   "All": "전체",
+   "Tools": "도구",
+   "All apps and tools": "모든 앱 및 도구",
+   "Needs attention": "확인하세요",
+   "Checks automatically when online": "온라인일 때 자동 확인",
+   "Updating…": "업데이트 중…",
+   "Queue": "대기 중",
+   "Restart to finish": "재시작하여 완료"
   }
  },
  {
@@ -3466,7 +3674,20 @@ module.exports = [
    "Information": "Informasjon",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "Telefon via USB",
-   "Updating {0} of {1}": "Oppdaterer {0} av {1}"
+   "Updating {0} of {1}": "Oppdaterer {0} av {1}",
+   "What's new": "Nyheter",
+   "Loading history": "Laster inn historikk",
+   "History needs internet": "Historikk krever internett",
+   "No history": "Ingen historikk",
+   "Full changelog": "Hele endringsloggen",
+   "All": "Alle",
+   "Tools": "Verktøy",
+   "All apps and tools": "Alle apper og verktøy",
+   "Needs attention": "Krever oppmerksomhet",
+   "Checks automatically when online": "Sjekker automatisk når tilkoblet",
+   "Updating…": "Oppdaterer…",
+   "Queue": "Kø",
+   "Restart to finish": "Start på nytt for å fullføre"
   }
  },
  {
@@ -3672,7 +3893,20 @@ module.exports = [
    "Information": "Informatie",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "Telefoon via USB",
-   "Updating {0} of {1}": "Bijwerken {0} van {1}"
+   "Updating {0} of {1}": "Bijwerken {0} van {1}",
+   "What's new": "Nieuw",
+   "Loading history": "Geschiedenis laden",
+   "History needs internet": "Geschiedenis heeft internet nodig",
+   "No history": "Geen geschiedenis",
+   "Full changelog": "Alle wijzigingen",
+   "All": "Alles",
+   "Tools": "Tools",
+   "All apps and tools": "Alle apps en tools",
+   "Needs attention": "Vraagt aandacht",
+   "Checks automatically when online": "Controleert automatisch als online",
+   "Updating…": "Bijwerken…",
+   "Queue": "Wachtrij",
+   "Restart to finish": "Herstart om af te ronden"
   }
  },
  {
@@ -3876,7 +4110,20 @@ module.exports = [
    "Information": "Informacje",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "Telefon przez USB",
-   "Updating {0} of {1}": "Aktualizacja {0} z {1}"
+   "Updating {0} of {1}": "Aktualizacja {0} z {1}",
+   "What's new": "Nowości",
+   "Loading history": "Wczytywanie historii",
+   "History needs internet": "Historia wymaga internetu",
+   "No history": "Brak historii",
+   "Full changelog": "Pełna lista zmian",
+   "All": "Wszystko",
+   "Tools": "Narzędzia",
+   "All apps and tools": "Wszystkie aplikacje i narzędzia",
+   "Needs attention": "Wymaga uwagi",
+   "Checks automatically when online": "Sprawdza automatycznie po połączeniu",
+   "Updating…": "Aktualizowanie…",
+   "Queue": "Kolejka",
+   "Restart to finish": "Uruchom ponownie, aby zakończyć"
   }
  },
  {
@@ -4080,7 +4327,20 @@ module.exports = [
    "Information": "Informações",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "Celular via USB",
-   "Updating {0} of {1}": "Atualizando {0} de {1}"
+   "Updating {0} of {1}": "Atualizando {0} de {1}",
+   "What's new": "Novidades",
+   "Loading history": "Carregando histórico",
+   "History needs internet": "O histórico precisa de internet",
+   "No history": "Sem histórico",
+   "Full changelog": "Todas as mudanças",
+   "All": "Tudo",
+   "Tools": "Ferramentas",
+   "All apps and tools": "Todos os apps e ferramentas",
+   "Needs attention": "Requer atenção",
+   "Checks automatically when online": "Verifica automaticamente quando online",
+   "Updating…": "Atualizando…",
+   "Queue": "Fila",
+   "Restart to finish": "Reinicie para concluir"
   }
  },
  {
@@ -4284,7 +4544,20 @@ module.exports = [
    "Information": "Informações",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "Telemóvel por USB",
-   "Updating {0} of {1}": "A atualizar {0} de {1}"
+   "Updating {0} of {1}": "A atualizar {0} de {1}",
+   "What's new": "Novidades",
+   "Loading history": "A carregar histórico",
+   "History needs internet": "O histórico precisa de internet",
+   "No history": "Sem histórico",
+   "Full changelog": "Todas as alterações",
+   "All": "Tudo",
+   "Tools": "Ferramentas",
+   "All apps and tools": "Todas as apps e ferramentas",
+   "Needs attention": "Requer atenção",
+   "Checks automatically when online": "Verifica automaticamente quando online",
+   "Updating…": "A atualizar…",
+   "Queue": "Fila",
+   "Restart to finish": "Reinicie para concluir"
   }
  },
  {
@@ -4488,7 +4761,20 @@ module.exports = [
    "Information": "Informații",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "Telefon prin USB",
-   "Updating {0} of {1}": "Se actualizează {0} din {1}"
+   "Updating {0} of {1}": "Se actualizează {0} din {1}",
+   "What's new": "Noutăți",
+   "Loading history": "Se încarcă istoricul",
+   "History needs internet": "Istoricul necesită internet",
+   "No history": "Fără istoric",
+   "Full changelog": "Toate modificările",
+   "All": "Toate",
+   "Tools": "Instrumente",
+   "All apps and tools": "Toate aplicațiile și instrumentele",
+   "Needs attention": "Necesită atenție",
+   "Checks automatically when online": "Verifică automat când e online",
+   "Updating…": "Se actualizează…",
+   "Queue": "Coadă",
+   "Restart to finish": "Repornește pentru a termina"
   }
  },
  {
@@ -4692,7 +4978,20 @@ module.exports = [
    "On the iPhone, turn on Maximize Compatibility": "На iPhone включите «Максимальная совместимость»",
    "This network is 5 GHz only: CarPlay audio may drop": "Эта сеть только 5 ГГц: звук CarPlay может прерываться",
    "Phone over USB": "Телефон через USB",
-   "Updating {0} of {1}": "Обновление {0} из {1}"
+   "Updating {0} of {1}": "Обновление {0} из {1}",
+   "What's new": "Что нового",
+   "Loading history": "Загрузка истории",
+   "History needs internet": "Для истории нужен интернет",
+   "No history": "Истории нет",
+   "Full changelog": "Все изменения",
+   "All": "Все",
+   "Tools": "Утилиты",
+   "All apps and tools": "Все приложения и утилиты",
+   "Needs attention": "Требует внимания",
+   "Checks automatically when online": "Проверяет автоматически при подключении",
+   "Updating…": "Обновление…",
+   "Queue": "Очередь",
+   "Restart to finish": "Перезапустите для завершения"
   }
  },
  {
@@ -4896,7 +5195,20 @@ module.exports = [
    "Information": "Informácie",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "Telefón cez USB",
-   "Updating {0} of {1}": "Aktualizácia {0} z {1}"
+   "Updating {0} of {1}": "Aktualizácia {0} z {1}",
+   "What's new": "Novinky",
+   "Loading history": "Načítava sa história",
+   "History needs internet": "História vyžaduje internet",
+   "No history": "Žiadna história",
+   "Full changelog": "Celý zoznam zmien",
+   "All": "Všetko",
+   "Tools": "Nástroje",
+   "All apps and tools": "Všetky aplikácie a nástroje",
+   "Needs attention": "Vyžaduje pozornosť",
+   "Checks automatically when online": "Kontroluje automaticky po pripojení",
+   "Updating…": "Aktualizuje sa…",
+   "Queue": "Front",
+   "Restart to finish": "Dokončiť reštartom"
   }
  },
  {
@@ -5100,7 +5412,20 @@ module.exports = [
    "Information": "Informacije",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "Telefon prek USB",
-   "Updating {0} of {1}": "Posodabljanje {0} od {1}"
+   "Updating {0} of {1}": "Posodabljanje {0} od {1}",
+   "What's new": "Novosti",
+   "Loading history": "Nalaganje zgodovine",
+   "History needs internet": "Zgodovina potrebuje internet",
+   "No history": "Ni zgodovine",
+   "Full changelog": "Vse spremembe",
+   "All": "Vse",
+   "Tools": "Orodja",
+   "All apps and tools": "Vse aplikacije in orodja",
+   "Needs attention": "Potrebuje pozornost",
+   "Checks automatically when online": "Samodejno preveri ob povezavi",
+   "Updating…": "Posodabljanje…",
+   "Queue": "Čakalna vrsta",
+   "Restart to finish": "Znova zaženi za dokončanje"
   }
  },
  {
@@ -5304,7 +5629,20 @@ module.exports = [
    "Information": "Information",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "Telefon via USB",
-   "Updating {0} of {1}": "Uppdaterar {0} av {1}"
+   "Updating {0} of {1}": "Uppdaterar {0} av {1}",
+   "What's new": "Nyheter",
+   "Loading history": "Läser in historik",
+   "History needs internet": "Historik kräver internet",
+   "No history": "Ingen historik",
+   "Full changelog": "Hela ändringsloggen",
+   "All": "Alla",
+   "Tools": "Verktyg",
+   "All apps and tools": "Alla appar och verktyg",
+   "Needs attention": "Kräver uppmärksamhet",
+   "Checks automatically when online": "Kontrollerar automatiskt när online",
+   "Updating…": "Uppdaterar…",
+   "Queue": "Kö",
+   "Restart to finish": "Starta om för att slutföra"
   }
  },
  {
@@ -5508,7 +5846,20 @@ module.exports = [
    "Information": "ข้อมูล",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "โทรศัพท์ผ่าน USB",
-   "Updating {0} of {1}": "กำลังอัปเดต {0} จาก {1}"
+   "Updating {0} of {1}": "กำลังอัปเดต {0} จาก {1}",
+   "What's new": "มีอะไรใหม่",
+   "Loading history": "กำลังโหลดประวัติ",
+   "History needs internet": "ประวัติต้องใช้อินเทอร์เน็ต",
+   "No history": "ไม่มีประวัติ",
+   "Full changelog": "บันทึกการเปลี่ยนแปลงทั้งหมด",
+   "All": "ทั้งหมด",
+   "Tools": "เครื่องมือ",
+   "All apps and tools": "แอปและเครื่องมือทั้งหมด",
+   "Needs attention": "ต้องตรวจสอบ",
+   "Checks automatically when online": "ตรวจสอบอัตโนมัติเมื่อออนไลน์",
+   "Updating…": "กำลังอัปเดต…",
+   "Queue": "คิว",
+   "Restart to finish": "รีสตาร์ทเพื่อเสร็จสิ้น"
   }
  },
  {
@@ -5712,7 +6063,20 @@ module.exports = [
    "Information": "Bilgi",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "USB üzerinden telefon",
-   "Updating {0} of {1}": "Güncelleniyor {0}/{1}"
+   "Updating {0} of {1}": "Güncelleniyor {0}/{1}",
+   "What's new": "Yenilikler",
+   "Loading history": "Geçmiş yükleniyor",
+   "History needs internet": "Geçmiş için internet gerekli",
+   "No history": "Geçmiş yok",
+   "Full changelog": "Tüm değişiklikler",
+   "All": "Tümü",
+   "Tools": "Araçlar",
+   "All apps and tools": "Tüm uygulamalar ve araçlar",
+   "Needs attention": "İlgi gerekiyor",
+   "Checks automatically when online": "Çevrimiçiyken otomatik denetler",
+   "Updating…": "Güncelleniyor…",
+   "Queue": "Sıra",
+   "Restart to finish": "Bitirmek için yeniden başlat"
   }
  },
  {
@@ -5916,7 +6280,20 @@ module.exports = [
    "On the iPhone, turn on Maximize Compatibility": "На iPhone увімкніть «Максимальна сумісність»",
    "This network is 5 GHz only: CarPlay audio may drop": "Ця мережа лише 5 ГГц: звук CarPlay може перериватися",
    "Phone over USB": "Телефон через USB",
-   "Updating {0} of {1}": "Оновлення {0} з {1}"
+   "Updating {0} of {1}": "Оновлення {0} з {1}",
+   "What's new": "Що нового",
+   "Loading history": "Завантаження історії",
+   "History needs internet": "Для історії потрібен інтернет",
+   "No history": "Історії немає",
+   "Full changelog": "Усі зміни",
+   "All": "Усі",
+   "Tools": "Утиліти",
+   "All apps and tools": "Усі програми та утиліти",
+   "Needs attention": "Потребує уваги",
+   "Checks automatically when online": "Перевіряє автоматично при підключенні",
+   "Updating…": "Оновлення…",
+   "Queue": "Черга",
+   "Restart to finish": "Перезапустіть для завершення"
   }
  },
  {
@@ -6120,7 +6497,20 @@ module.exports = [
    "Information": "Thông tin",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
    "Phone over USB": "Điện thoại qua USB",
-   "Updating {0} of {1}": "Đang cập nhật {0}/{1}"
+   "Updating {0} of {1}": "Đang cập nhật {0}/{1}",
+   "What's new": "Có gì mới",
+   "Loading history": "Đang tải lịch sử",
+   "History needs internet": "Lịch sử cần internet",
+   "No history": "Không có lịch sử",
+   "Full changelog": "Toàn bộ nhật ký thay đổi",
+   "All": "Tất cả",
+   "Tools": "Công cụ",
+   "All apps and tools": "Tất cả ứng dụng và công cụ",
+   "Needs attention": "Cần chú ý",
+   "Checks automatically when online": "Tự kiểm tra khi trực tuyến",
+   "Updating…": "Đang cập nhật…",
+   "Queue": "Hàng đợi",
+   "Restart to finish": "Khởi động lại để hoàn tất"
   }
  },
  {
@@ -6326,7 +6716,20 @@ module.exports = [
    "Phone over USB": "通过 USB 连接手机",
    "Safe mode": "安全启动",
    "Leave safe mode": "离开安全启动",
-   "Updating {0} of {1}": "正在更新 {0}/{1}"
+   "Updating {0} of {1}": "正在更新 {0}/{1}",
+   "What's new": "新内容",
+   "Loading history": "正在加载记录",
+   "History needs internet": "联网后显示记录",
+   "No history": "无记录",
+   "Full changelog": "全部更新日志",
+   "All": "全部",
+   "Tools": "工具",
+   "All apps and tools": "所有应用和工具",
+   "Needs attention": "请检查",
+   "Checks automatically when online": "联网时自动检查",
+   "Updating…": "正在更新…",
+   "Queue": "等待中",
+   "Restart to finish": "重启以完成"
   }
  },
  {
@@ -6532,7 +6935,20 @@ module.exports = [
    "On the iPhone, turn on Maximize Compatibility": "請在 iPhone 上開啟「最大相容性」",
    "This network is 5 GHz only: CarPlay audio may drop": "此網路僅支援 5 GHz：CarPlay 音訊可能中斷",
    "Phone over USB": "透過 USB 使用手機",
-   "Updating {0} of {1}": "正在更新 {0}/{1}"
+   "Updating {0} of {1}": "正在更新 {0}/{1}",
+   "What's new": "新內容",
+   "Loading history": "正在載入紀錄",
+   "History needs internet": "連網後顯示紀錄",
+   "No history": "沒有紀錄",
+   "Full changelog": "全部更新紀錄",
+   "All": "全部",
+   "Tools": "工具",
+   "All apps and tools": "所有應用程式和工具",
+   "Needs attention": "請檢查",
+   "Checks automatically when online": "連線時自動檢查",
+   "Updating…": "正在更新…",
+   "Queue": "等待中",
+   "Restart to finish": "重新啟動以完成"
   }
  }
 ];

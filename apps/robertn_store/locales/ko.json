@@ -198,6 +198,19 @@
     "Information": "정보",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
     "Phone over USB": "USB로 연결한 휴대폰",
-    "Updating {0} of {1}": "업데이트 중 {0}/{1}"
+    "Updating {0} of {1}": "업데이트 중 {0}/{1}",
+    "What's new": "새로운 기능",
+    "Loading history": "기록 불러오는 중",
+    "History needs internet": "인터넷에 연결하세요",
+    "No history": "기록 없음",
+    "Full changelog": "전체 변경 내역",
+    "All": "전체",
+    "Tools": "도구",
+    "All apps and tools": "모든 앱 및 도구",
+    "Needs attention": "확인하세요",
+    "Checks automatically when online": "온라인일 때 자동 확인",
+    "Updating…": "업데이트 중…",
+    "Queue": "대기 중",
+    "Restart to finish": "재시작하여 완료"
   }
 }

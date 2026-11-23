@@ -198,6 +198,19 @@
     "Information": "Informations",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
     "Phone over USB": "Cellulaire par USB",
-    "Updating {0} of {1}": "Mise à jour {0} sur {1}"
+    "Updating {0} of {1}": "Mise à jour {0} sur {1}",
+    "What's new": "Nouveautés",
+    "Loading history": "Chargement de l'historique",
+    "History needs internet": "L'historique requiert Internet",
+    "No history": "Aucun historique",
+    "Full changelog": "Tous les changements",
+    "All": "Tout",
+    "Tools": "Outils",
+    "All apps and tools": "Toutes les applis et outils",
+    "Needs attention": "Requiert votre attention",
+    "Checks automatically when online": "Vérifie automatiquement en ligne",
+    "Updating…": "Mise à jour…",
+    "Queue": "File d'attente",
+    "Restart to finish": "Redémarrer pour terminer"
   }
 }

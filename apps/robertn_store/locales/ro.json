@@ -198,6 +198,19 @@
     "Information": "Informații",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
     "Phone over USB": "Telefon prin USB",
-    "Updating {0} of {1}": "Se actualizează {0} din {1}"
+    "Updating {0} of {1}": "Se actualizează {0} din {1}",
+    "What's new": "Noutăți",
+    "Loading history": "Se încarcă istoricul",
+    "History needs internet": "Istoricul necesită internet",
+    "No history": "Fără istoric",
+    "Full changelog": "Toate modificările",
+    "All": "Toate",
+    "Tools": "Instrumente",
+    "All apps and tools": "Toate aplicațiile și instrumentele",
+    "Needs attention": "Necesită atenție",
+    "Checks automatically when online": "Verifică automat când e online",
+    "Updating…": "Se actualizează…",
+    "Queue": "Coadă",
+    "Restart to finish": "Repornește pentru a termina"
   }
 }

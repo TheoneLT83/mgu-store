@@ -51,6 +51,8 @@ function compact(W, H0, look, opts) {
     // the top, as the apps have their pages); the iDrive 8 look on the left
     const low = look === 'id7';
     const headTabs = full && low;
+    // the panels: in the full-screen iDrive 7 look plain rounded ones like the cards', else the kit's (with the M stripe)
+    const PANEL = headTabs ? { color: '#15171c', radius: 18 } : { color: 'panelTop', radius: 20 };
     const X = low ? M : M + RAIL + 16;    // the content's left edge
     const R = W - M;                      // its right edge
     const B = low && !headTabs ? H - M - BAR - 12 : H - M; // its bottom
@@ -105,6 +107,59 @@ function compact(W, H0, look, opts) {
         grid()
     ]);
 
+    // full, iDrive 7 look: the Store page's apps as cards on the left, the one picked (the first at first) in a panel on the
+    // right with what its own page has; Installed's as cards in two parts (what needs attention, what is up to date), the
+    // updates' state and queue in the panel
+    const DW = 560;                       // the panel's width
+    const dx = R - DW;                    // its left edge
+    const LW = dx - 20 - X;               // the cards' width
+    const card = (name, y, cols, extra) => el(name, 'appGrid', X - 4, y, LW + 4, B - y, Object.assign({ items: '', cols, tileH: 98, head: 24,
+        cards: true, titleSize: 22, subSize: 15, empty: '' }, extra || {}));
+    const panel = (name) => el(name, 'rect', dx, M, DW, B - M, { color: '#15171c', radius: 18 });
+    const DBTN_H = 60;
+    const storeCards = screen('store', 0, [
+        el('filter', 'tabs', X, M + 4, 430, 52, { items: 'All,Apps,Tools', sel: 0, style: 'chips', size: 18 }),
+        el('online', 'chips', X + 446, M + 10, ONLINE_W, 40, { items: '', align: 'left' }),
+        text('subtitle', X + 446 + ONLINE_W + 14, M + 12, LW - 446 - ONLINE_W - 14, 22, '', 19, 'label', DIM, { after: 'online' }),
+        button('restartNow', dx - 20 - 260, M + 4, 260, 52, 'Restart now', 'primary', 18,
+            { vicon: 'refresh', color: AMBER, hidden: true, shift: { subtitle: [0, -276] } }),
+        button('safeModeOff', dx - 20 - 300, M + 4, 300, 52, 'Leave safe mode', 'primary', 18,
+            { vicon: 'unlock', color: BLUE, hidden: true, shift: { subtitle: [0, -316] } }),
+        card('grid', M + 58, 3),
+        panel('dPanel'),
+        el('dIcon', 'appIcon', dx + 22, M + 22, 108, 108, { vicon: '', colors: '#3a4352,#232a35' }),
+        text('dName', dx + 150, M + 26, DW - 172, 44, '', 34, 'bold'),
+        text('dAuthor', dx + 150, M + 72, DW - 172, 24, '', 18, 'label', DIM),
+        el('dFacts', 'chips', dx + 150, M + 102, DW - 172, 28, { items: '' }),
+        text('dDesc', dx + 22, M + 146, DW - 44, 52, '', 19, 'label', TEXT, { wrap: true }),
+        el('dNews', 'note', dx + 22, M + 204, DW - 44, 86, { title: '', text: '' }),
+        button('dLog', dx + 22, M + 300, 250, 46, 'Full changelog', 'outline', 17, { vicon: '' }),
+        // what keeps it from being installed, a failure (with its code) or being offline: in the place of the progress
+        el('dMsg', 'note', dx + 22, B - 2 * DBTN_H - 24 - 96, DW - 44, 90, { title: '', text: '', tone: 'red' }),
+        el('dProgress', 'progress', dx + 22, B - 2 * DBTN_H - 24 - 96, DW - 44, 86, { label: '', right: '', sub: '', value: 0, percent: false,
+            size: 20, hidden: true }),
+        button('dPrimary', dx + 22, B - 2 * DBTN_H - 12, DW - 44, DBTN_H, '', 'primary', 22, { vicon: 'arrowDown', color: BLUE }),
+        button('dSecondary', dx + 22, B - DBTN_H, DW - 44, DBTN_H, '', 'outline', 20, { vicon: 'trash' })
+    ]);
+    const RS_H = 84;
+    const installedCards = screen('installed', 1, [
+        card('grid', M, 2),
+        panel('iPanel'),
+        button('checkAgain', dx + 20, M + 18, 280, 48, 'Check again', 'outline', 17, { vicon: 'refresh' }),
+        el('online', 'chips', dx + DW - 20 - ONLINE_W, M + 22, ONLINE_W, 40, { items: '', align: 'right' }),
+        text('autoNote', dx + 22, M + 74, DW - 44, 20, '', 15, 'label', DIM),
+        el('stIcon', 'appIcon', dx + 20, M + 108, 64, 64, { vicon: 'arrowDown', kind: 'service', colors: '#24456f,#1a2c44' }),
+        text('stTitle', dx + 100, M + 110, DW - 120, 36, '', 28, 'bold'),
+        text('stSub', dx + 100, M + 148, DW - 120, 22, '', 17, 'label', DIM),
+        button('updateAll', dx + 20, M + 190, DW - 40, 56, '', 'primary', 20, { vicon: 'arrowDown', color: BLUE }),
+        el('queueLabel', 'note', dx + 20, M + 260, DW - 40, 26, { title: '', text: '', bare: true }),
+        list('queue', dx + 20, M + 290, DW - 40, B - RS_H - 16 - M - 290, { rowH: 56, titleSize: 18, subSize: 14, ctlK: 0.6, empty: '' }),
+        // a restart the head unit needs to finish, only while one does
+        el('rsBox', 'note', dx + 20, B - RS_H - 4, DW - 40, RS_H, { title: '', text: '', tone: 'amber', hidden: true }),
+        button('restartNow', dx + DW - 20 - 16 - 200, B - RS_H - 4 + 16, 200, 52, 'Restart now', 'primary', 18,
+            { vicon: 'refresh', color: AMBER, hidden: true })
+    ]);
+
     const colW = (CW - 24) / 2;
     const LIST_Y = HEAD + 38;
     // the online state as on Store, after the title; the counts after it
@@ -132,7 +187,7 @@ function compact(W, H0, look, opts) {
         label('reposLabel', X, HEAD + 8, 'SOURCES'),
         list('repos', X, LIST_Y, leftW, B - SET_H - 12 - LIST_Y),
         button('addRepo', X, B - SET_H, leftW, SET_H, 'Add source', 'tinted', 25, { vicon: 'plus', color: BLUE }),
-        el('connPanel', 'rect', rx, HEAD + 4, rw, B - HEAD - 4, { color: 'panelTop', radius: 20 }),
+        el('connPanel', 'rect', rx, HEAD + 4, rw, B - HEAD - 4, PANEL),
         label('connLabel', rx + 18, HEAD + 18, 'ACCESS'),
         // Internet, Accounts, Proxy, Phone access, USB and Information; a bar at its edge while it holds more than shows
         list('access', rx + 12, HEAD + 52, rw - 24, B - SET_H - 26 - HEAD - 52, { rowH: Math.min(LIST.rowH, Math.floor((B - SET_H - 26 - HEAD - 52) / 5)),
@@ -158,13 +213,15 @@ function compact(W, H0, look, opts) {
         text('desc', X, M + 176, lw, 72, '', 27, 'label', TEXT, { wrap: true }),
         list('history', X, M + 256, lw, B - M - 256 - 84, { empty: '' }),
         text('problem', X, B - 76, lw, 76, '', 27, 'label', AMBER, { wrap: true }),
-        el('panel', 'rect', px, M, PW, B - M, { color: 'panelTop', radius: 20 }),
+        el('panel', 'rect', px, M, PW, B - M, PANEL),
         text('instLabel', px + 20, M + 16, 200, 28, '', 22, 'label', DIM),
         text('instValue', px + 20, M + 46, 200, 58, '', 46, 'num'),
         text('availLabel', px + 230, M + 16, 220, 28, '', 22, 'label', DIM),
         text('availValue', px + 230, M + 46, 220, 58, '', 46, 'num', BLUE),
         // why it cannot be installed and the like, in full, down to the progress bar's place
         text('notes', px + 20, M + 118, PW - 40, primaryY - 112 - M - 118, '', 25, 'label', AMBER, { wrap: true }),
+        // (the full-screen iDrive 7 look: a failure with its code, or being offline, in the progress's place: store_ui.js panelMsg)
+        ...(headTabs ? [el('msg', 'note', px + 20, primaryY - 104, PW - 40, 92, { title: '', text: '', tone: 'red' })] : []),
         el('progress', 'progress', px + 20, primaryY - 104, PW - 40, 90, { label: '', right: '', sub: '', value: 0, percent: false,
             size: 24, hidden: true }),
         button('primary', px + 20, primaryY, PW - 40, 84, '', 'primary', 30, { vicon: 'arrowDown', color: BLUE }),
@@ -200,7 +257,7 @@ function compact(W, H0, look, opts) {
         el('facts', 'chips', ix, M + 104, sw, 44, { items: [] }),
         text('desc', X, M + 166, qx - X - 24, B - BTN_H - 24 - M - 166, '', 26, 'label', AMBER, { wrap: true }),
         button('remove', X, B - BTN_H, 420, BTN_H, 'Remove', 'outline', 29, { vicon: 'trash' }),
-        el('panel', 'rect', qx, M, QR_PW, B - M, { color: 'panelTop', radius: 20 }),
+        el('panel', 'rect', qx, M, QR_PW, B - M, PANEL),
         text('appLabel', qx + 20, M + 14, QR_PW - 40, 34, '', 26, 'bold'),
         el('appQr', 'qr', qx + 30, M + 58, QR_PW - 60, QR_PW - 60, { text: '' }),
         text('appUrl', qx + 20, B - 40, QR_PW - 40, 26, '', 17, 'label', DIM)
@@ -285,7 +342,7 @@ function compact(W, H0, look, opts) {
         after('subtitle', titleX + 170, px - titleX - 194),
         list('allow5', X, HEAD + 14, px - X - 24, LIST.rowH),
         list('networks', X, HEAD + 14 + LIST.rowH + 8, px - X - 24, B - HEAD - 22 - LIST.rowH, { empty: '' }),
-        el('panel', 'rect', px, M, PW, B - M, { color: 'panelTop', radius: 20 }),
+        el('panel', 'rect', px, M, PW, B - M, PANEL),
         el('icon', 'appIcon', px + 20, M + 20, 96, 96, { vicon: 'wifi', kind: 'service', colors: '#7a808a,#3a3f47' }),
         text('state', px + 132, M + 30, PW - 152, 36, '', 28, 'bold'),
         text('info', px + 132, M + 72, PW - 152, 30, '', 23, 'label', DIM),
@@ -308,7 +365,7 @@ function compact(W, H0, look, opts) {
         list('rows', X, HEAD + 14, proxyW, 2 * LIST.rowH, { empty: '' }),
         text('error', X, HEAD + 14 + 2 * LIST.rowH + 20, proxyW, 130, '', 26, 'label', AMBER, { wrap: true })
     ]);
-    const screens = [store, app, confirm, installed, usb, settings, source, accounts, changelog, pick, login, phone, type,
+    const screens = [headTabs ? storeCards : store, app, confirm, headTabs ? installedCards : installed, usb, settings, source, accounts, changelog, pick, login, phone, type,
         wifi, prefer, proxy, internet, information];
     if (TOP) screens.forEach((st) => st.components.forEach((c) => { c.y += TOP; }));
     return { design: { w: W, h: H0 }, screens, full, // full: touch claimed under the strip and in it up to the status icons, in either look (store_drawn.js claims the

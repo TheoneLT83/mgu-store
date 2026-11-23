@@ -200,6 +200,19 @@
     "Phone over USB": "通过 USB 连接手机",
     "Safe mode": "安全启动",
     "Leave safe mode": "离开安全启动",
-    "Updating {0} of {1}": "正在更新 {0}/{1}"
+    "Updating {0} of {1}": "正在更新 {0}/{1}",
+    "What's new": "新内容",
+    "Loading history": "正在加载记录",
+    "History needs internet": "联网后显示记录",
+    "No history": "无记录",
+    "Full changelog": "全部更新日志",
+    "All": "全部",
+    "Tools": "工具",
+    "All apps and tools": "所有应用和工具",
+    "Needs attention": "请检查",
+    "Checks automatically when online": "联网时自动检查",
+    "Updating…": "正在更新…",
+    "Queue": "等待中",
+    "Restart to finish": "重启以完成"
   }
 }

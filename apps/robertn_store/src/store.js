@@ -268,6 +268,12 @@ class Store extends OnlineApp {
             log: logger,
             model: () => this._drawnModel(),
             act: (act) => this._act(act),
+            // the Store page's panel: the picked card's history, once per card
+            history: (id) => {
+                if (this._history && this._history.id === id) return;
+                this._history = { id, status: 'loading', items: [] };
+                this._send({ op: 'history', id });
+            },
             set: (name, text) => this._set(name, 'Text', text, 'Text'),
             show: (name, on) => this._show(name, on),
             openState: (name) => this._openState(name),
@@ -737,6 +743,7 @@ class Store extends OnlineApp {
         switch (act.do) {
         case 'tab': this._drawn.setTab(act.tab); break;
         case 'filter': this._drawn.setFilter(act.filter); break;
+        case 'select': this._drawn.select(act.id); break;
         case 'back': this._back(); break;
         case 'check': {
             // nowhere to look (no internet, no USB stick): the button says so for a moment

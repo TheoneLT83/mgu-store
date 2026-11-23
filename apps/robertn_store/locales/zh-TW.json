@@ -200,6 +200,19 @@
     "On the iPhone, turn on Maximize Compatibility": "請在 iPhone 上開啟「最大相容性」",
     "This network is 5 GHz only: CarPlay audio may drop": "此網路僅支援 5 GHz：CarPlay 音訊可能中斷",
     "Phone over USB": "透過 USB 使用手機",
-    "Updating {0} of {1}": "正在更新 {0}/{1}"
+    "Updating {0} of {1}": "正在更新 {0}/{1}",
+    "What's new": "新內容",
+    "Loading history": "正在載入紀錄",
+    "History needs internet": "連網後顯示紀錄",
+    "No history": "沒有紀錄",
+    "Full changelog": "全部更新紀錄",
+    "All": "全部",
+    "Tools": "工具",
+    "All apps and tools": "所有應用程式和工具",
+    "Needs attention": "請檢查",
+    "Checks automatically when online": "連線時自動檢查",
+    "Updating…": "正在更新…",
+    "Queue": "等待中",
+    "Restart to finish": "重新啟動以完成"
   }
 }

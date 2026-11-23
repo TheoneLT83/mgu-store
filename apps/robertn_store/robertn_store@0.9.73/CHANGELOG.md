@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.73
+
+The full-screen iDrive 7 look laid out anew. The Store page lists apps and tools as cards in three columns under
+All / Apps / Tools pills with their counts, each card with its source, version and size and its state as a button
+(Install, Update, a download's %, Waiting, Failed with the failure's code, Installed, Restart pending); a panel on the
+right shows the picked card, the first one until one is tapped: its icon, version, size, description, what's new in
+its newest version, Full changelog, and its Install or Update button, with a failure's code or being offline just
+above it in the progress bar's place. The Installed page splits the installed ones into Needs attention and Up to
+date, with a panel for Check for updates, Online, Install all updates, the queue of installs running and waiting,
+and, only while one needs it, a Restart to finish box with Restart now. A component's page shows a failure's code
+above Try again and its reason in full on the left. Wi-Fi and Settings use the same plain panels.
+
 ## 0.9.72
 
 The iDrive 7 look made newer, its pages and what they do as they were: the page tabs have a short line under the one

@@ -44,6 +44,7 @@ const { t } = require('./i18n.js');
 const VIEWPORT = { x: 106, y: 100, w: 2754, h: 756 };
 const COMPACT_H = 700;                    // a box lower than this gets src/store_compact.js's layout
 const FOCUS = '#ffffff';
+const SEL7 = '#ef2b2d';                 // the iDrive 7 look's selection colour (kit themes.js M Tricolour sel)
 const EPS = 1e-6;                         // rows: a scrolled row this close to the edge counts as shown
 const SIZES = ['rowH', 'tileH', 'size'];  // a layout's own sizes: kept over the values' (made for the design)
 const measure = new Recorder(1, 1);       // text widths, as drawn
@@ -276,7 +277,8 @@ function dragFrame(d, baseLayer, rowsLayer, from, top, textScale) {
 function layoutOf(m, opts) {
     const o = opts || {};
     const scroll = o.scroll || {};
-    const v = view(m);
+    // the full-screen iDrive 7 look's Store and Installed are cards (store_compact.js)
+    const v = view(o.layout && o.layout.id7 && o.layout.id7.full && m.cards === undefined ? Object.assign({}, m, { cards: true }) : m);
     fonts.setLook(v.look);              // before anything measures text
     const page = m.stack.length > 1;
     const layout = o.layout && v.look === 'id7' && o.layout.id7 ? o.layout.id7 : o.layout || null;
@@ -297,8 +299,13 @@ function frame(m, opts) {
     const rec = record(l.st, recordOpts(o.layout || null, o.textScale));
     const f = l.items[o.focus];
     if (f && !f.reveal) {
-        // the iDrive 7 look's boxes are square
-        rec.strokeRoundRect(f.x - 8, f.y - 8, f.w + 16, f.h + 16, l.look === 'id7' ? Math.min(f.r + 8, 12) : f.r + 8, 5, FOCUS);
+        if (l.look === 'id7') {
+            // the iDrive 7 look as the idrive7-apps kit marks the controller's place (display.js): a white ring in a
+            // halo of the selection colour, round the item's own corners
+            const r = Math.min(f.r, 14);
+            rec.strokeRoundRect(f.x - 9, f.y - 9, f.w + 18, f.h + 18, r + 9, 6, withAlpha(SEL7, 0.55));
+            rec.strokeRoundRect(f.x - 5, f.y - 5, f.w + 10, f.h + 10, r + 5, 2.5, '#ffffff');
+        } else rec.strokeRoundRect(f.x - 8, f.y - 8, f.w + 16, f.h + 16, f.r + 8, 5, FOCUS);
     }
     return { screen: l.screen, rec, items: l.items, regions: l.regions, icons: l.icons, values: l.values };
 }

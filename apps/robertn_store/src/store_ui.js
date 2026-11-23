@@ -243,6 +243,74 @@ function onlineChip(m) {
         : m.st && m.st.online ? [{ text: tr("Online"), color: GREEN, dot: true }] : [{ text: tr("Offline"), color: AMBER, dot: true }] };
 }
 
+/* A card's button for the component's state (store_compact.js's cards). */
+function cardButton(c, busy) {
+    if (busy && busy.id === c.id) return { kind: 'busy', text: busy.phase === 'download' ? `${percent(busy)} %` : tr(PHASE[busy.phase] || 'Installing') };
+    if (c.queued) return { kind: 'wait', text: tr("Waiting") };
+    if (notForUnit(c) || (c.blocked && !c.installed)) return { kind: 'muted', text: tr("Not installable") };
+    if (c.error) return { kind: 'fix', text: errorCode(c.error) === 'FAILED' ? tr("Failed") : `${tr("Failed")} · ${errorCode(c.error)}` };
+    if (startPending(c) || c.pendingReboot) return { kind: 'warn', text: tr("Restart pending") };
+    if (c.status === 'update') return { kind: 'update', text: tr("Update") };
+    if ((c.installed && c.repair) || setupable(c, busy)) return { kind: 'warn', text: tr("Needs setup") };
+    if (c.status === 'available') return { kind: 'get', text: tr("Install") };
+    return { kind: 'ok', text: tr("Installed") };
+}
+/* A failure's kind, for its code: what part of an install it stopped in, from the updater's words. */
+function errorCode(e) {
+    const s = String(e || '').toLowerCase();
+    return /download|fetch|http|network|timed out|socket|dns|tls|connect/.test(s) ? 'DOWNLOAD'
+        : /space|enospc|disk|\bfull\b/.test(s) ? 'SPACE'
+            : /verif|hash|checksum|signature|integrity/.test(s) ? 'VERIFY'
+                : /build|sdk|link|compile|exit \d/.test(s) ? 'BUILD'
+                    : /requires|needs .* (newer|first)|depend/.test(s) ? 'REQUIRES'
+                        : /deploy|install|unit|service|systemd/.test(s) ? 'INSTALL' : 'FAILED';
+}
+/* The message in a panel's progress place (the full-screen iDrive 7 look): being offline (also over a download that waits
+ * for it: offline set, the progress then hidden), a failure's code (keep: the page keeps its reason), or why it cannot be
+ * installed (v.notes). */
+function panelMsg(m, c, v, mine) {
+    const offline = !!(m.connected && m.st && !m.st.online && !(m.st.catalog && m.st.catalog.checking));
+    if (offline && (c.status === 'update' || c.status === 'available' || mine || c.queued)) {
+        return { title: tr("Offline"), text: tr("No internet: Settings > Internet shows how to connect the car"), tone: 'amber', offline: true };
+    }
+    // a failure's code only: the page shows its reason in full above the description
+    if (c.error && !mine) return { title: `${tr("Failed")} · ${errorCode(c.error)}`, text: '', tone: 'red', keep: true };
+    if (v.notes.text) return { title: '', text: v.notes.text, tone: 'amber' };
+    if (c.problem) return { title: '', text: c.problem, tone: 'amber' };
+    return { title: '', text: '' };
+}
+/* An install's main button in the panels in the selection colour (the iDrive 7 look's red), as the cards' Install. */
+const red = (b) => (b && !b.hidden && b.style === 'primary' ? Object.assign({}, b, { color: '' }) : b);
+
+/* The Store page's panel: the picked component (m.sel; the first card while none is, or it is no longer shown) as its own
+ * page has it, laid out for the panel: d<name>. */
+function storePanel(m, list, busy) {
+    const c = find(list, m.sel) || list[0];
+    if (!c) return { selId: null, dPanel: {}, dName: { text: '' }, dIcon: hidden, dAuthor: { text: '' }, dFacts: { items: [] },
+        dDesc: { text: m.connected ? tr("Nothing here") : statusLine(null, false, m.secret) }, dNews: { title: '', text: '' }, dLog: hidden, dMsg: { title: '', text: '' }, dProgress: hidden, dPrimary: hidden, dSecondary: hidden };
+    const v = appView(m, { name: 'app', id: c.id }), mine = busy && busy.id === c.id;
+    const h = m.history && m.history.id === c.id ? m.history : null, top = h && h.items.length ? h.items[0] : null;
+    const news = top ? { title: `${tr("What's new")} · ${top.rev ? top.title : top.title}`, text: top.rev ? top.date || '' : String(top.text || '').replace(/^\s*[-*] /gm, '').split('\n').filter(Boolean).join(' ') }
+        : { title: tr("What's new"), text: !h || h.status === 'loading' ? tr("Loading history") : h.status === 'offline' ? tr("History needs internet") : tr("No history") };
+    const msg = panelMsg(m, c, v, mine), offline = msg.offline;
+    const facts = [{ text: c.version }, c.size && { text: size(c.size) }, { text: isTool(c) ? tr("Tool") : tr("App"), color: isTool(c) ? TEAL : BLUE }].filter(Boolean);
+    return {
+        selId: c.id,
+        dPanel: {},
+        dIcon: Object.assign({}, v.icon, { hidden: false }),
+        dName: v.name,
+        dAuthor: v.author,
+        dFacts: { items: facts },
+        dDesc: { text: c.description || '' },
+        dNews: news,
+        dLog: button(tr("Full changelog"), { do: 'open', page: { name: 'changelog', id: c.id } }, { style: 'outline' }),
+        dMsg: msg,
+        dProgress: msg.text && offline ? hidden : v.progress,
+        dPrimary: red(v.primary),
+        dSecondary: v.secondary
+    };
+}
+
 function storeView(m) {
     const busy = busyOf(m);
     const busyRow = busy && find(comps(m), busy.id);
@@ -255,6 +323,26 @@ function storeView(m) {
     const name = sourceNames(list, sources(m));
     const checking = !!(m.connected && m.st && m.st.catalog && m.st.catalog.checking);
     const online = m.connected && m.st && m.st.online;
+    if (m.cards && lookOf(m) === 'id7') {
+        const counts = { all: comps(m).length, app: comps(m).filter((c) => !isTool(c)).length, tool: comps(m).filter(isTool).length };
+        const panelV = storePanel(m, list, busy), run = runProgress(m, busy);
+        return Object.assign({
+            filter: { sel: Math.max(0, FILTERS.indexOf(m.filter)), acts: FILTERS.map((f) => ({ do: 'filter', filter: f })),
+                items: [`${tr("All")} ${counts.all}`, `${tr("Apps")} ${counts.app}`, `${tr("Tools")} ${counts.tool}`].join(',') },
+            online: onlineChip(m),
+            // (offline: the chip says so, the panel how to connect)
+            subtitle: m.connected && !checking && !online ? { text: '', bar: null }
+                : run ? { text: '', bar: run.value, barText: run.text } : { text: m.connected ? statusLine(st, true) : statusLine(null, false, m.secret), color: DIM, bar: null },
+            safeModeOff: safeModeOff(m),
+            restartNow: safeModeOff(m).hidden ? restartNow(m) : hidden,
+            grid: { items: list.map((c, i) => Object.assign(tile(m, c, busy, name), {
+                act: { do: 'select', id: c.id }, selected: c.id === panelV.selId, btn: cardButton(c, busy), state: '',
+                src: [name(c), c.installed && c.status === 'update' ? `${c.installed} > ${target(c)}` : c.installed || c.version, !c.installed && c.size ? size(c.size) : '']
+                    .filter(Boolean).join(' · '),
+                head: i === 0 ? (m.filter === 'app' ? tr("Apps") : m.filter === 'tool' ? tr("Head-unit tools") : tr("All apps and tools")) : '' })),
+            empty: m.connected ? tr("Nothing here") : '' }
+        }, panelV);
+    }
     return {
         title: { text: tr("Store") },
         subtitle: busyRow ? { text: `${busy.phase === 'download' ? tr("Downloading {0} %", percent(busy)) : tr(PHASE[busy.phase] || 'Installing')} · ${named(m, busyRow)}`, color: BLUE }
@@ -300,6 +388,7 @@ function installedView(m) {
             right: up ? 'chip:' + tr('Update') : s.sub !== tr("Installed") ? `chip:${s.sub}` : 'chevron', chipColor: up ? BLUE : s.subColor,
             chipAct: null, progress: busy && busy.id === c.id ? s.progress : -1 });
     };
+    if (m.cards && lookOf(m) === 'id7') return installedCards(m, all, busy, name, updates);
     return {
         title: { text: tr("Installed") },
         online: onlineChip(m),
@@ -313,6 +402,56 @@ function installedView(m) {
         apps: { items: apps.map(item), empty: tr("None") },
         restartNow: restartNow(m, m.held ? m.held.restart : undefined),
         services: { items: tools.map(item), empty: tr("None"), rowH: 120 }
+    };
+}
+
+/* Installed in the full-screen iDrive 7 look: what needs attention (runs, waits, failed, an update, a restart) and what is
+ * up to date as cards, two a row, each part under its heading; the panel: Check again, the updates' state and queue, and
+ * a restart only while the head unit needs one. */
+function installedCards(m, all, busy, name, updates) {
+    const need = all.filter((c) => pending(c, busy)), ok = all.filter((c) => !pending(c, busy));
+    const items = [];
+    const part = (list, head, color) => {
+        list.forEach((c, i) => {
+            const s = tileState(c, busy), up = c.status === 'update' && s.badge === 'update';
+            items.push(Object.assign(iconOf(c), { id: c.id, title: c.title, act: { do: 'open', page: pageOf(c) },
+                src: [name(c), up ? `${c.installed} > ${target(c)}` : c.installed, isTool(c) ? tr("Tool") : ''].filter(Boolean).join(' · '),
+                btn: s.sub === tr("Installed") ? { kind: 'plain', text: tr("Up to date") } : cardButton(c, busy),
+                progress: busy && busy.id === c.id ? s.progress : -1, head: i === 0 ? `${head} · ${list.length}` : '', headColor: color }));
+        });
+        if (items.length % 2) items.push({ id: `blank${items.length}`, blank: true });
+    };
+    part(need, tr("Needs attention"), AMBER);
+    part(ok, tr("Up to date"), '');
+    const queue = all.filter((c) => (busy && busy.id === c.id) || c.queued);
+    const run = runProgress(m, busy);
+    const restart = restartNow(m, m.held ? m.held.restart : undefined);
+    const checking = !!(m.st && m.st.catalog && m.st.catalog.checking);
+    const waiting = all.filter((c) => c.pendingReboot || startPending(c)).map((c) => c.title);
+    return {
+        grid: { items, empty: m.connected ? tr("None") : '' },
+        iPanel: {},
+        checkAgain: m.connected && m.st ? button(m.noNet ? tr("No internet") : checking ? tr("Checking") : tr("Check for updates"), { do: 'check' },
+            { vicon: m.noNet ? 'warning' : 'refresh', style: 'outline', color: m.noNet ? AMBER : undefined, disabled: checking }) : hidden,
+        autoNote: { text: tr("Checks automatically when online") },
+        online: onlineChip(m),
+        stIcon: { vicon: queue.length ? 'arrowDown' : updates.length ? 'arrowDown' : 'check', kind: 'service',
+            colors: queue.length || updates.length ? '#24456f,#1a2c44' : '#1f5a3a,#173f2a', badge: '', progress: run ? run.value : -1 },
+        stTitle: { text: queue.length ? tr("Updating…") : updates.length ? tr("Install all updates ({0})", updates.length) : tr("Up to date") },
+        stSub: { text: queue.length ? (run ? run.text : '') : updates.length ? `${updates.length} · ${updates.map((c) => c.title).join(', ')}`
+            : `${plural(all.filter((c) => !isTool(c)).length, 'app')} · ${plural(all.filter(isTool).length, 'tool')}` },
+        updateAll: queue.length ? button(tr("Updating…"), null, { vicon: 'arrowDown', style: 'outline', disabled: true })
+            : updates.length ? button(tr("Install all updates ({0})", updates.length), { do: 'update-all' }, { vicon: 'arrowDown', style: 'primary', color: '' })
+                : hidden,
+        queueLabel: { title: queue.length ? tr("Queue") : '', text: '', bare: true },
+        queue: { items: queue.map((c) => {
+            const mine = busy && busy.id === c.id;
+            return Object.assign(iconOf(c), { id: `q${c.id}`, title: c.title, act: { do: 'open', page: pageOf(c) },
+                right: 'chip:' + (mine ? (busy.phase === 'download' ? `${percent(busy)} %` : tr(PHASE[busy.phase] || 'Installing')) : tr("Waiting")),
+                chipColor: mine ? BLUE : AMBER, progress: mine ? (busy.phase === 'download' ? percent(busy) / 100 : 1) : -1 });
+        }), empty: '' },
+        rsBox: restart.hidden ? { hidden: true } : { hidden: false, title: tr("Restart to finish"), text: waiting.join(', '), tone: 'amber' },
+        restartNow: restart.hidden ? restart : Object.assign({}, restart, { color: AMBER })
     };
 }
 
@@ -897,7 +1036,23 @@ function view(m) {
     case 'installed': values = installedView(m); break;
     case 'usb': values = usbView(m); break;
     case 'settings': values = settingsView(m); break;
-    case 'app': values = appView(m, page); break;
+    case 'app':
+        values = appView(m, page);
+        if (m.cards && lookOf(m) === 'id7') {
+            const c = rowOf(m, page), busy = busyOf(m);
+            if (c) {
+                const msg = panelMsg(m, c, values, busy && busy.id === c.id);
+                values.msg = { title: msg.title, text: msg.text, tone: msg.tone };
+                if (!msg.keep) {
+                    values.notes = { text: '' };
+                    values.desc = Object.assign({}, values.desc, { lead: '', over: '' });
+                }
+                if (c.error) values.history = historyView(m, c);
+                if (msg.offline) values.progress = hidden;
+                values.primary = red(values.primary);
+            }
+        }
+        break;
     case 'confirm': values = confirmView(m, page); break;
     case 'source': values = sourceView(m, page.id); break;
     case 'accounts': values = accountsView(m); break;

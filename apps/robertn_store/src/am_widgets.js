@@ -174,6 +174,7 @@ function tabCells(b, o) {
 /** Tabs in the iDrive 7 look, as the kits' choice bars have them (gauges.js segment): one dark rounded bar, the chosen
  * part filled in the selection colour with a soft glow, names in capitals. */
 function tabs7(cv, t, b, o) {
+    if (o.style === 'chips') return chips7(cv, t, b, o);
     const items = list(o.items), sz = o.size || Math.round(b.h * 0.34), S = t.sel || t.accent, p = Math.max(3, Math.round(b.h * 0.08));
     const r = Math.min(12, b.h / 2), cw = (b.w - 2 * p) / Math.max(1, items.length);
     cv.roundRect(b.x, b.y, b.w, b.h, r, withAlpha('#000000', 0.45));
@@ -185,6 +186,21 @@ function tabs7(cv, t, b, o) {
             cv.roundRect(x, y, cw, h, r - 3, S);
         }
         cv.text(String(s).toUpperCase(), x + cw / 2, y + h / 2 + sz * 0.36, sz, on ? '#ffffff' : t.dim, { align: 'center', font: 'bold', spacing: 2 });
+    });
+}
+
+/** Tabs as separate rounded chips (style 'chips'), the chosen one filled in the selection colour; a count at a name's end
+ * ("All 12") dimmer after it. */
+function chips7(cv, t, b, o) {
+    const items = list(o.items), sz = o.size || Math.round(b.h * 0.34), S = t.sel || t.accent, { gap, cw } = tabCells(b, o), r = 12;
+    items.forEach((s, i) => {
+        const x = b.x + i * (cw + gap), on = i === (o.sel | 0), m = /^(.*\S)\s+(\d+)$/.exec(String(s)), name = (m ? m[1] : String(s)).toUpperCase();
+        if (on) cv.roundRect(x, b.y, cw, b.h, r, S);
+        else { cv.roundRect(x, b.y, cw, b.h, r, withAlpha('#ffffff', 0.06)); cv.strokeRoundRect(x, b.y, cw, b.h, r, 1.5, withAlpha('#ffffff', 0.16)); }
+        const opt = { font: 'bold', spacing: 1.6 }, nw = cv.textWidth(name, sz, opt), cnt = m ? m[2] : '', cwid = cnt ? cv.textWidth(cnt, sz, { font: 'label' }) + 10 : 0;
+        const tx = x + (cw - nw - cwid) / 2;
+        cv.text(name, tx, b.y + b.h / 2 + sz * 0.36, sz, '#ffffff', opt);
+        if (cnt) cv.text(cnt, tx + nw + 10, b.y + b.h / 2 + sz * 0.36, sz, on ? withAlpha('#ffffff', 0.75) : t.dim, { font: 'label' });
     });
 }
 

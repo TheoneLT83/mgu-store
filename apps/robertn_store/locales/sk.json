@@ -198,6 +198,19 @@
     "Information": "Informácie",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
     "Phone over USB": "Telefón cez USB",
-    "Updating {0} of {1}": "Aktualizácia {0} z {1}"
+    "Updating {0} of {1}": "Aktualizácia {0} z {1}",
+    "What's new": "Novinky",
+    "Loading history": "Načítava sa história",
+    "History needs internet": "História vyžaduje internet",
+    "No history": "Žiadna história",
+    "Full changelog": "Celý zoznam zmien",
+    "All": "Všetko",
+    "Tools": "Nástroje",
+    "All apps and tools": "Všetky aplikácie a nástroje",
+    "Needs attention": "Vyžaduje pozornosť",
+    "Checks automatically when online": "Kontroluje automaticky po pripojení",
+    "Updating…": "Aktualizuje sa…",
+    "Queue": "Front",
+    "Restart to finish": "Dokončiť reštartom"
   }
 }

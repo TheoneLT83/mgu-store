@@ -198,6 +198,19 @@
     "On the iPhone, turn on Maximize Compatibility": "На iPhone увімкніть «Максимальна сумісність»",
     "This network is 5 GHz only: CarPlay audio may drop": "Ця мережа лише 5 ГГц: звук CarPlay може перериватися",
     "Phone over USB": "Телефон через USB",
-    "Updating {0} of {1}": "Оновлення {0} з {1}"
+    "Updating {0} of {1}": "Оновлення {0} з {1}",
+    "What's new": "Що нового",
+    "Loading history": "Завантаження історії",
+    "History needs internet": "Для історії потрібен інтернет",
+    "No history": "Історії немає",
+    "Full changelog": "Усі зміни",
+    "All": "Усі",
+    "Tools": "Утиліти",
+    "All apps and tools": "Усі програми та утиліти",
+    "Needs attention": "Потребує уваги",
+    "Checks automatically when online": "Перевіряє автоматично при підключенні",
+    "Updating…": "Оновлення…",
+    "Queue": "Черга",
+    "Restart to finish": "Перезапустіть для завершення"
   }
 }

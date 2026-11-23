@@ -138,11 +138,95 @@ function fitSource(cv, s, w, size) {
     const repo = s.slice(i);
     return W.fit(cv, s.slice(0, i), Math.max(0, w - cv.textWidth(repo, size)), size) + repo;
 }
+// a card's source line (owner/repo · version · size): the version kept beside it while there is room, then the owner shortened
+function fitCardSource(cv, s, w, size) {
+    const j = s.indexOf(' · '), tail = j < 0 ? '' : s.slice(j);
+    if (!tail || s.slice(0, j).indexOf('/') < 0 || cv.textWidth(s, size) <= w) return tail ? W.fit(cv, s, w, size) : fitSource(cv, s, w, size);
+    const tw = cv.textWidth(tail, size);
+    return tw <= w * 0.5 ? fitSource(cv, s.slice(0, j), w - tw, size) + tail : fitSource(cv, s.slice(0, j), w, size);
+}
 // (the Store: o.iconK, o.titleSize, o.subSize size a smaller tile's icon and texts; the defaults are the design's.
 // Tiles with a source line (item.src, dim, under the title) set the three lines closer. The icon leaves the lines,
 // descenders included, above the tile's bottom 8 px, where the focus rings are drawn: store_frame.js.)
+/* A state's button on a card: kind get (filled), update (tinted), fix (red edge), ok (green edge, a tick), plain (green
+ * words, a tick), busy (a turning ring and its %), wait (amber), warn (amber edge), muted (grey edge). Its width. */
+const BTN = { get: [null, 'fill'], update: [BLUE, 'tint'], fix: ['#ff4d4d', 'edge'], ok: [GREEN, 'edge'], plain: [GREEN, 'none'], busy: [BLUE, 'tint'],
+    wait: [AMBER, 'tint'], warn: [AMBER, 'edge'], muted: ['#9a9ca2', 'edge'] };
+function cardButton(cv, t, it, xr, cy, h, maxW) {
+    const [c0, style] = BTN[it.kind] || BTN.muted, c = c0 || t.sel || t.accent, s = Math.round(h * 0.36), opt = { font: 'bold', spacing: 1.4 };
+    const icon = it.kind === 'ok' || it.kind === 'plain' ? 'check' : it.kind === 'busy' ? 'spin' : '';
+    const is = icon ? Math.round(h * 0.42) : 0;
+    let label = String(it.text || '').toUpperCase(), size = s;
+    const room = maxW - h * 0.8 - (is ? is + 8 : 0);
+    while (size > 11 && cv.textWidth(label, size, opt) > room) size -= 0.5;
+    label = W.fit(cv, label, room, size, 'bold');
+    const w = Math.max(h * 2.2, cv.textWidth(label, size, opt) + h * 0.8 + (is ? is + 8 : 0)), x = xr - w, y = cy - h / 2;
+    const r = it.kind === 'busy' || it.kind === 'wait' ? 10 : h / 2;
+    if (style === 'fill') cv.roundRect(x, y, w, h, r, c);
+    else if (style === 'tint') { cv.roundRect(x, y, w, h, r, withAlpha(c, 0.16)); cv.strokeRoundRect(x, y, w, h, r, 1.5, withAlpha(c, 0.4)); }
+    else if (style === 'edge') cv.strokeRoundRect(x, y, w, h, r, 1.5, withAlpha(c, 0.55));
+    const fg = style === 'fill' ? '#ffffff' : c, tw = cv.textWidth(label, size, opt) + (is ? is + 8 : 0);
+    let tx = x + (w - tw) / 2;
+    if (icon === 'check') { vicon(cv, 'check', tx, cy - is / 2, is, fg); tx += is + 8; }
+    else if (icon === 'spin') {
+        const rr = is / 2, a0 = ((Date.now() / 4) % 360);
+        cv.arc(tx + rr, cy, rr - 3, rr, 0, 360, withAlpha(fg, 0.25));
+        cv.arc(tx + rr, cy, rr - 3, rr, a0, a0 + 110, fg);
+        tx += is + 8;
+    }
+    cv.text(label, tx, cy + size * 0.36, size, fg, opt);
+    return w;
+}
+/* The cards mode (o.cards, the full-screen iDrive 7 look): each a rounded card - its icon, its name, a line under it and a
+ * third (item.state, in item.stateColor) where it has one, its state's button on the right (item.btn: { text, kind }); a
+ * picked one (item.selected) outlined in the selection colour; one downloading a bar along its bottom. o.head px over each
+ * row's cards hold a part's heading (item.head, item.headColor: the part's first card); items with blank fill a row. */
+function cardGrid(cv, t, b, o, g) {
+    const head = o.head || 0, ts = o.titleSize || 22, ss = o.subSize || 15, S = t.sel || t.accent;
+    cv.clip(b.x, b.y, b.w, b.h);
+    g.all.slice(g.first * g.cols, g.end * g.cols).forEach((a, i) => {
+        const col = i % g.cols, x = b.x + col * g.tw + 4, y = b.y + (g.first + Math.floor(i / g.cols) - g.top) * g.th;
+        if (a.head) {
+            const hs = 15, hc = C(t, a.headColor, t.dim);
+            cv.roundRect(x, y + head - 22, 4, 16, 2, a.headColor ? hc : S);
+            cv.text(String(a.head).toUpperCase(), x + 12, y + head - 8, hs, hc, { font: 'bold', spacing: 2 });
+        }
+        if (a.blank) return;
+        const w = g.tw - 12 - (col === g.cols - 1 ? 14 : 0), cy0 = y + head, h = g.th - head - 6, cy = cy0 + h / 2;
+        if (a.selected) {
+            cv.card(x, cy0, w, h, 14, [[0, mix('#1a1c22', S, 0.16)], [1, '#16181d']]);
+            cv.strokeRoundRect(x, cy0, w, h, 14, 2, S);
+        } else {
+            cv.card(x, cy0, w, h, 14, [[0, '#1a1c22'], [1, '#141619']]);
+            cv.strokeRoundRect(x, cy0, w, h, 14, 1, withAlpha('#ffffff', 0.08));
+        }
+        const s = Math.min(h - 22, 58);
+        appIcon(cv, t, Object.assign({}, a, { progress: -1 }), x + 14, cy - s / 2, s, '#16181d');
+        const bw = a.btn ? cardButton(cv, t, a.btn, x + w - 14, cy, Math.min(40, h * 0.5), Math.max(90, w * 0.36)) : 0;
+        const tx = x + 14 + s + 16, room = x + w - 14 - bw - (bw ? 12 : 0) - tx;
+        const three = !!a.state, ty = three ? cy - 9 : cy - 1;
+        cv.text(W.fit(cv, String(a.title || ''), room, ts, 'bold'), tx, ty, ts, t.text, { font: 'bold' });
+        cv.text(fitCardSource(cv, String(a.src || ''), room, ss), tx, ty + ss + 5, ss, t.dim);
+        if (three) cv.text(W.fit(cv, String(a.state), room, ss - 1), tx, ty + 2 * ss + 8, ss - 1, C(t, a.stateColor, t.dim));
+        if (typeof a.progress === 'number' && a.progress >= 0) {
+            cv.roundRect(x + 14, cy0 + h - 4, w - 28, 3, 1.5, withAlpha('#ffffff', 0.1));
+            cv.roundRect(x + 14, cy0 + h - 4, Math.max(3, (w - 28) * Math.min(1, a.progress)), 3, 1.5, BLUE);
+        }
+    });
+    cv.noclip();
+    if (!g.all.length && o.empty) mid(cv, o.empty, b.x + b.w / 2, b.y + b.h / 2, 24, t.dim, { align: 'center' });
+}
 function appGrid(cv, t, b, o) {
     const g = gridView(b, o), k = g.th / 274;
+    if (o.cards) {
+        cardGrid(cv, t, b, o, g);
+        if (g.max > 0 && o.bar !== false) {
+            const h = Math.max(36, b.h * g.shown / g.rows), y = b.y + (b.h - h) * g.top / g.max, bw = 8;
+            cv.roundRect(b.x + b.w - bw, b.y, bw, b.h, bw / 2, withAlpha('#ffffff', 0.1));
+            cv.roundRect(b.x + b.w - bw, y, bw, h, bw / 2, withAlpha('#ffffff', 0.6));
+        }
+        return;
+    }
     const ts = o.titleSize || 40, ss = o.subSize || 30, rs = Math.round(ss * 0.9), top = 12 * k;
     const src = g.all.some((a) => a.src);
     const gap = src ? [ts * 1.2, rs * 1.25, ss * 1.25] : [ts * 1.45, 0, ss * 1.4];
@@ -420,7 +504,31 @@ function sheet(cv, t, b, o) {
     else cv.card(b.x, b.y, b.w, b.h, o.radius == null ? 32 : o.radius, [[0, '#1e2632'], [1, '#121820']]);
 }
 
-const DRAW = { appIcon: appIconEl, chips, appGrid, appList, sideNav, vbutton, keyboard, sheet };
+/* A note: a box tinted in its tone (o.tone red, amber, blue; else grey), its title in bold capitals in the tone, the text
+ * wrapped under it (as many lines as the box holds). Nothing when both are empty. */
+const TONES = { red: '#ff4d4d', amber: AMBER, blue: BLUE };
+function note(cv, t, b, o) {
+    if (!o.title && !o.text) return;
+    if (o.bare) {
+        cv.roundRect(b.x, b.y + 4, 4, 16, 2, t.sel || t.accent);
+        cv.text(String(o.title).toUpperCase(), b.x + 12, b.y + 18, 15, t.dim, { font: 'bold', spacing: 2 });
+        return;
+    }
+    const c = TONES[o.tone] || null, r = 12, p = 12;
+    // a title alone: one line at the box's foot (next to what follows it)
+    const bx = o.text ? b : { x: b.x, y: b.y + b.h - 44, w: b.w, h: 44 };
+    cv.roundRect(bx.x, bx.y, bx.w, bx.h, r, c ? withAlpha(c, 0.12) : withAlpha('#ffffff', 0.05));
+    cv.strokeRoundRect(bx.x, bx.y, bx.w, bx.h, r, 1, c ? withAlpha(c, 0.45) : withAlpha('#ffffff', 0.1));
+    if (!o.text) {
+        cv.text(W.fit(cv, String(o.title).toUpperCase(), bx.w - 2 * p, 15, 'bold'), bx.x + p, bx.y + 28, 15, c || BLUE, { font: 'bold', spacing: 1.6 });
+        return;
+    }
+    let y = b.y + p;
+    if (o.title) { cv.text(W.fit(cv, String(o.title).toUpperCase(), b.w - 2 * p, 14, 'bold'), b.x + p, y + 12, 14, c || BLUE, { font: 'bold', spacing: 1.6 }); y += 22; }
+    const size = o.size || 16, room = Math.floor((b.y + b.h - p - y + size * 0.3) / (size * 1.3));
+    if (o.text && room > 0) W.wrap(cv, String(o.text), b.x + p, y, b.w - 2 * p, size, c ? mix(c, '#ffffff', 0.55) : t.text, room);
+}
+const DRAW = { appIcon: appIconEl, chips, appGrid, appList, sideNav, vbutton, keyboard, sheet, note };
 
 // ---- touch (gpu.js touchElement: Try mode and the app) -------------------------------------------------------
 // a drag scrolls with the finger; a release without a drag is a tap. ponytail: one gesture at a time.

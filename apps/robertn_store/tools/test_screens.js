@@ -403,7 +403,9 @@ eq(sorted((c) => (c.id === 'mgu-renderd' ? { status: 'update', compat: 'no', pen
 const { DRAW } = require(path.join(__dirname, '..', 'src', 'am_store_widgets.js'));
 Object.keys(UNITS).forEach((unit) => {
     const p = UNITS[unit];
-    const def = (p.layout || SCREENS).screens.find((x) => x.name === 'store').components.find((c) => c.name === 'grid');
+    // the layout the page is drawn with: the full screen's in the iDrive 7 look (the fixture's) its own, with the cards
+    const lay = p.layout && p.layout.id7 && p.layout.id7.full ? p.layout.id7 : p.layout || SCREENS;
+    const def = lay.screens.find((x) => x.name === 'store').components.find((c) => c.name === 'grid');
     const items = frame(fixture.model({}), { textScale: p.scale, focus: -1, scroll: {}, layout: p.layout }).values.grid.items;
     const texts = [];
     const shapes = [];
@@ -411,14 +413,19 @@ Object.keys(UNITS).forEach((unit) => {
         : k === 'textWidth' ? (str, size) => String(str).length * size * 0.55
             : (x, y, w, h) => shapes.push({ y, h: h === undefined ? 0 : h })) });
     DRAW.appGrid(cv, { text: '#fff', dim: '#888' }, { x: def.x, y: def.y, w: def.w, h: def.h }, Object.assign({}, def.opts, { items }));
-    const th = def.opts.tileH;
-    // the first row's texts but the letter tiles' letters
-    const row0 = texts.filter((t) => t.y < def.y + th && t.str.length > 1);
-    eq(row0.slice(0, 3).map((t) => t.str), ['M Vitals', 'TheoneLT83', '2.1.0 · 402 KB'], `${unit}: title, source, state (not installed first)`);
+    const th = def.opts.tileH, top = def.y + (def.opts.cards ? def.opts.head : 0);
+    // the first row's texts but the letter tiles' letters (a card's: its title, its source with the version, its button)
+    const row0 = texts.filter((t) => t.y > top && t.y < top + th && t.str.length > 1);
+    // (a card's source line fit to what its button leaves: its start whole)
+    const lines = def.opts.cards ? ['M Vitals', 'TheoneLT83 · 2.1.0'] : ['M Vitals', 'TheoneLT83', '2.1.0 · 402 KB'];
+    const is = (t, l) => t.str === l || (def.opts.cards && t.str.indexOf(`${l} `) === 0);
+    eq(row0.map((t) => lines.find((l) => is(t, l))).filter(Boolean).slice(0, lines.length), lines, `${unit}: title, source, state (not installed first)`);
+    if (def.opts.cards) ok(row0.some((t) => t.str === 'INSTALL'), `${unit}: the state on the card's button (${row0.map((t) => t.str)})`);
     // the tile's bottom 8 px hold the focus rings (store_frame.js): every line, descenders included, ends above them
-    ok(row0.every((t) => t.y + 0.25 * t.size <= def.y + th - 8),
-        `${unit}: the lines clear of the focus rings (${row0.map((t) => Math.round(t.y + 0.25 * t.size))} of ${def.y + th - 8})`);
-    ok(row0[1].size >= (def.opts.subSize || 30) * 0.85, `${unit}: the source line readable (${row0[1].size} px)`);
+    ok(row0.every((t) => t.y + 0.25 * t.size <= top + th - 8),
+        `${unit}: the lines clear of the focus rings (${row0.map((t) => Math.round(t.y + 0.25 * t.size))} of ${top + th - 8})`);
+    const src = row0.find((t) => is(t, lines[1]));
+    ok(src.size >= (def.opts.subSize || 30) * 0.85, `${unit}: the source line readable (${src.size} px)`);
     // owner/repo too long for the tile: the owner shortened, the repo whole
     texts.length = 0;
     DRAW.appGrid(cv, { text: '#fff', dim: '#888' }, { x: def.x, y: def.y, w: def.w, h: def.h },
@@ -481,6 +488,9 @@ Object.keys(UNITS).forEach((unit) => ['id7', 'id8'].forEach((look) => ['installe
     const p = UNITS[unit];
     const c = (name) => layoutOf(m, { textScale: p.scale, scroll: {}, layout: p.layout }).st.components.find((o) => o.name === name);
     const [title, online, sub] = [c('title'), c('online'), c('subtitle')];
+    // the full screen's iDrive 7 look: no title (its tab names it), the online state in the panel, by Check for updates
+    if (!title) return ok(unit === 'iDrive 7 full screen' && look === 'id7' && online && c('checkAgain') && online.x > c('checkAgain').x,
+        `${unit} ${n} (${look} look): the online state beside Check for updates`);
     // the iDrive 8 design has the counts under the title
     ok((title.opts.hidden || online.x > title.x) && (sub.y > online.y + online.h || sub.x >= online.x + online.w),
         `${unit} ${n} (${look} look): the online state after the title, the counts after it`);
@@ -536,15 +546,21 @@ Object.keys(UNITS).forEach((unit) => {
     const item = (g, label) => g.items.find((it) => it.label === label);
     const both = at('installed-restart');
     const [all, now] = [item(both, 'Install all updates (3)'), item(both, 'Restart now')];
-    eq([now.w, now.h, now.y], [all.w, all.h, all.y], `${unit} Installed: Restart now as wide, high and placed as Update all`);
-    ok(all.x + all.w < now.x, `${unit} Installed: Update all, then Restart now, side by side`);
-    eq(item(at('installed-restart', { components: idle.components.map((c) => Object.assign({}, c, { status: 'installed' })) }), 'Restart now').x,
-        now.x, `${unit} Installed: Restart now alone where it is beside Update all`);
-    eq(item(at('installed-restart', restarted), 'Install all updates (3)').x + all.w, now.x + now.w,
-        `${unit} Installed: Update all alone at the right edge`);
     const st = at('store-restart');
-    const filters = item(st, 'All');
-    ok(item(st, 'Restart now').x + item(st, 'Restart now').w < filters.x, `${unit} Store: Restart now left of the filters`);
+    const filters = st.items.find((it) => /^All\b/.test(it.label));
+    if (both.values.rsBox) {
+        // the full screen's iDrive 7 look: in the panel, Restart now in its box at the foot, under Update all, wherever that is
+        ok(now.y > all.y + all.h && now.x + now.w > all.x + all.w - 40, `${unit} Installed: Restart now under Update all, at the panel's foot`);
+        ok(item(st, 'Restart now').x > filters.x + filters.w, `${unit} Store: Restart now after the filters`);
+    } else {
+        eq([now.w, now.h, now.y], [all.w, all.h, all.y], `${unit} Installed: Restart now as wide, high and placed as Update all`);
+        ok(all.x + all.w < now.x, `${unit} Installed: Update all, then Restart now, side by side`);
+        eq(item(at('installed-restart', { components: idle.components.map((c) => Object.assign({}, c, { status: 'installed' })) }), 'Restart now').x,
+            now.x, `${unit} Installed: Restart now alone where it is beside Update all`);
+        eq(item(at('installed-restart', restarted), 'Install all updates (3)').x + all.w, now.x + now.w,
+            `${unit} Installed: Update all alone at the right edge`);
+        ok(item(st, 'Restart now').x + item(st, 'Restart now').w < filters.x, `${unit} Store: Restart now left of the filters`);
+    }
     [[both, 'Installed'], [st, 'Store']].forEach(([g, name]) => {
         const it = item(g, 'Restart now');
         eq(g.items.filter((o) => o !== it && !o.box && overlap(it, o)).map((o) => o.label), [], `${unit} ${name}: Restart now overlaps no other button`);
@@ -570,7 +586,9 @@ Object.keys(UNITS).forEach((unit) => {
         return frame(m, { textScale: p.scale, focus: -1, scroll: {}, layout: p.layout });
     };
     const g = at('store-safe-mode');
-    const it = g.items[4];
+    // (the full screen's iDrive 7 look: after the filters, in the row they start)
+    const it = g.items.find((o) => o.label === 'Leave safe mode');
+    if (!/^All\b/.test(g.items[4].label)) eq(g.items[4], it, `${unit} Store: Leave safe mode after the side menu`);
     const now = at('store-restart').items.find((o) => o.label === 'Restart now');
     eq([it.label, it.x + it.w, it.y, it.h], ['Leave safe mode', now.x + now.w, now.y, now.h], `${unit} Store: Leave safe mode where Restart now is`);
     eq(g.items.filter((o) => o !== it && !o.box && overlap(it, o)).map((o) => o.label), [], `${unit} Store: Leave safe mode overlaps no other button`);
@@ -801,6 +819,35 @@ eq(f.items[f.labels.indexOf('Internet')].act, { do: 'open', page: { name: 'inter
 f = screen('store', {}, { components: [Object.assign(fixture.state().components[1], { icon: '/run/mgu-updater/icons/doom.png' })] });
 eq([f.values.grid.items[0].icon, f.icons], ['key:/run/mgu-updater/icons/doom.png', ['/run/mgu-updater/icons/doom.png']]);
 
+// the full screen's iDrive 7 look: Store's cards and the panel of the picked one, Installed's parts and its panel
+{
+    const FULL = UNITS['iDrive 7 full screen'];
+    const at = (name, over, stOver) => {
+        const s = fixture.screens().find((x) => x[0] === name);
+        const st = s[2] || stOver ? Object.assign(fixture.state(), s[2] || {}, stOver || {}) : undefined;
+        return frame(fixture.model(Object.assign({}, s[1], over || {}), st), { textScale: 1, focus: -1, scroll: {}, layout: FULL.layout });
+    };
+    let g = at('store');
+    const cards = g.values.grid.items;
+    eq([g.values.dName.text, cards[0].selected, cards.filter((c) => c.selected).length, cards[0].act], ['M Vitals', true, 1,
+        { do: 'select', id: cards[0].id }], 'Store: the panel shows the first card until one is picked; a card picks itself');
+    g = at('store', { sel: cards[2].id });
+    eq([g.values.dName.text, g.values.selId, g.values.grid.items[2].selected], [cards[2].title, cards[2].id, true], 'Store: the picked one in the panel');
+    eq(at('store', { sel: 'gone' }).values.dName.text, 'M Vitals', 'Store: one no longer listed gives the panel back to the first');
+    eq(g.values.dLog.act, { do: 'open', page: { name: 'changelog', id: cards[2].id } }, 'Full changelog opens its changelog');
+    const failed = at('app-failed');
+    eq([failed.values.msg.title, failed.values.msg.tone], ['Failed · BUILD', 'red'], 'a failure\'s code above its button');
+    const doomOff = at('app-downloading', {}, { online: false });
+    eq([doomOff.values.msg.title, doomOff.values.progress.hidden], ['Offline', true], 'offline: the note in the progress bar\'s place');
+    eq(at('store-no-internet').values.dProgress.hidden, true, 'offline: no progress in the Store\'s panel');
+    const inst = at('installed');
+    eq([inst.values.rsBox.hidden, inst.values.restartNow.hidden], [false, false], 'Installed: the restart box while one waits on a restart');
+    const none = Object.assign({}, fixture.state());
+    none.components = none.components.map((c) => Object.assign({}, c, { pendingReboot: false, nextStart: undefined }));
+    const quiet = at('installed', {}, none);
+    eq([quiet.values.rsBox.hidden, quiet.values.restartNow.hidden], [true, true], 'Installed: no restart box without a restart to finish');
+}
+
 console.log(`screens: ${fixture.screens().length} screens in ${Object.keys(UNITS).length} boxes, ${checks} checks pass`);
 
 // iDrive 7 full screen: the HMI's status icons (the title strip's right end) stay visible - nothing drawn there
@@ -822,3 +869,4 @@ console.log(`screens: ${fixture.screens().length} screens in ${Object.keys(UNITS
 
 // iDrive 7 full screen: the header tabs take touch (the Store's claims: the strip up to the status icons, the page)
 eq(UNITS['iDrive 7 full screen'].layout.claims, [{ x: 0, y: 80, w: 1836, h: 640 }, { x: 0, y: 0, w: 996, h: 80 }], 'full screen: touch claimed for the header tabs too');
+

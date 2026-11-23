@@ -198,6 +198,19 @@
     "Information": "Πληροφορίες",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
     "Phone over USB": "Τηλέφωνο μέσω USB",
-    "Updating {0} of {1}": "Ενημέρωση {0} από {1}"
+    "Updating {0} of {1}": "Ενημέρωση {0} από {1}",
+    "What's new": "Τι νέο υπάρχει",
+    "Loading history": "Φόρτωση ιστορικού",
+    "History needs internet": "Το ιστορικό χρειάζεται internet",
+    "No history": "Χωρίς ιστορικό",
+    "Full changelog": "Όλες οι αλλαγές",
+    "All": "Όλα",
+    "Tools": "Εργαλεία",
+    "All apps and tools": "Όλες οι εφαρμογές και τα εργαλεία",
+    "Needs attention": "Χρειάζεται προσοχή",
+    "Checks automatically when online": "Ελέγχει αυτόματα όταν υπάρχει σύνδεση",
+    "Updating…": "Ενημέρωση…",
+    "Queue": "Ουρά",
+    "Restart to finish": "Επανεκκίνηση για ολοκλήρωση"
   }
 }

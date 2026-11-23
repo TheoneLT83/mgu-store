@@ -198,6 +198,19 @@
     "Information": "Informasi",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
     "Phone over USB": "Ponsel lewat USB",
-    "Updating {0} of {1}": "Memperbarui {0} dari {1}"
+    "Updating {0} of {1}": "Memperbarui {0} dari {1}",
+    "What's new": "Yang baru",
+    "Loading history": "Memuat riwayat",
+    "History needs internet": "Riwayat perlu internet",
+    "No history": "Tidak ada riwayat",
+    "Full changelog": "Log perubahan lengkap",
+    "All": "Semua",
+    "Tools": "Alat",
+    "All apps and tools": "Semua aplikasi dan alat",
+    "Needs attention": "Perlu perhatian",
+    "Checks automatically when online": "Memeriksa otomatis saat online",
+    "Updating…": "Memperbarui…",
+    "Queue": "Antrean",
+    "Restart to finish": "Mulai ulang untuk menyelesaikan"
   }
 }

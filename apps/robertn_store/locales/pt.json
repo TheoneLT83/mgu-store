@@ -198,6 +198,19 @@
     "Information": "Informações",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
     "Phone over USB": "Telemóvel por USB",
-    "Updating {0} of {1}": "A atualizar {0} de {1}"
+    "Updating {0} of {1}": "A atualizar {0} de {1}",
+    "What's new": "Novidades",
+    "Loading history": "A carregar histórico",
+    "History needs internet": "O histórico precisa de internet",
+    "No history": "Sem histórico",
+    "Full changelog": "Todas as alterações",
+    "All": "Tudo",
+    "Tools": "Ferramentas",
+    "All apps and tools": "Todas as apps e ferramentas",
+    "Needs attention": "Requer atenção",
+    "Checks automatically when online": "Verifica automaticamente quando online",
+    "Updating…": "A atualizar…",
+    "Queue": "Fila",
+    "Restart to finish": "Reinicie para concluir"
   }
 }

@@ -198,6 +198,19 @@
     "Information": "מידע",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
     "Phone over USB": "טלפון דרך USB",
-    "Updating {0} of {1}": "מעדכן {0} מתוך {1}"
+    "Updating {0} of {1}": "מעדכן {0} מתוך {1}",
+    "What's new": "מה חדש",
+    "Loading history": "טוען היסטוריה",
+    "History needs internet": "ההיסטוריה צריכה אינטרנט",
+    "No history": "אין היסטוריה",
+    "Full changelog": "יומן שינויים מלא",
+    "All": "הכול",
+    "Tools": "כלים",
+    "All apps and tools": "כל האפליקציות והכלים",
+    "Needs attention": "דורש תשומת לב",
+    "Checks automatically when online": "בודק אוטומטית כשיש חיבור",
+    "Updating…": "מעדכן…",
+    "Queue": "תור",
+    "Restart to finish": "הפעל מחדש לסיום"
   }
 }

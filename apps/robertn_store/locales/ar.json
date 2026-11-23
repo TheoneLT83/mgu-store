@@ -198,6 +198,19 @@
     "Information": "معلومات",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
     "Phone over USB": "الهاتف عبر USB",
-    "Updating {0} of {1}": "جارٍ التحديث {0} من {1}"
+    "Updating {0} of {1}": "جارٍ التحديث {0} من {1}",
+    "What's new": "الجديد",
+    "Loading history": "جارٍ تحميل السجل",
+    "History needs internet": "السجل يحتاج إلى الإنترنت",
+    "No history": "لا يوجد سجل",
+    "Full changelog": "سجل التغييرات كاملاً",
+    "All": "الكل",
+    "Tools": "الأدوات",
+    "All apps and tools": "كل التطبيقات والأدوات",
+    "Needs attention": "يحتاج إلى انتباه",
+    "Checks automatically when online": "يتحقق تلقائيًا عند الاتصال",
+    "Updating…": "جارٍ التحديث…",
+    "Queue": "قائمة الانتظار",
+    "Restart to finish": "أعد التشغيل للإنهاء"
   }
 }

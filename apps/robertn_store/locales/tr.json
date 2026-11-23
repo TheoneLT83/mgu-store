@@ -198,6 +198,19 @@
     "Information": "Bilgi",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
     "Phone over USB": "USB üzerinden telefon",
-    "Updating {0} of {1}": "Güncelleniyor {0}/{1}"
+    "Updating {0} of {1}": "Güncelleniyor {0}/{1}",
+    "What's new": "Yenilikler",
+    "Loading history": "Geçmiş yükleniyor",
+    "History needs internet": "Geçmiş için internet gerekli",
+    "No history": "Geçmiş yok",
+    "Full changelog": "Tüm değişiklikler",
+    "All": "Tümü",
+    "Tools": "Araçlar",
+    "All apps and tools": "Tüm uygulamalar ve araçlar",
+    "Needs attention": "İlgi gerekiyor",
+    "Checks automatically when online": "Çevrimiçiyken otomatik denetler",
+    "Updating…": "Güncelleniyor…",
+    "Queue": "Sıra",
+    "Restart to finish": "Bitirmek için yeniden başlat"
   }
 }

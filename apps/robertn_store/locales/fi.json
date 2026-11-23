@@ -198,6 +198,19 @@
     "Information": "Tiedot",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
     "Phone over USB": "Puhelin USB:n kautta",
-    "Updating {0} of {1}": "Päivitetään {0}/{1}"
+    "Updating {0} of {1}": "Päivitetään {0}/{1}",
+    "What's new": "Uutta",
+    "Loading history": "Ladataan historiaa",
+    "History needs internet": "Historia tarvitsee internetin",
+    "No history": "Ei historiaa",
+    "Full changelog": "Kaikki muutokset",
+    "All": "Kaikki",
+    "Tools": "Työkalut",
+    "All apps and tools": "Kaikki sovellukset ja työkalut",
+    "Needs attention": "Vaatii huomiota",
+    "Checks automatically when online": "Tarkistaa automaattisesti verkossa",
+    "Updating…": "Päivitetään…",
+    "Queue": "Jono",
+    "Restart to finish": "Viimeistele käynnistämällä uudelleen"
   }
 }

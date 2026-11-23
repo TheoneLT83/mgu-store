@@ -170,6 +170,8 @@
         keyboard: { label: 'Keyboard', icon: '⌨', store: true, box: [2360, 518], fields: [F('shift', 'Capitals', 'bool', false),
             F('layout', 'Keys', 'select', 'url', ['url', 'text']), F('go', 'Enter key text (it types that)', 'text', 'Next'),
             F('symbols', 'Symbols key #+= (word keys only)', 'bool', false), F('sym', 'Showing the symbols', 'bool', false)] },
+        note: { label: 'Note', icon: '▭', store: true, box: [500, 90], fields: [F('title', 'Title', 'text', ''), F('text', 'Text', 'text', ''),
+            F('tone', 'Tone', 'select', '', ['', 'red', 'amber', 'blue'])] },
         // the Store's own (src/store_elements.js)
         qr: { label: 'QR code', icon: '▦', store: true, box: [400, 400], fields: [F('text', 'Text', 'text', '')] },
         ways: { label: 'Ways (cards with a logo)', icon: '▥', store: true, box: [1600, 500], fields: [F('items', 'Cards', 'json', []),

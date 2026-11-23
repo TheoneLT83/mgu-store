@@ -198,6 +198,19 @@
     "Information": "Informacije",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
     "Phone over USB": "Telefon prek USB",
-    "Updating {0} of {1}": "Posodabljanje {0} od {1}"
+    "Updating {0} of {1}": "Posodabljanje {0} od {1}",
+    "What's new": "Novosti",
+    "Loading history": "Nalaganje zgodovine",
+    "History needs internet": "Zgodovina potrebuje internet",
+    "No history": "Ni zgodovine",
+    "Full changelog": "Vse spremembe",
+    "All": "Vse",
+    "Tools": "Orodja",
+    "All apps and tools": "Vse aplikacije in orodja",
+    "Needs attention": "Potrebuje pozornost",
+    "Checks automatically when online": "Samodejno preveri ob povezavi",
+    "Updating…": "Posodabljanje…",
+    "Queue": "Čakalna vrsta",
+    "Restart to finish": "Znova zaženi za dokončanje"
   }
 }

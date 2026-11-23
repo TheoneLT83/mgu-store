@@ -198,6 +198,19 @@
     "Information": "Information",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
     "Phone over USB": "Telefon via USB",
-    "Updating {0} of {1}": "Uppdaterar {0} av {1}"
+    "Updating {0} of {1}": "Uppdaterar {0} av {1}",
+    "What's new": "Nyheter",
+    "Loading history": "Läser in historik",
+    "History needs internet": "Historik kräver internet",
+    "No history": "Ingen historik",
+    "Full changelog": "Hela ändringsloggen",
+    "All": "Alla",
+    "Tools": "Verktyg",
+    "All apps and tools": "Alla appar och verktyg",
+    "Needs attention": "Kräver uppmärksamhet",
+    "Checks automatically when online": "Kontrollerar automatiskt när online",
+    "Updating…": "Uppdaterar…",
+    "Queue": "Kö",
+    "Restart to finish": "Starta om för att slutföra"
   }
 }

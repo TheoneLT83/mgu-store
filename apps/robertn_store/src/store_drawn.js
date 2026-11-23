@@ -163,6 +163,7 @@ class Drawn extends EventEmitter {
         this.stack = [{ name: 'main' }];
         this.tab = 'store';
         this.filter = 'all';
+        this.sel = null;                    // the Store page's picked card (the full-screen iDrive 7 look's panel), else its first
         this.focus = 0;
         this.scroll = {};
         this.items = [];
@@ -402,8 +403,15 @@ class Drawn extends EventEmitter {
         this.render();
     }
 
+    /* The Store page's card shown in its panel (the full-screen iDrive 7 look). */
+    select(id) {
+        this.sel = id;
+        this.render();
+    }
+
     setFilter(filter) {
         this.filter = filter;
+        this.sel = null;
         this._page();
         this.render();
     }
@@ -610,7 +618,9 @@ class Drawn extends EventEmitter {
         const rec = r.rec;
         this.items = r.items;
         this.regions = r.regions;
-        if (r.screen === 'installed') {
+        // the Store page's panel shows its card's update history: asked for as the card shown there changes
+        if (r.screen === 'store' && r.values.selId && this.host.history) this.host.history(r.values.selId);
+        if (r.screen === 'installed' && r.values.apps) {
             this.lists = { apps: r.values.apps.items.map((i) => i.id), services: r.values.services.items.map((i) => i.id),
                 restart: !r.values.restartNow.hidden };
             this.listsItems = r.items;
@@ -707,7 +717,9 @@ class Drawn extends EventEmitter {
     }
 
     _model() {
-        return Object.assign(this.host.model(), { stack: this.stack, tab: this.tab, filter: this.filter, held: this._held() });
+        // cards: the full-screen iDrive 7 look's Store and Installed (store_compact.js)
+        return Object.assign(this.host.model(), { stack: this.stack, tab: this.tab, filter: this.filter, sel: this.sel, held: this._held(),
+            cards: !!(this.layout && this.layout.id7 && this.layout.id7.full) });
     }
 
     /* The Installed lists' rows and its Restart now as drawn while the focus

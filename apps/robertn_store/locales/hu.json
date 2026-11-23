@@ -198,6 +198,19 @@
     "Information": "Információ",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
     "Phone over USB": "Telefon USB-n keresztül",
-    "Updating {0} of {1}": "Frissítés: {0}/{1}"
+    "Updating {0} of {1}": "Frissítés: {0}/{1}",
+    "What's new": "Újdonságok",
+    "Loading history": "Előzmények betöltése",
+    "History needs internet": "Az előzményekhez internet kell",
+    "No history": "Nincsenek előzmények",
+    "Full changelog": "Összes változás",
+    "All": "Összes",
+    "Tools": "Eszközök",
+    "All apps and tools": "Összes alkalmazás és eszköz",
+    "Needs attention": "Figyelmet igényel",
+    "Checks automatically when online": "Online automatikusan ellenőriz",
+    "Updating…": "Frissítés…",
+    "Queue": "Sor",
+    "Restart to finish": "Újraindítás a befejezéshez"
   }
 }
