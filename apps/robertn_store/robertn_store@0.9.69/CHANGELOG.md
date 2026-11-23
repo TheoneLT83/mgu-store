@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.69
+
+robertnisipeanu/mgu-store's Store 0.9.42: Settings has Share usage statistics, the updater's daily anonymous ping on
+or off, with a page that says what is sent. It shows with an updater that sends them (mgu-updater 0.8.56).
+
 ## 0.9.68
 
 robertnisipeanu/mgu-store's Store change: Restart now, Restart head unit and the confirm step's Restart are greyed

@@ -199,6 +199,11 @@
     "new build": "新构建",
     "Phone over USB": "通过 USB 连接手机",
     "Safe mode": "安全启动",
-    "Leave safe mode": "离开安全启动"
+    "Leave safe mode": "离开安全启动",
+    "Usage statistics": "使用信息",
+    "Share usage statistics": "共享使用信息",
+    "Share anonymous usage statistics": "共享匿名使用信息",
+    "The Store sends anonymous usage statistics once a day, such as which apps and public sources are used and the head unit's software version, to help improve it. Nothing that identifies you or your car is collected.": "应用商店每日共享匿名使用信息：使用中的应用、来源及版本。不会共享可用来找到用户的信息。",
+    "You can turn this off here. Questions: {0}": "可在此关闭。问题：{0}"
   }
 }

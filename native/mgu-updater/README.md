@@ -828,6 +828,42 @@ node:8.16.2-stretch node test/test_web.js`) runs the server as the web
 uid against a stand-in socket, `nft` and `journalctl`, with the
 container's address as the hotspot's.
 
+## Usage statistics
+
+Once a UTC day, after a check that read a network source, the updater
+sends one anonymous ping to `stats_url`: one HTTPS POST through the fetch
+uid, 10 s at most, never tried again. Whatever happens to it changes
+nothing else, and a day whose ping did not get through is tried at the
+next check. The Store's switch (`stats`, below) turns it off; off, nothing
+is sent and what waited is dropped. An empty `stats_url` sends nothing.
+
+```json
+{ "v": 1, "hmi": "ID7", "hw": "mgu-high", "istep": "P18_23w44.2",
+  "versions": { "store": "0.9.41", "updater": "0.8.52", "deploy": "0.8.27", "render": "0.6.16", "uplink": "0.7.13" },
+  "apps": [ { "id": "doom", "v": "1.0.1", "src": "cauliflowermossgrape/idrive7-apps" } ],
+  "sources": [ "robertnisipeanu/mgu-store", "cauliflowermossgrape/idrive7-apps" ],
+  "events": { "installed": [ { "id": "doom", "src": "cauliflowermossgrape/idrive7-apps" } ],
+    "failed": [ { "id": "gauges", "code": "download" } ], "sources_added": [], "sources_removed": [] },
+  "first_this_month": true, "first_ever": false }
+```
+
+- `hw` and `istep`: the hardware variant and build train of the
+  firmware string (`unit.firmware`), each left out when it has none.
+- `versions`: each only when that component came from a public repo or
+  the installers.
+- `apps` and `sources`: only GitHub sources whose repo said it is public
+  when read, and what was installed from them (also from a stick's copy
+  of one). A source that needs a sign-in, an https catalog, a folder and
+  any other stick are never named, nor anything installed from them.
+- `events`: first installs and failed installs since the last ping that
+  got through, each list at most 50, kept in `state/stats.json` (written
+  only when it changes); `failed` carries a fixed code (`requires`,
+  `checksum`, `check`, `refused`, `deploy`, `build`, `download`,
+  `other`), never the error itself. `sources_added` and
+  `sources_removed` compare the sources with the last ping's.
+- No id of the car or the install is sent. The ping goes through the
+  proxy when one is set.
+
 ## Configuration
 
 `updater.conf` (in the version folder) holds the defaults;
@@ -1035,6 +1071,7 @@ Store says it at each connection (below, "The Store's update").
 | `{"op":"login-start"}`, `{"op":"login-cancel"}` | GitHub sign-in, which adds a token |
 | `{"op":"proxy-set","url"}` | the proxy downloads go through (`""`: none), checked and kept in `updater.local.conf`; the sources are read again |
 | `{"op":"web","enable":true\|false}` | the phone page on or off, kept across restarts (`state/web.json`) |
+| `{"op":"stats","on":true\|false}` | usage statistics on or off (off drops what waits to be sent). The state's `stats`: `{ "on" }`, `null` without a `stats_url` |
 | `{"op":"logs","unit","lines"}` | `{"type":"logs","unit","text"}`: a journal for the phone page |
 | `{"op":"history","id"}` | `{"type":"history","id",status,items}`: the component's update history for its Store page, newest first. A GitHub branch source's component: the commits (up to 20) that changed its folder or the shared code it is built with, each `{title, date, rev, new}`, `new` after the commit it was installed from; a catalog component that names its `changelog` (release.js): that CHANGELOG.md's versions, each `{title, text, new}`, `new` above the installed version. `status`: `ok`, `none` (no history to give), `offline`, `error` |
 | `{"op":"uplink-prefer","kind"}` | the uplink's preferred connection: `wifi`, `usb`, `phone` (`""` for none), relayed as its `prefer` ("The uplink") |
@@ -1117,6 +1154,7 @@ js/certs.js              a server's certificate chain checked without its dates
 js/py/sitecustomize.py   a Python build's TLS: certificates checked without their dates
 js/client.js             socket client (Store app, command line)
 js/web.js                the phone page
+js/stats.js              the usage statistics ping
 updater.conf             defaults
 systemd/mgu-updater.service
 component.json           the tool component (deploy tool format); its unit runs in the deploy tool's safe mode

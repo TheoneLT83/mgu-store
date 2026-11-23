@@ -308,8 +308,15 @@ function compact(W, H0, look, opts) {
         list('rows', X, HEAD + 14, proxyW, 2 * LIST.rowH, { empty: '' }),
         text('error', X, HEAD + 14 + 2 * LIST.rowH + 20, proxyW, 130, '', 26, 'label', AMBER, { wrap: true })
     ]);
+    const aboutY = HEAD + 14 + LIST.rowH + 20;
+    const stats = screen('stats', 3, [
+        back(),
+        title('Usage statistics', titleX),
+        list('rows', X, HEAD + 14, proxyW, LIST.rowH, { empty: '' }),
+        text('about', X, aboutY, CW, B - aboutY, '', 25, 'label', TEXT, { wrap: true })
+    ]);
     const screens = [store, app, confirm, installed, usb, settings, source, accounts, changelog, pick, login, phone, type,
-        wifi, prefer, proxy, internet, information];
+        wifi, prefer, proxy, stats, internet, information];
     if (TOP) screens.forEach((st) => st.components.forEach((c) => { c.y += TOP; }));
     return { design: { w: W, h: H0 }, screens, full, // full: touch claimed under the strip and in it up to the status icons, in either look (store_drawn.js claims the
         // top-level layout's, whichever look shows: the header tabs had no touch under the iDrive 7 look)
