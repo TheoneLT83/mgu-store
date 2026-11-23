@@ -73,9 +73,10 @@ const chipItems = (items) => (Array.isArray(items) ? items
 /** A badge in the iDrive 7 look, as the kit draws them (gauges.js badgeRow): a tinted box, bold capitals. Its width. */
 function chip7(cv, text, x, y, h, c, dot, right) {
     const s = Math.round(h * 0.42), label = String(text).toUpperCase(), opt = { align: 'center', font: 'bold', spacing: 1.5 };
-    const w = Math.max(h * 2.5, cv.textWidth(label, s, opt) + h), x0 = right ? x - w : x;
-    cv.roundRect(x0, y, w, h, h * 0.2, withAlpha(c, 0.2));
-    cv.text(label, x0 + w / 2, y + h / 2 + s * 0.36, s, c, opt);
+    const d = dot ? h * 0.5 : 0, w = Math.max(h * 2.5, cv.textWidth(label, s, opt) + h + d), x0 = right ? x - w : x;
+    cv.roundRect(x0, y, w, h, dot ? h / 2 : h * 0.3, withAlpha(c, 0.18));
+    if (dot) { cv.circle(x0 + h * 0.55, y + h / 2, h * 0.16, withAlpha(c, 0.35)); cv.circle(x0 + h * 0.55, y + h / 2, h * 0.1, c); }
+    cv.text(label, x0 + d + (w - d) / 2, y + h / 2 + s * 0.36, s, c, opt);
     return w;
 }
 
@@ -83,7 +84,7 @@ function chip7(cv, text, x, y, h, c, dot, right) {
 function chipBoxes(cv, b, o, id7) {
     const items = chipItems(o.items), gap = b.h * 0.25, h = b.h;
     const width = (it) => (id7 ? Math.max(h * 2.5, cv.textWidth(String(it.text).toUpperCase(), Math.round(h * 0.42), { font: 'bold', spacing: 1.5 }) + h)
-        : cv.textWidth(it.text, Math.round(h * 0.44)) + h * 0.9 + (it.dot ? h * 0.16 * 3 : 0));
+        : cv.textWidth(it.text, Math.round(h * 0.44)) + h * 0.9 + (it.dot ? h * 0.16 * 3 : 0)) + (id7 && it.dot ? h * 0.5 : 0);
     const out = [];
     let x = o.align === 'right' ? b.x + b.w : b.x;
     if (o.align === 'right') {
@@ -151,17 +152,33 @@ function appGrid(cv, t, b, o) {
     cv.clip(b.x, b.y, b.w, b.h);
     g.all.slice(g.first * g.cols, g.end * g.cols).forEach((a, i) => {
         const x = b.x + (i % g.cols) * g.tw, y = b.y + (g.first + Math.floor(i / g.cols) - g.top) * g.th;
+        if (W.id7(t)) {
+            // a card under the tile (a little in from its cell, the scroll bar's room on the right)
+            const cx0 = x + 6, cw0 = g.tw - 12 - (i % g.cols === g.cols - 1 ? 12 : 0), ch0 = g.th - 10;
+            cv.card(cx0, y + 2, cw0, ch0, 14, [[0, '#171a20'], [1, '#101217']]);
+            cv.strokeRoundRect(cx0, y + 2, cw0, ch0, 14, 1, withAlpha('#ffffff', 0.07));
+            if (typeof a.progress === 'number' && a.progress >= 0) {
+                cv.roundRect(cx0 + 14, y + 2, cw0 - 28, 4, 2, withAlpha('#ffffff', 0.12));
+                cv.roundRect(cx0 + 14, y + 2, Math.max(4, (cw0 - 28) * Math.min(1, a.progress)), 4, 2, BLUE);
+            }
+        }
         appIcon(cv, t, a, x + (g.tw - s) / 2, y + top, s);
         const ny = y + top + s + gap[0], sy = ny + gap[1];
         cv.text(W.fit(cv, String(a.title || ''), g.tw - 16, ts, 'bold'), x + g.tw / 2, ny, ts, t.text, { align: 'center', font: 'bold' });
         if (a.src) cv.text(fitSource(cv, String(a.src), g.tw - 16, rs), x + g.tw / 2, sy, rs, t.dim, { align: 'center' });
-        if (a.sub) cv.text(W.fit(cv, String(a.sub), g.tw - 16, ss), x + g.tw / 2, sy + gap[2], ss, C(t, a.subColor, t.dim), { align: 'center' });
+        if (a.sub && W.id7(t) && C(t, a.subColor, t.dim) !== t.dim) {
+            // the state as a chip in its colour, centred under the source
+            const ch = Math.round(Math.max(30, ss * 1.45)), label = W.fit(cv, String(a.sub).toUpperCase(), g.tw - 60, Math.round(ch * 0.42), 'bold');
+            const cw1 = Math.max(ch * 2.5, cv.textWidth(label, Math.round(ch * 0.42), { font: 'bold', spacing: 1.5 }) + ch);
+            chip7(cv, label, x + (g.tw - cw1) / 2, sy + gap[2] - ss * 0.8 - (ch - ss) / 2, ch, C(t, a.subColor, t.dim));
+        } else if (a.sub) cv.text(W.fit(cv, String(a.sub), g.tw - 16, ss), x + g.tw / 2, sy + gap[2], ss, C(t, a.subColor, t.dim), { align: 'center' });
     });
     cv.noclip();
     if (!g.all.length && o.empty) mid(cv, o.empty, b.x + b.w / 2, b.y + b.h / 2, 36, t.dim, { align: 'center' });
-    if (g.max > 0 && o.bar !== false) { // scroll bar (o.bar false: none, store_frame.js's drag rows)
-        const h = b.h * g.shown / g.rows, y = b.y + (b.h - h) * g.top / g.max;
-        cv.roundRect(b.x + b.w - 6, y, 6, h, 3, withAlpha(t.text, 0.25));
+    if (g.max > 0 && o.bar !== false) { // scroll bar (o.bar false: none, store_frame.js's drag rows): its track, the thumb on it
+        const h = Math.max(36, b.h * g.shown / g.rows), y = b.y + (b.h - h) * g.top / g.max, bw = 8;
+        cv.roundRect(b.x + b.w - bw, b.y, bw, b.h, bw / 2, withAlpha('#ffffff', 0.1));
+        cv.roundRect(b.x + b.w - bw, y, bw, h, bw / 2, withAlpha('#ffffff', 0.6));
     }
 }
 
@@ -193,7 +210,11 @@ function appList(cv, t, b, o) {
         const y = b.y + (v.first + k - v.top) * v.rh, h = v.rh - gap, s = Math.round(h * 0.73);
         // a line of text (the changelog's notes): no card
         if (it.note) { cv.text(String(it.title || ''), b.x + 28 * q + (it.indent || 0) * q, y + h / 2 + ss * 0.36, ss, C(t, it.color, t.text)); return; }
-        if (W.id7(t)) W.panel7(cv, t, b.x, y, b.w, h, false);   // the kit's flat overlay
+        if (W.id7(t)) {
+            cv.card(b.x, y, b.w, h, 12 * q, [[0, '#171a20'], [1, '#121419']]);
+            cv.strokeRoundRect(b.x, y, b.w, h, 12 * q, 1, withAlpha('#ffffff', 0.07));
+            if (typeof it.progress === 'number' && it.progress >= 0) cv.roundRect(b.x + 6, y + h - 4, Math.max(4, (b.w - 12) * Math.min(1, it.progress)), 3, 1.5, BLUE);
+        }
         else cv.card(b.x, y, b.w, h, 22 * q, [[0, t.panelTop], [1, t.panelBottom]]);
         let tx = b.x + 28 * q;
         if (it.icon || it.vicon || it.colors || it.letter) {
@@ -219,7 +240,7 @@ function appList(cv, t, b, o) {
     cv.noclip();
     if (!v.all.length && o.empty) mid(cv, o.empty, b.x + b.w / 2, b.y + b.h / 2, 36, t.dim, { align: 'center' });
     // o.scrollbar: while it holds more rows than show, a thin bar at its right edge says where the rows shown are
-    if (o.scrollbar && v.max > 0) {
+    if ((o.scrollbar || W.id7(t)) && v.max > 0) {
         const bw = Math.max(4, Math.round(6 * (o.ctlK || 1))), bx = b.x + b.w - bw, th = Math.max(bw * 4, b.h * v.n / v.all.length);
         cv.roundRect(bx, b.y, bw, b.h, bw / 2, withAlpha('#ffffff', 0.12));
         cv.roundRect(bx, b.y + (b.h - th) * (v.top / v.max), bw, th, bw / 2, withAlpha('#ffffff', 0.55));
@@ -239,16 +260,13 @@ function headNav(cv, t, b, o) {
     const opt = { align: 'center', font: 'bold', spacing: 2 };
     items.forEach((it, i) => {
         const x = b.x + i * iw, on = i === (o.sel | 0), label = String(it.label).toUpperCase();
-        if (on) {
-            cv.gradientRect(x, b.y, iw, b.h, [[0, withAlpha(S, 0)], [1, withAlpha(S, 0.25)]]);
-            cv.fillRect(x, b.y + b.h - 5, iw, 5, S);
-        }
         const badge = it.badge && String(it.badge) !== '0' ? String(it.badge) : '';
-        const lw = cv.textWidth(label, size, opt), bw = badge ? size * 1.5 : 0, lx = x + iw / 2 - (badge ? (bw + 10) / 2 : 0);
-        cv.text(label, lx, b.y + b.h / 2 + 7, size, on ? t.selText || '#ffffff' : t.dim, opt);
+        const lw = cv.textWidth(label, size, opt), bw = badge ? size * 1.3 : 0, lx = x + iw / 2 - (badge ? (bw + 10) / 2 : 0);
+        if (on) cv.roundRect(lx - 18, b.y + b.h - 16, 36, 4, 2, S);
+        cv.text(label, lx, b.y + b.h / 2 + 7, size, on ? '#ffffff' : t.dim, opt);
         if (badge) {
             const bx = lx + lw / 2 + 10 + bw / 2, cy = b.y + b.h / 2;
-            cv.roundRect(bx - bw / 2, cy - size * 0.7, bw, size * 1.4, size * 0.28, S);
+            cv.roundRect(bx - bw / 2, cy - size * 0.65, bw, size * 1.3, size * 0.65, S);
             cv.text(badge, bx, cy + size * 0.3, Math.round(size * 0.82), '#ffffff', { align: 'center', font: 'bold' });
         }
         if (i < n - 1) cv.fillRect(x + iw, b.y + b.h * 0.28, 1, b.h * 0.44, withAlpha('#ffffff', 0.14));
@@ -325,18 +343,16 @@ function vbutton(cv, t, b, o) {
     cv.text(text, x1 + (hasIcon ? is + 18 : 0), b.y + b.h / 2 + ts * 0.36, ts, fg, { font: 'bold' });
 }
 
-/* A button in the iDrive 7 look: a cell of the kit's button bar (gauges.js menuBar) - a soft light gradient with a light
- * line along the top, the name in capitals; primary lit with the selection colour and a line of it along the bottom. */
+/* A button in the iDrive 7 look, as the kits' buttons (gauges.js button): rounded corners, a light fill and edge, the
+ * name in capitals; primary filled in its colour (the selection colour where it has none). */
 function vbutton7(cv, t, b, o, c, s, is, off) {
-    const primary = o.style === 'primary' && !off, S = t.sel || t.accent;
-    cv.fillRect(b.x, b.y, b.w, b.h, t.bg);
-    cv.gradientRect(b.x, b.y, b.w, b.h, [[0, withAlpha('#ffffff', 0.09)], [1, withAlpha('#ffffff', 0.03)]]);
-    cv.fillRect(b.x, b.y, b.w, 2, withAlpha('#ffffff', 0.2));
-    if (primary) {
-        cv.gradientRect(b.x, b.y, b.w, b.h, [[0, withAlpha(S, 0.08)], [1, withAlpha(S, 0.4)]]);
-        cv.fillRect(b.x, b.y + b.h - 4, b.w, 4, S);
+    const primary = o.style === 'primary' && !off, S = o.color ? c : t.sel || t.accent, r = Math.min(12, b.h / 2);
+    if (primary) cv.roundRect(b.x, b.y, b.w, b.h, r, S);
+    else {
+        cv.roundRect(b.x, b.y, b.w, b.h, r, withAlpha('#ffffff', 0.09));
+        cv.strokeRoundRect(b.x, b.y, b.w, b.h, r, 1.5, withAlpha('#ffffff', off ? 0.1 : 0.2));
     }
-    const fg = off ? withAlpha(t.dim, 0.5) : primary ? t.selText || '#ffffff' : t.text;
+    const fg = off ? withAlpha(t.dim, 0.5) : primary ? '#ffffff' : t.text;
     const label = String(o.text || '').toUpperCase(), hasIcon = !!o.vicon, room = b.w - 32;
     // a name too wide for the button: less letter spacing, then a smaller size
     let sp = 2;

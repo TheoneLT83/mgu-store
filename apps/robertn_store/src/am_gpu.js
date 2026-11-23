@@ -21,11 +21,23 @@ const Q = require('./store_elements.js');
 
 const isNum = (x) => typeof x === 'number' && isFinite(x);
 const list = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
+const measureW = (cv, s, size, font) => cv.textWidth(String(s || ''), size, { font });
 
 // element box -> kit call. o = options with defaults filled in (colour '' = the template's own)
 const DRAW = {
     text: (cv, t, b, o) => {
         const c = t[o.color] || o.color || t.text;
+        if (!o.wrap && isNum(o.bar)) {
+            // a text with a progress bar after it (the Installed page: every update running now)
+            const tw = cv.text(W.fit(cv, o.text, b.w, o.size, o.font), b.x, b.y + o.size * 0.8, o.size, c, { font: o.font });
+            const bx = b.x + (typeof tw === 'number' ? tw : measureW(cv, o.text, o.size, o.font)) + o.size * 1.2, bw = Math.min(b.x + b.w - bx, o.size * 22);
+            if (bw < o.size * 4) return null;
+            const ls = W.shrink(cv, String(o.barText || ''), bw, Math.round(o.size * 0.78), 'bold'), bh = Math.max(4, Math.round(o.size * 0.28));
+            cv.text(W.fit(cv, String(o.barText || ''), bw, ls, 'bold'), bx, b.y + ls * 0.8, ls, t.text, { font: 'bold' });
+            cv.roundRect(bx, b.y + o.size * 1.05, bw, bh, bh / 2, withAlpha('#ffffff', 0.12));
+            cv.roundRect(bx, b.y + o.size * 1.05, Math.max(bh, bw * Math.max(0, Math.min(1, o.bar))), bh, bh / 2, '#3d9bff');
+            return null;
+        }
         if (!o.wrap) return cv.text(W.fit(cv, o.text, b.w, o.size, o.font), o.align === 'center' ? b.x + b.w / 2 : o.align === 'right' ? b.x + b.w : b.x,
             b.y + o.size * 0.8, o.size, c, { font: o.font, align: o.align });
         // wrapped (left aligned): each line of the text a paragraph, as many lines as the box holds; o.lead a first

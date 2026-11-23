@@ -199,6 +199,7 @@
     "Internet": "Internet",
     "Information": "Informatie",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-    "Phone over USB": "Telefoon via USB"
+    "Phone over USB": "Telefoon via USB",
+    "Updating {0} of {1}": "Bijwerken {0} van {1}"
   }
 }

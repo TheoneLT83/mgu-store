@@ -197,6 +197,7 @@
     "Internet": "インターネット",
     "Information": "情報",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-    "Phone over USB": "USB接続のスマートフォン"
+    "Phone over USB": "USB接続のスマートフォン",
+    "Updating {0} of {1}": "更新中 {0}/{1}"
   }
 }

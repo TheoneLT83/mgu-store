@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.72
+
+The iDrive 7 look made newer, its pages and what they do as they were: the page tabs have a short line under the one
+shown, All / Apps / Tools is one bar with the chosen part filled, Online is a pill with a dot, and buttons have rounded
+corners, filled in their colour when they are the main one. Each app on the Store page is a card, its state (Update,
+Downloading, Waiting, Failed, Installed) a coloured chip, a download a bar along the card's top; the Installed page's
+rows are rounded cards, a downloading row's progress along its bottom. The Installed page shows every install or
+update running and waiting as one bar ("Updating 2 of 3 · DOOM · 42 %"). Pages that scroll show their scroll bar on
+the right, its track and where the view is on it.
+
 ## 0.9.71
 
 The Store page opens on All, apps and head-unit tools together.

@@ -268,6 +268,17 @@ function storeView(m) {
     };
 }
 
+/* Every install or update running now and waiting, as one progress: the most of them seen since the last time none ran
+ * (runMax), so a finished one counts as done; null while none runs. */
+let runMax = 0;
+function runProgress(m, busy) {
+    const left = comps(m).filter((c) => (busy && busy.id === c.id) || c.queued);
+    if (!left.length) { runMax = 0; return null; }
+    runMax = Math.max(runMax, left.length);
+    const cur = busy && find(comps(m), busy.id), p = busy && busy.phase === 'download' ? percent(busy) : busy ? 100 : 0, done = runMax - left.length;
+    return { value: (done + p / 100) / runMax, text: `${tr("Updating {0} of {1}", done + 1, runMax)}${cur ? ' · ' + named(m, cur) : ''} · ${p} %` };
+}
+
 function installedView(m) {
     const busy = busyOf(m);
     // the ones something runs or waits on first, each part in the catalog's order; the rows held (m.held) where they were drawn
@@ -287,12 +298,13 @@ function installedView(m) {
             sub: [up ? (c.installed === c.version ? `${c.installed} · ${tr('new build')}` : `${c.installed} → ${target(c)}`) : `${c.installed}${isTool(c) ? tr(' · tool') : ''}`, name(c)].filter(Boolean).join(' · '), subColor: up ? BLUE : DIM,
             // the Update chip only says so: the row opens the page, whose button updates (Update all for all)
             right: up ? 'chip:' + tr('Update') : s.sub !== tr("Installed") ? `chip:${s.sub}` : 'chevron', chipColor: up ? BLUE : s.subColor,
-            chipAct: null });
+            chipAct: null, progress: busy && busy.id === c.id ? s.progress : -1 });
     };
     return {
         title: { text: tr("Installed") },
         online: onlineChip(m),
-        subtitle: { text: `${plural(apps.length, 'app')} · ${plural(tools.length, 'tool')}` },
+        subtitle: Object.assign({ text: `${plural(apps.length, 'app')} · ${plural(tools.length, 'tool')}` },
+            (() => { const r = runProgress(m, busy); return r ? { bar: r.value, barText: r.text } : { bar: null, barText: '' }; })()),
         // updates: install them all; none: look for new ones (the updater's check, as Settings' Check now)
         updateAll: updates.length ? button(tr("Install all updates ({0})", updates.length), { do: 'update-all' }, { vicon: 'arrowDown', style: 'primary', color: BLUE })
             : m.connected && m.st ? button(m.noNet ? tr("No internet") : m.st.catalog && m.st.catalog.checking ? tr("Checking") : tr("Check for updates"), { do: 'check' },

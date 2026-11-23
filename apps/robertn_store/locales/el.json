@@ -197,6 +197,7 @@
     "Internet": "Internet",
     "Information": "Πληροφορίες",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-    "Phone over USB": "Τηλέφωνο μέσω USB"
+    "Phone over USB": "Τηλέφωνο μέσω USB",
+    "Updating {0} of {1}": "Ενημέρωση {0} από {1}"
   }
 }

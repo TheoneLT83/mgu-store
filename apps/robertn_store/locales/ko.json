@@ -197,6 +197,7 @@
     "Internet": "인터넷",
     "Information": "정보",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-    "Phone over USB": "USB로 연결한 휴대폰"
+    "Phone over USB": "USB로 연결한 휴대폰",
+    "Updating {0} of {1}": "업데이트 중 {0}/{1}"
   }
 }

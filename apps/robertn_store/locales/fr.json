@@ -197,6 +197,7 @@
     "Internet": "Internet",
     "Information": "Informations",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-    "Phone over USB": "Téléphone par USB"
+    "Phone over USB": "Téléphone par USB",
+    "Updating {0} of {1}": "Mise à jour {0} sur {1}"
   }
 }

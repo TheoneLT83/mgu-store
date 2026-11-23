@@ -201,7 +201,8 @@ module.exports = [
    "Internet": "الإنترنت",
    "Information": "معلومات",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "الهاتف عبر USB"
+   "Phone over USB": "الهاتف عبر USB",
+   "Updating {0} of {1}": "جارٍ التحديث {0} من {1}"
   }
  },
  {
@@ -404,7 +405,8 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informace",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefon přes USB"
+   "Phone over USB": "Telefon přes USB",
+   "Updating {0} of {1}": "Aktualizace {0} z {1}"
   }
  },
  {
@@ -607,7 +609,8 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Information",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefon via USB"
+   "Phone over USB": "Telefon via USB",
+   "Updating {0} of {1}": "Opdaterer {0} af {1}"
   }
  },
  {
@@ -810,7 +813,8 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informationen",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefon über USB"
+   "Phone over USB": "Telefon über USB",
+   "Updating {0} of {1}": "Aktualisiere {0} von {1}"
   }
  },
  {
@@ -1013,7 +1017,8 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Πληροφορίες",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Τηλέφωνο μέσω USB"
+   "Phone over USB": "Τηλέφωνο μέσω USB",
+   "Updating {0} of {1}": "Ενημέρωση {0} από {1}"
   }
  },
  {
@@ -1216,7 +1221,8 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Información",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Teléfono por USB"
+   "Phone over USB": "Teléfono por USB",
+   "Updating {0} of {1}": "Actualizando {0} de {1}"
   }
  },
  {
@@ -1419,7 +1425,8 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Información",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Móvil por USB"
+   "Phone over USB": "Móvil por USB",
+   "Updating {0} of {1}": "Actualizando {0} de {1}"
   }
  },
  {
@@ -1622,7 +1629,8 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Tiedot",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Puhelin USB:n kautta"
+   "Phone over USB": "Puhelin USB:n kautta",
+   "Updating {0} of {1}": "Päivitetään {0}/{1}"
   }
  },
  {
@@ -1825,7 +1833,8 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informations",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Cellulaire par USB"
+   "Phone over USB": "Cellulaire par USB",
+   "Updating {0} of {1}": "Mise à jour {0} sur {1}"
   }
  },
  {
@@ -2028,7 +2037,8 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informations",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Téléphone par USB"
+   "Phone over USB": "Téléphone par USB",
+   "Updating {0} of {1}": "Mise à jour {0} sur {1}"
   }
  },
  {
@@ -2231,7 +2241,8 @@ module.exports = [
    "Internet": "אינטרנט",
    "Information": "מידע",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "טלפון דרך USB"
+   "Phone over USB": "טלפון דרך USB",
+   "Updating {0} of {1}": "מעדכן {0} מתוך {1}"
   }
  },
  {
@@ -2434,7 +2445,8 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Információ",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefon USB-n keresztül"
+   "Phone over USB": "Telefon USB-n keresztül",
+   "Updating {0} of {1}": "Frissítés: {0}/{1}"
   }
  },
  {
@@ -2637,7 +2649,8 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informasi",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Ponsel lewat USB"
+   "Phone over USB": "Ponsel lewat USB",
+   "Updating {0} of {1}": "Memperbarui {0} dari {1}"
   }
  },
  {
@@ -2840,7 +2853,8 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informazioni",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefono tramite USB"
+   "Phone over USB": "Telefono tramite USB",
+   "Updating {0} of {1}": "Aggiornamento {0} di {1}"
   }
  },
  {
@@ -3043,7 +3057,8 @@ module.exports = [
    "Internet": "インターネット",
    "Information": "情報",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "USB接続のスマートフォン"
+   "Phone over USB": "USB接続のスマートフォン",
+   "Updating {0} of {1}": "更新中 {0}/{1}"
   }
  },
  {
@@ -3246,7 +3261,8 @@ module.exports = [
    "Internet": "인터넷",
    "Information": "정보",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "USB로 연결한 휴대폰"
+   "Phone over USB": "USB로 연결한 휴대폰",
+   "Updating {0} of {1}": "업데이트 중 {0}/{1}"
   }
  },
  {
@@ -3449,7 +3465,8 @@ module.exports = [
    "Internet": "Internett",
    "Information": "Informasjon",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefon via USB"
+   "Phone over USB": "Telefon via USB",
+   "Updating {0} of {1}": "Oppdaterer {0} av {1}"
   }
  },
  {
@@ -3654,7 +3671,8 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informatie",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefoon via USB"
+   "Phone over USB": "Telefoon via USB",
+   "Updating {0} of {1}": "Bijwerken {0} van {1}"
   }
  },
  {
@@ -3857,7 +3875,8 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informacje",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefon przez USB"
+   "Phone over USB": "Telefon przez USB",
+   "Updating {0} of {1}": "Aktualizacja {0} z {1}"
   }
  },
  {
@@ -4060,7 +4079,8 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informações",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Celular via USB"
+   "Phone over USB": "Celular via USB",
+   "Updating {0} of {1}": "Atualizando {0} de {1}"
   }
  },
  {
@@ -4263,7 +4283,8 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informações",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telemóvel por USB"
+   "Phone over USB": "Telemóvel por USB",
+   "Updating {0} of {1}": "A atualizar {0} de {1}"
   }
  },
  {
@@ -4466,7 +4487,8 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informații",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefon prin USB"
+   "Phone over USB": "Telefon prin USB",
+   "Updating {0} of {1}": "Se actualizează {0} din {1}"
   }
  },
  {
@@ -4669,7 +4691,8 @@ module.exports = [
    "May cause CarPlay issues": "Возможны проблемы с CarPlay",
    "On the iPhone, turn on Maximize Compatibility": "На iPhone включите «Максимальная совместимость»",
    "This network is 5 GHz only: CarPlay audio may drop": "Эта сеть только 5 ГГц: звук CarPlay может прерываться",
-   "Phone over USB": "Телефон через USB"
+   "Phone over USB": "Телефон через USB",
+   "Updating {0} of {1}": "Обновление {0} из {1}"
   }
  },
  {
@@ -4872,7 +4895,8 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informácie",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefón cez USB"
+   "Phone over USB": "Telefón cez USB",
+   "Updating {0} of {1}": "Aktualizácia {0} z {1}"
   }
  },
  {
@@ -5075,7 +5099,8 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Informacije",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefon prek USB"
+   "Phone over USB": "Telefon prek USB",
+   "Updating {0} of {1}": "Posodabljanje {0} od {1}"
   }
  },
  {
@@ -5278,7 +5303,8 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Information",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Telefon via USB"
+   "Phone over USB": "Telefon via USB",
+   "Updating {0} of {1}": "Uppdaterar {0} av {1}"
   }
  },
  {
@@ -5481,7 +5507,8 @@ module.exports = [
    "Internet": "อินเทอร์เน็ต",
    "Information": "ข้อมูล",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "โทรศัพท์ผ่าน USB"
+   "Phone over USB": "โทรศัพท์ผ่าน USB",
+   "Updating {0} of {1}": "กำลังอัปเดต {0} จาก {1}"
   }
  },
  {
@@ -5684,7 +5711,8 @@ module.exports = [
    "Internet": "İnternet",
    "Information": "Bilgi",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "USB üzerinden telefon"
+   "Phone over USB": "USB üzerinden telefon",
+   "Updating {0} of {1}": "Güncelleniyor {0}/{1}"
   }
  },
  {
@@ -5887,7 +5915,8 @@ module.exports = [
    "May cause CarPlay issues": "Можливі проблеми з CarPlay",
    "On the iPhone, turn on Maximize Compatibility": "На iPhone увімкніть «Максимальна сумісність»",
    "This network is 5 GHz only: CarPlay audio may drop": "Ця мережа лише 5 ГГц: звук CarPlay може перериватися",
-   "Phone over USB": "Телефон через USB"
+   "Phone over USB": "Телефон через USB",
+   "Updating {0} of {1}": "Оновлення {0} з {1}"
   }
  },
  {
@@ -6090,7 +6119,8 @@ module.exports = [
    "Internet": "Internet",
    "Information": "Thông tin",
    "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-   "Phone over USB": "Điện thoại qua USB"
+   "Phone over USB": "Điện thoại qua USB",
+   "Updating {0} of {1}": "Đang cập nhật {0}/{1}"
   }
  },
  {
@@ -6295,7 +6325,8 @@ module.exports = [
    "new build": "新构建",
    "Phone over USB": "通过 USB 连接手机",
    "Safe mode": "安全启动",
-   "Leave safe mode": "离开安全启动"
+   "Leave safe mode": "离开安全启动",
+   "Updating {0} of {1}": "正在更新 {0}/{1}"
   }
  },
  {
@@ -6500,7 +6531,8 @@ module.exports = [
    "May cause CarPlay issues": "可能導致 CarPlay 出現問題",
    "On the iPhone, turn on Maximize Compatibility": "請在 iPhone 上開啟「最大相容性」",
    "This network is 5 GHz only: CarPlay audio may drop": "此網路僅支援 5 GHz：CarPlay 音訊可能中斷",
-   "Phone over USB": "透過 USB 使用手機"
+   "Phone over USB": "透過 USB 使用手機",
+   "Updating {0} of {1}": "正在更新 {0}/{1}"
   }
  }
 ];

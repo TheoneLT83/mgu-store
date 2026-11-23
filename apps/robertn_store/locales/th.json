@@ -197,6 +197,7 @@
     "Internet": "อินเทอร์เน็ต",
     "Information": "ข้อมูล",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-    "Phone over USB": "โทรศัพท์ผ่าน USB"
+    "Phone over USB": "โทรศัพท์ผ่าน USB",
+    "Updating {0} of {1}": "กำลังอัปเดต {0} จาก {1}"
   }
 }

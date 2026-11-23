@@ -199,6 +199,7 @@
     "new build": "新构建",
     "Phone over USB": "通过 USB 连接手机",
     "Safe mode": "安全启动",
-    "Leave safe mode": "离开安全启动"
+    "Leave safe mode": "离开安全启动",
+    "Updating {0} of {1}": "正在更新 {0}/{1}"
   }
 }

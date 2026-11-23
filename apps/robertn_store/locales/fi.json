@@ -197,6 +197,7 @@
     "Internet": "Internet",
     "Information": "Tiedot",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-    "Phone over USB": "Puhelin USB:n kautta"
+    "Phone over USB": "Puhelin USB:n kautta",
+    "Updating {0} of {1}": "Päivitetään {0}/{1}"
   }
 }

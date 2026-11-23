@@ -197,6 +197,7 @@
     "Internet": "İnternet",
     "Information": "Bilgi",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-    "Phone over USB": "USB üzerinden telefon"
+    "Phone over USB": "USB üzerinden telefon",
+    "Updating {0} of {1}": "Güncelleniyor {0}/{1}"
   }
 }

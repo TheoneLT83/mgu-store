@@ -197,6 +197,7 @@
     "Internet": "Internet",
     "Information": "Thông tin",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-    "Phone over USB": "Điện thoại qua USB"
+    "Phone over USB": "Điện thoại qua USB",
+    "Updating {0} of {1}": "Đang cập nhật {0}/{1}"
   }
 }

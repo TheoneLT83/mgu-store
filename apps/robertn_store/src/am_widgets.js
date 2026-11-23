@@ -171,20 +171,20 @@ function tabCells(b, o) {
     return { n, gap, cw: (b.w - gap * (n - 1)) / n };
 }
 
-/** Tabs in the iDrive 7 look, as the kit's header has its page tabs (gauges.js header): names in capitals, the
- * selected one lit from below with a line of the selection colour, thin separators, a light line along the bottom. */
+/** Tabs in the iDrive 7 look, as the kits' choice bars have them (gauges.js segment): one dark rounded bar, the chosen
+ * part filled in the selection colour with a soft glow, names in capitals. */
 function tabs7(cv, t, b, o) {
-    const items = list(o.items), sz = o.size || Math.round(b.h * 0.34), { cw } = tabCells(b, o), S = t.sel || t.accent;
-    cv.fillRect(b.x, b.y + b.h - 2, b.w, 2, withAlpha('#ffffff', 0.22));
+    const items = list(o.items), sz = o.size || Math.round(b.h * 0.34), S = t.sel || t.accent, p = Math.max(3, Math.round(b.h * 0.08));
+    const r = Math.min(12, b.h / 2), cw = (b.w - 2 * p) / Math.max(1, items.length);
+    cv.roundRect(b.x, b.y, b.w, b.h, r, withAlpha('#000000', 0.45));
+    cv.strokeRoundRect(b.x, b.y, b.w, b.h, r, 1, withAlpha('#ffffff', 0.1));
     items.forEach((s, i) => {
-        const x = b.x + i * cw, on = i === (o.sel | 0);
+        const x = b.x + p + i * cw, on = i === (o.sel | 0), y = b.y + p, h = b.h - 2 * p;
         if (on) {
-            cv.gradientRect(x, b.y, cw, b.h, [[0, withAlpha(S, 0)], [1, withAlpha(S, 0.25)]]);
-            cv.fillRect(x, b.y + b.h - 5, cw, 5, S);
+            cv.roundRect(x - 3, y - 3, cw + 6, h + 6, r - 1, withAlpha(S, 0.18));
+            cv.roundRect(x, y, cw, h, r - 3, S);
         }
-        cv.text(String(s).toUpperCase(), x + cw / 2, b.y + b.h / 2 + sz * 0.36, sz, on ? t.selText || '#ffffff' : t.dim,
-            { align: 'center', font: 'bold', spacing: 2 });
-        if (i < items.length - 1) cv.fillRect(x + cw, b.y + b.h * 0.28, 1, b.h * 0.44, withAlpha('#ffffff', 0.14));
+        cv.text(String(s).toUpperCase(), x + cw / 2, y + h / 2 + sz * 0.36, sz, on ? '#ffffff' : t.dim, { align: 'center', font: 'bold', spacing: 2 });
     });
 }
 

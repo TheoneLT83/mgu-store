@@ -197,6 +197,7 @@
     "Internet": "Internet",
     "Information": "Információ",
     "iDrive 7,iDrive 8": "iDrive 7,iDrive 8",
-    "Phone over USB": "Telefon USB-n keresztül"
+    "Phone over USB": "Telefon USB-n keresztül",
+    "Updating {0} of {1}": "Frissítés: {0}/{1}"
   }
 }
