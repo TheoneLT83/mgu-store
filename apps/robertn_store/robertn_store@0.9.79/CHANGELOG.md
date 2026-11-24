@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.79
+
+The full-screen iDrive 7 look: the Store page's status line starts after the Online pill as drawn, so a longer word
+(Checking, or a translation) no longer runs into it.
+
 ## 0.9.78
 
 - A press or a controller turn the Store acts on is said to the renderer even where the picture stays as it was (a

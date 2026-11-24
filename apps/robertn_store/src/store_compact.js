@@ -125,7 +125,7 @@ function compact(W, H0, look, opts) {
         el('filter', 'tabs', X, M + 4, 500, 58, { items: 'All,Apps,Tools', sel: 0, style: 'chips', size: 21 }),
         // the status line right after Online (its pill, not its box), smaller rather than cut where Restart now takes room
         el('online', 'chips', X + 516, M + 9, 150, 48, { items: '', align: 'left' }),
-        text('subtitle', X + 516 + 150 + 12, M + 14, LW - 516 - 150 - 12, 24, '', 21, 'label', DIM, { after: 'online', shrink: true }),
+        text('subtitle', X + 516 + 150 + 12, M + 14, LW - 516 - 150 - 12, 24, '', 21, 'label', DIM, { after: 'online', afterDrawn: true, shrink: true }),
         button('restartNow', dx - 20 - 250, M + 4, 250, 58, 'Restart now', 'primary', 19,
             { vicon: 'refresh', color: AMBER, hidden: true, shift: { subtitle: [0, -264] } }),
         button('safeModeOff', dx - 20 - 320, M + 4, 320, 58, 'Leave safe mode', 'primary', 20,

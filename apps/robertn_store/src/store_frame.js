@@ -188,6 +188,14 @@ function translated(opts) {
  * it starts while they have none). A shown component with opts.shift ({ name: [dx,
  * dw] }) moves those components right by dx and widens them by dw; one with opts.ifHidden ({ name, dy, dh }) moves
  * down by dy and grows by dh while that one is hidden (a panel's button taking the place of one not shown). */
+/* Where shown chips end as drawn (a longer word, as Checking or a translation, past their box), left aligned: for
+ * opts.afterDrawn. */
+function chipsEnd(c) {
+    if (c.opts.align === 'right') return c.x + c.w;
+    const boxes = chipBoxes(measure, { x: c.x, y: c.y, w: c.w, h: c.h }, c.opts, true);
+    return boxes.length ? boxes[boxes.length - 1].x + boxes[boxes.length - 1].w : c.x;
+}
+
 function screenOf(v, scroll, layout) {
     const def = (layout || SCREENS).screens.find((s) => s.name === v.screen);
     const components = def.components.map((c) => {
@@ -219,7 +227,7 @@ function screenOf(v, scroll, layout) {
         // after a shown text: the end of its text; after shown chips: the end of their box (none: where they start)
         const a = c.opts.after && (out.find((o) => o.name === c.opts.after) || placed.find((o) => o.name === c.opts.after));
         const end = !a || a.opts.hidden ? 0 : a.opts.text ? a.x + measure.textWidth(a.opts.text, a.opts.size, { font: a.opts.font }) + AFTER_GAP
-            : Array.isArray(a.opts.items) ? (a.opts.items.length ? a.x + a.w + AFTER_GAP : a.x) : 0;
+            : Array.isArray(a.opts.items) ? (a.opts.items.length ? (c.opts.afterDrawn ? Math.max(a.x + a.w, chipsEnd(a)) : a.x + a.w) + AFTER_GAP : a.x) : 0;
         out.push(end > c.x ? Object.assign({}, c, { x: Math.round(end), w: Math.max(0, c.w - Math.round(end - c.x)) }) : c);
     });
     // head: the full-screen layout's title strip, filled only as far as the header (am_gpu.js record)
