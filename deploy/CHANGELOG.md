@@ -1,5 +1,13 @@
 # Deploy tool changelog
 
+## 0.8.33
+
+robertnisipeanu/mgu-store's 0.8.29 and 0.8.30 with this repository's 0.8.32:
+- A start with MainApp's files, app-privacy and the deploy tool as they were when the provisioning fallback's copy was built binds that copy without building and checking it again; any change builds it again first.
+- An update installed while the version it replaces still waits for its check at the next start keeps the version before that, which passed its check, as the one to go back to, for that check and for Undo update.
+- On iDrive 8, a start with the provisioning files, the app list and the app manager's folders as at the last start skips listing our apps again.
+- On iDrive 7, the deploy tool's status run brings an older provisioning fallback boot unit up to date, so its changes apply from the next start without waiting for an app install.
+
 ## 0.8.32
 
 robertnisipeanu/mgu-store's 0.8.28 with this repository's 0.8.31:
