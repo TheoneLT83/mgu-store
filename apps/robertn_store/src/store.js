@@ -107,6 +107,7 @@ const OWN_ID = 'robertn_store';
 const OWN_ICON = path.join(__dirname, '..', 'rhmiData', 'variantGroups', 'Common', 'images', 'store_icon.png');
 const PRESS_DEDUPE_MS = 400;
 const HIDE_SETTLE_MS = 800;
+const HISTORY_WAIT_MS = 1500;          // the Store page's panel: its card's history asked for once shown this long
 const WEB_URL_POLL_MS = 1000;           // web-url re-read while Phone access is open and on
 const ROW_KEY = 2;                      // a press's row in a raw userEvent's parameterMap
 const VALUE_KEY = 0;                    // a focus event's value
@@ -256,6 +257,9 @@ class Store extends OnlineApp {
         this._typing = null;            // the drawn keyboard's page up: { page, resolve, under (the page it took the place of) }
         this._uplinkNote = null;        // the refusal of the last Wi-Fi or preferred-connection request
         this._history = null;           // the open app page's update history ({ id, status, items }, the updater's history answer)
+        this._historyKept = new Map();  // id -> its history answered ok, for the Store page's panel
+        this._historyWant = null;       // the panel's card whose history is to be asked for (HISTORY_WAIT_MS)
+        this._historyTimer = null;
         this._proxyNote = null;         // why the last proxy change was refused
         this._removeNote = null;        // the updater's refusal of the last Remove: { id, error, by }
         this._qr = { login: { key: null, file: null, chain: Promise.resolve() },
@@ -268,11 +272,32 @@ class Store extends OnlineApp {
             log: logger,
             model: () => this._drawnModel(),
             act: (act) => this._act(act),
-            // the Store page's panel: the picked card's history, once per card
+            // the Store page's panel: the picked card's history - one asked for once it has been shown HISTORY_WAIT_MS
+            // (not each card passed over), while nothing installs and no check runs; an answer kept for the session
             history: (id) => {
                 if (this._history && this._history.id === id) return;
-                this._history = { id, status: 'loading', items: [] };
-                this._send({ op: 'history', id });
+                const kept = this._historyKept.get(id);
+                if (kept) {
+                    this._history = kept;
+                    this._render();
+                    return;
+                }
+                if (this._historyWant === id) return;
+                this._historyWant = id;
+                clearTimeout(this._historyTimer);
+                const ask = () => {
+                    const st = this._st;
+                    if (this._historyWant !== id) return;
+                    if (st && (st.busy || (st.catalog && st.catalog.checking))) {
+                        this._historyTimer = setTimeout(ask, HISTORY_WAIT_MS);
+                        return;
+                    }
+                    this._historyWant = null;
+                    this._history = { id, status: 'loading', items: [] };
+                    this._send({ op: 'history', id });
+                    this._render();
+                };
+                this._historyTimer = setTimeout(ask, HISTORY_WAIT_MS);
             },
             set: (name, text) => this._set(name, 'Text', text, 'Text'),
             show: (name, on) => this._show(name, on),
@@ -317,6 +342,7 @@ class Store extends OnlineApp {
         this._client.on('history', (answer) => {
             if (this._history && answer.id === this._history.id) {
                 this._history = { id: answer.id, status: answer.status, items: Array.isArray(answer.items) ? answer.items : [] };
+                if (answer.status === 'ok') this._historyKept.set(answer.id, this._history);
                 this._render();
             }
         });
