@@ -1076,6 +1076,12 @@ const IMPORTED = 'imported';
 // the repository whose own installer (deploy/mgu-app-install.sh) the deploy tool recognises
 const IDRIVE7_REPO = 'theonelt83/idrive7-apps';
 
+/* A GitHub repo's source id: <owner>_<repo>, lowercased, any other
+ * character an id has not as - (a GitHub owner has no _). */
+function repoId(repo) {
+    return String(repo).toLowerCase().replace('/', '_').replace(/[^a-z0-9_-]/g, '-');
+}
+
 /* entry as it installs under id, its own id as listedId (Updater.place). */
 function under(entry, id) {
     return Object.assign({}, entry, { id, listedId: entry.id, artifact: Object.assign({}, entry.artifact, { name: `${id}@${entry.version}.tgz` }) });
@@ -1475,10 +1481,27 @@ class Updater {
         } catch (e) { /* asked again at the next start */ }
     }
 
-    /* A source id from want (a repo's name) when it is free, else s-<random>. */
-    freeSourceId(want) {
-        const taken = (id) => this.stored.some((s) => s.id === id);
+    /* A source's id: the id a removed source of the same repo or URL (from)
+     * had, so what it installed is its own again; else want when no source
+     * and no installed component's origin has it; else s-<random>. */
+    freeSourceId(want, from) {
+        const same = String(from).toLowerCase();
+        const was = Object.keys(this.origins).map((c) => this.origins[c])
+            .find((o) => typeof o.removed === 'string' && o.removed.toLowerCase() === same && !this.stored.some((s) => s.id === o.source));
+        if (was) {
+            return was.source;
+        }
+        const taken = (id) => this.stored.some((s) => s.id === id) || Object.keys(this.origins).some((c) => this.origins[c].source === id);
         return want && ID.test(want) && !taken(want) ? want : `s-${crypto.randomBytes(2).toString('hex')}`;
+    }
+
+    /* The origins kept from a removed source of def's id are def's again. */
+    reclaimOrigins(def) {
+        const kept = Object.keys(this.origins).filter((c) => this.origins[c].source === def.id && this.origins[c].removed);
+        kept.forEach((c) => delete this.origins[c].removed);
+        if (kept.length) {
+            this.saveOrigins();
+        }
     }
 
     /* The default sources (default_sources: <owner>/<repo>[:<channel>] ...),
@@ -1505,7 +1528,7 @@ class Updater {
             const i = w.indexOf(':');
             const repo = i < 0 ? w : w.slice(0, i);
             if (!list.some((s) => s.type === 'github' && s.repo.toLowerCase() === repo.toLowerCase())) {
-                const def = { id: this.freeSourceId(repo.split('/')[1] && repo.split('/')[1].toLowerCase()), type: 'github', repo };
+                const def = { id: this.freeSourceId(repoId(repo), repo), type: 'github', repo };
                 if (i >= 0) {
                     def.channel = w.slice(i + 1);
                 }
@@ -1529,6 +1552,7 @@ class Updater {
             return;
         }
         defs.forEach((def) => {
+            this.reclaimOrigins(def);
             this.addRuntime(def);
             console.log(`source ${def.id}: added as a default source (${sourcesLib.label(def)}${def.channel ? `, ${def.channel}` : ''})`);
         });
@@ -1591,18 +1615,23 @@ class Updater {
     /* The origin a source stands for: a stick folder mgu-install.js
      * usb-repo wrote from a stored source (its copyOf, mgu-copy.json:
      * github:<owner>/<repo> or the catalog's URL) stands for that source;
-     * any other source for itself. */
+     * a folder mgu-repo/<name> without one for the stored source <name>, or
+     * the only stored GitHub source of repo <name>; any other source for
+     * itself. */
     originOf(id) {
         const rt = this.src.get(id);
         const copy = rt && rt.def.type === 'usb' && rt.copyOf ? rt.copyOf.toLowerCase() : null;
         const def = copy && this.stored.find((d) => (d.type === 'github' ? `github:${d.repo}` : d.url || '').toLowerCase() === copy);
         const folder = !copy && /^usb:[^/]*\/mgu-repo\/([^/]+)$/.exec(id);
-        return def ? def.id : folder && this.stored.some((d) => d.id === folder[1]) ? folder[1] : id;
+        const named = folder ? this.stored.filter((d) => d.type === 'github' && d.repo.split('/')[1].toLowerCase() === folder[1]) : [];
+        return def ? def.id : folder && this.stored.some((d) => d.id === folder[1]) ? folder[1] : named.length === 1 ? named[0].id : id;
     }
 
+    /* A source's repo or URL, also once it is removed (its id when unknown). */
     sourceLabel(id) {
         const def = this.defs().find((d) => d.id === id);
-        return def ? sourcesLib.label(def) : id;
+        const gone = !def && Object.keys(this.origins).map((c) => this.origins[c]).find((o) => o.source === id && typeof o.removed === 'string');
+        return def ? sourcesLib.label(def) : gone ? gone.removed : id;
     }
 
     /* The origin that updates an installed id whose own origin lists it no
@@ -1961,6 +1990,8 @@ class Updater {
                 revision: entry.revision || null,
                 // the id its source lists, when the row's id is another
                 listedId: entry.listedId || null,
+                // its source's repo or URL, also once that source is removed
+                from: row.source ? this.sourceLabel(row.source) : null,
                 // the id it is, or would be, installed under
                 installAs: entry.installAs || entry.id,
                 // why it cannot be installed: another origin's component has its id
@@ -4189,13 +4220,13 @@ class Updater {
             if (this.stored.some((s) => s.type === 'github' && s.repo.toLowerCase() === req.repo.toLowerCase())) {
                 return `${req.repo} is already a source`;
             }
-            def = { id: this.freeSourceId(req.repo.split('/')[1].toLowerCase()), type: 'github', repo: req.repo };
+            def = { id: this.freeSourceId(repoId(req.repo), req.repo), type: 'github', repo: req.repo };
             if (req.channel) {
                 def.channel = req.channel;
             }
         } else if (req.type === 'https') {
             try {
-                def = sourcesLib.checkStored({ id: this.freeSourceId(want || null), type: 'https', url: req.url });
+                def = sourcesLib.checkStored({ id: this.freeSourceId(want || null, req.url), type: 'https', url: req.url });
             } catch (e) {
                 return 'url must be https://';
             }
@@ -4206,6 +4237,7 @@ class Updater {
             return 'type must be github or https';
         }
         this.saveSources(this.stored.concat([def]));
+        this.reclaimOrigins(def);
         this.addRuntime(def);
         console.log(`source ${def.id}: added (${sourcesLib.label(def)}${def.channel ? `, ${def.channel}` : ''})`);
         this.checkSource(def.id);
@@ -4298,10 +4330,12 @@ class Updater {
         rmIfThere(this.cacheFile(id));
         rmIfThere(this.checkedFile(id));
         cp.execFileSync('rm', ['-rf', path.join(this.ctx.cacheDir, id)]);
-        // what it installed keeps it as its origin: no other source updates that
+        // what it installed keeps it as its origin, with the repo or URL it was (removed): no other source updates that
         Object.keys(this.origins).forEach((c) => {
             if (this.origins[c].source === id && !this.installedOf(c)) {
                 delete this.origins[c];
+            } else if (this.origins[c].source === id) {
+                this.origins[c].removed = sourcesLib.label(def);
             }
         });
         this.saveOrigins();
@@ -4963,6 +4997,6 @@ if (require.main === module) {
     cli(process.argv.slice(2));
 }
 
-module.exports = { Updater, Fetcher, loadConf, installedApp, installedTool, fileLog, logToFile,
+module.exports = { Updater, repoId, Fetcher, loadConf, installedApp, installedTool, fileLog, logToFile,
     // tests: a stand-in phone page
     _setWeb: (w) => { web = w; } };

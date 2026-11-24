@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.75
+
+An app whose source was removed names that source's repo (robertnisipeanu/mgu-store's 0.9.43, with updater 0.8.59).
+
 ## 0.9.74
 
 The full-screen iDrive 7 look bigger: the Store and Installed pages' cards in two columns, taller and closer together,
