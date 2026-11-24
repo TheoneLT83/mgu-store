@@ -1,5 +1,10 @@
 # mgu-uplink changelog
 
+## 0.7.16
+
+robertnisipeanu/mgu-store's 0.7.15 with this repository's 0.7.15:
+- The uplink runs in the head unit's slice for standard services, so it does not take CPU time ahead of the HMI.
+
 ## 0.7.15
 
 robertnisipeanu/mgu-store's 0.7.14 with this repository's 0.7.14:

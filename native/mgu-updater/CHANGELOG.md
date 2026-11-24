@@ -1,5 +1,10 @@
 # Updater changelog
 
+## 0.8.61
+
+robertnisipeanu/mgu-store's 0.8.60 with this repository's 0.8.60:
+- The updater runs in the head unit's slice for standard services, so it does not take CPU time ahead of the HMI.
+
 ## 0.8.60
 
 robertnisipeanu/mgu-store's 0.8.58 and 0.8.59 with this repository's 0.8.59:
