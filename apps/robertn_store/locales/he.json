@@ -210,6 +210,8 @@
     "Checks automatically when online": "בודק אוטומטית כשיש חיבור",
     "Updating…": "מעדכן…",
     "Queue": "תור",
-    "Restart to finish": "הפעל מחדש לסיום"
+    "Restart to finish": "הפעל מחדש לסיום",
+    "Automatic updates": "עדכונים אוטומטיים",
+    "In the background, one at a time": "ברקע, אחד בכל פעם"
   }
 }

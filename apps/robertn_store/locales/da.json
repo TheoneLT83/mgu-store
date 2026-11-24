@@ -210,6 +210,8 @@
     "Checks automatically when online": "Tjekker automatisk, når online",
     "Updating…": "Opdaterer…",
     "Queue": "Kø",
-    "Restart to finish": "Genstart for at afslutte"
+    "Restart to finish": "Genstart for at afslutte",
+    "Automatic updates": "Automatiske opdateringer",
+    "In the background, one at a time": "I baggrunden, én ad gangen"
   }
 }

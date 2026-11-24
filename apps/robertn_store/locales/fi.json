@@ -210,6 +210,8 @@
     "Checks automatically when online": "Tarkistaa automaattisesti verkossa",
     "Updating…": "Päivitetään…",
     "Queue": "Jono",
-    "Restart to finish": "Viimeistele käynnistämällä uudelleen"
+    "Restart to finish": "Viimeistele käynnistämällä uudelleen",
+    "Automatic updates": "Automaattiset päivitykset",
+    "In the background, one at a time": "Taustalla, yksi kerrallaan"
   }
 }

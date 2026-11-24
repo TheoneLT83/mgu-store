@@ -210,6 +210,8 @@
     "Checks automatically when online": "Tự kiểm tra khi trực tuyến",
     "Updating…": "Đang cập nhật…",
     "Queue": "Hàng đợi",
-    "Restart to finish": "Khởi động lại để hoàn tất"
+    "Restart to finish": "Khởi động lại để hoàn tất",
+    "Automatic updates": "Cập nhật tự động",
+    "In the background, one at a time": "Chạy nền, từng cái một"
   }
 }

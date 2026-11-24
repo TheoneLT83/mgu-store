@@ -30,10 +30,14 @@ const DRAW = {
         if (!o.wrap && isNum(o.bar)) {
             // a text with a progress bar after it (the Installed page: every update running now)
             const tw = cv.text(W.fit(cv, o.text, b.w, o.size, o.font), b.x, b.y + o.size * 0.8, o.size, c, { font: o.font });
-            const bx = b.x + (typeof tw === 'number' ? tw : measureW(cv, o.text, o.size, o.font)) + o.size * 1.2, bw = Math.min(b.x + b.w - bx, o.size * 22);
+            const bx = !o.text ? b.x : b.x + (typeof tw === 'number' ? tw : measureW(cv, o.text, o.size, o.font)) + o.size * 1.2, bw = Math.min(b.x + b.w - bx, o.size * 22);
             if (bw < o.size * 4) return null;
-            const ls = W.shrink(cv, String(o.barText || ''), bw, Math.round(o.size * 0.78), 'bold'), bh = Math.max(4, Math.round(o.size * 0.28));
-            cv.text(W.fit(cv, String(o.barText || ''), bw, ls, 'bold'), bx, b.y + ls * 0.8, ls, t.text, { font: 'bold' });
+            // too long even small: its middle parts (the component's name) left out before it is cut
+            let bt = String(o.barText || '');
+            const parts = bt.split(' · '), least = Math.round(o.size * 0.78 * 0.55);
+            while (parts.length > 2 && measureW(cv, bt, least, 'bold') > bw) { parts.splice(parts.length - 2, 1); bt = parts.join(' · '); }
+            const ls = W.shrink(cv, bt, bw, Math.round(o.size * 0.78), 'bold', 0.55), bh = Math.max(4, Math.round(o.size * 0.28));
+            cv.text(W.fit(cv, bt, bw, ls, 'bold'), bx, b.y + ls * 0.8, ls, t.text, { font: 'bold' });
             cv.roundRect(bx, b.y + o.size * 1.05, bw, bh, bh / 2, withAlpha('#ffffff', 0.12));
             cv.roundRect(bx, b.y + o.size * 1.05, Math.max(bh, bw * Math.max(0, Math.min(1, o.bar))), bh, bh / 2, '#3d9bff');
             return null;

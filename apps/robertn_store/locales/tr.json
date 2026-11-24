@@ -210,6 +210,8 @@
     "Checks automatically when online": "Çevrimiçiyken otomatik denetler",
     "Updating…": "Güncelleniyor…",
     "Queue": "Sıra",
-    "Restart to finish": "Bitirmek için yeniden başlat"
+    "Restart to finish": "Bitirmek için yeniden başlat",
+    "Automatic updates": "Otomatik güncellemeler",
+    "In the background, one at a time": "Arka planda, tek tek"
   }
 }

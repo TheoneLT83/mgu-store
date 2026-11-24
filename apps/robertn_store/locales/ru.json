@@ -210,6 +210,8 @@
     "Checks automatically when online": "Проверяет автоматически при подключении",
     "Updating…": "Обновление…",
     "Queue": "Очередь",
-    "Restart to finish": "Перезапустите для завершения"
+    "Restart to finish": "Перезапустите для завершения",
+    "Automatic updates": "Автообновления",
+    "In the background, one at a time": "В фоне, по одному"
   }
 }

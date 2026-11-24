@@ -210,6 +210,8 @@
     "Checks automatically when online": "オンライン時に自動確認",
     "Updating…": "更新中…",
     "Queue": "待機中",
-    "Restart to finish": "再起動して完了"
+    "Restart to finish": "再起動して完了",
+    "Automatic updates": "自動アップデート",
+    "In the background, one at a time": "バックグラウンドで更新"
   }
 }

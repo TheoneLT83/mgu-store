@@ -210,6 +210,8 @@
     "Checks automatically when online": "Prüft automatisch, wenn online",
     "Updating…": "Wird aktualisiert…",
     "Queue": "Warteschlange",
-    "Restart to finish": "Zum Abschließen neu starten"
+    "Restart to finish": "Zum Abschließen neu starten",
+    "Automatic updates": "Automatische Updates",
+    "In the background, one at a time": "Im Hintergrund, eins nach dem anderen"
   }
 }

@@ -227,7 +227,7 @@ function screenOf(v, scroll, layout) {
         // after a shown text: the end of its text; after shown chips: the end of their box (none: where they start)
         const a = c.opts.after && (out.find((o) => o.name === c.opts.after) || placed.find((o) => o.name === c.opts.after));
         const end = !a || a.opts.hidden ? 0 : a.opts.text ? a.x + measure.textWidth(a.opts.text, a.opts.size, { font: a.opts.font }) + AFTER_GAP
-            : Array.isArray(a.opts.items) ? (a.opts.items.length ? (c.opts.afterDrawn ? Math.max(a.x + a.w, chipsEnd(a)) : a.x + a.w) + AFTER_GAP : a.x) : 0;
+            : Array.isArray(a.opts.items) ? (a.opts.items.length ? (c.opts.afterDrawn ? chipsEnd(a) : a.x + a.w) + AFTER_GAP : a.x) : 0;
         out.push(end > c.x ? Object.assign({}, c, { x: Math.round(end), w: Math.max(0, c.w - Math.round(end - c.x)) }) : c);
     });
     // head: the full-screen layout's title strip, filled only as far as the header (am_gpu.js record)

@@ -109,7 +109,8 @@ const OWN_ICON = path.join(__dirname, '..', 'rhmiData', 'variantGroups', 'Common
 const UPDATER_AWAY_MS = 20000;
 const PRESS_DEDUPE_MS = 400;
 const HIDE_SETTLE_MS = 800;
-const HISTORY_WAIT_MS = 1500;          // the Store page's panel: its card's history asked for once shown this long
+const HISTORY_WAIT_MS = 1500;
+         // the Store page's panel: its card's history asked for once shown this long
 const WEB_URL_POLL_MS = 1000;           // web-url re-read while Phone access is open and on
 const ROW_KEY = 2;                      // a press's row in a raw userEvent's parameterMap
 const VALUE_KEY = 0;                    // a focus event's value
@@ -883,6 +884,7 @@ class Store extends OnlineApp {
         case 'sign-in': this._signIn(); break;
         case 'sign-in-cancel': this._cancelSignIn(); break;
         case 'phone': this._togglePhone(); break;
+        case 'auto-update': if (this._connected && this._st) this._privileged({ op: 'auto-update', on: this._st.autoUpdate === false }); break;
         case 'pick': this._pickChannel(act.channel); break;
         case 'pick-retry': this._probe(); break;
         case 'pick-add-token': this._pickAddToken(); break;

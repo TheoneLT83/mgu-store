@@ -214,7 +214,9 @@ module.exports = [
    "Checks automatically when online": "يتحقق تلقائيًا عند الاتصال",
    "Updating…": "جارٍ التحديث…",
    "Queue": "قائمة الانتظار",
-   "Restart to finish": "أعد التشغيل للإنهاء"
+   "Restart to finish": "أعد التشغيل للإنهاء",
+   "Automatic updates": "التحديثات التلقائية",
+   "In the background, one at a time": "في الخلفية، واحدًا تلو الآخر"
   }
  },
  {
@@ -430,7 +432,9 @@ module.exports = [
    "Checks automatically when online": "Kontroluje automaticky při připojení",
    "Updating…": "Aktualizace…",
    "Queue": "Fronta",
-   "Restart to finish": "Dokončit restartem"
+   "Restart to finish": "Dokončit restartem",
+   "Automatic updates": "Automatické aktualizace",
+   "In the background, one at a time": "Na pozadí, jedna po druhé"
   }
  },
  {
@@ -646,7 +650,9 @@ module.exports = [
    "Checks automatically when online": "Tjekker automatisk, når online",
    "Updating…": "Opdaterer…",
    "Queue": "Kø",
-   "Restart to finish": "Genstart for at afslutte"
+   "Restart to finish": "Genstart for at afslutte",
+   "Automatic updates": "Automatiske opdateringer",
+   "In the background, one at a time": "I baggrunden, én ad gangen"
   }
  },
  {
@@ -862,7 +868,9 @@ module.exports = [
    "Checks automatically when online": "Prüft automatisch, wenn online",
    "Updating…": "Wird aktualisiert…",
    "Queue": "Warteschlange",
-   "Restart to finish": "Zum Abschließen neu starten"
+   "Restart to finish": "Zum Abschließen neu starten",
+   "Automatic updates": "Automatische Updates",
+   "In the background, one at a time": "Im Hintergrund, eins nach dem anderen"
   }
  },
  {
@@ -1078,7 +1086,9 @@ module.exports = [
    "Checks automatically when online": "Ελέγχει αυτόματα όταν υπάρχει σύνδεση",
    "Updating…": "Ενημέρωση…",
    "Queue": "Ουρά",
-   "Restart to finish": "Επανεκκίνηση για ολοκλήρωση"
+   "Restart to finish": "Επανεκκίνηση για ολοκλήρωση",
+   "Automatic updates": "Αυτόματες ενημερώσεις",
+   "In the background, one at a time": "Στο παρασκήνιο, μία τη φορά"
   }
  },
  {
@@ -1294,7 +1304,9 @@ module.exports = [
    "Checks automatically when online": "Comprueba automáticamente con conexión",
    "Updating…": "Actualizando…",
    "Queue": "Cola",
-   "Restart to finish": "Reinicia para terminar"
+   "Restart to finish": "Reinicia para terminar",
+   "Automatic updates": "Actualizaciones automáticas",
+   "In the background, one at a time": "En segundo plano, de una en una"
   }
  },
  {
@@ -1510,7 +1522,9 @@ module.exports = [
    "Checks automatically when online": "Comprueba automáticamente con conexión",
    "Updating…": "Actualizando…",
    "Queue": "Cola",
-   "Restart to finish": "Reinicia para terminar"
+   "Restart to finish": "Reinicia para terminar",
+   "Automatic updates": "Actualizaciones automáticas",
+   "In the background, one at a time": "En segundo plano, de una en una"
   }
  },
  {
@@ -1726,7 +1740,9 @@ module.exports = [
    "Checks automatically when online": "Tarkistaa automaattisesti verkossa",
    "Updating…": "Päivitetään…",
    "Queue": "Jono",
-   "Restart to finish": "Viimeistele käynnistämällä uudelleen"
+   "Restart to finish": "Viimeistele käynnistämällä uudelleen",
+   "Automatic updates": "Automaattiset päivitykset",
+   "In the background, one at a time": "Taustalla, yksi kerrallaan"
   }
  },
  {
@@ -1942,7 +1958,9 @@ module.exports = [
    "Checks automatically when online": "Vérifie automatiquement en ligne",
    "Updating…": "Mise à jour…",
    "Queue": "File d'attente",
-   "Restart to finish": "Redémarrer pour terminer"
+   "Restart to finish": "Redémarrer pour terminer",
+   "Automatic updates": "Mises à jour automatiques",
+   "In the background, one at a time": "En arrière-plan, une à la fois"
   }
  },
  {
@@ -2158,7 +2176,9 @@ module.exports = [
    "Checks automatically when online": "Vérifie automatiquement en ligne",
    "Updating…": "Mise à jour…",
    "Queue": "File d'attente",
-   "Restart to finish": "Redémarrer pour terminer"
+   "Restart to finish": "Redémarrer pour terminer",
+   "Automatic updates": "Mises à jour automatiques",
+   "In the background, one at a time": "En arrière-plan, une à la fois"
   }
  },
  {
@@ -2374,7 +2394,9 @@ module.exports = [
    "Checks automatically when online": "בודק אוטומטית כשיש חיבור",
    "Updating…": "מעדכן…",
    "Queue": "תור",
-   "Restart to finish": "הפעל מחדש לסיום"
+   "Restart to finish": "הפעל מחדש לסיום",
+   "Automatic updates": "עדכונים אוטומטיים",
+   "In the background, one at a time": "ברקע, אחד בכל פעם"
   }
  },
  {
@@ -2590,7 +2612,9 @@ module.exports = [
    "Checks automatically when online": "Online automatikusan ellenőriz",
    "Updating…": "Frissítés…",
    "Queue": "Sor",
-   "Restart to finish": "Újraindítás a befejezéshez"
+   "Restart to finish": "Újraindítás a befejezéshez",
+   "Automatic updates": "Automatikus frissítések",
+   "In the background, one at a time": "A háttérben, egyenként"
   }
  },
  {
@@ -2806,7 +2830,9 @@ module.exports = [
    "Checks automatically when online": "Memeriksa otomatis saat online",
    "Updating…": "Memperbarui…",
    "Queue": "Antrean",
-   "Restart to finish": "Mulai ulang untuk menyelesaikan"
+   "Restart to finish": "Mulai ulang untuk menyelesaikan",
+   "Automatic updates": "Pembaruan otomatis",
+   "In the background, one at a time": "Di latar belakang, satu per satu"
   }
  },
  {
@@ -3022,7 +3048,9 @@ module.exports = [
    "Checks automatically when online": "Controlla automaticamente quando online",
    "Updating…": "Aggiornamento…",
    "Queue": "Coda",
-   "Restart to finish": "Riavvia per completare"
+   "Restart to finish": "Riavvia per completare",
+   "Automatic updates": "Aggiornamenti automatici",
+   "In the background, one at a time": "In background, uno alla volta"
   }
  },
  {
@@ -3238,7 +3266,9 @@ module.exports = [
    "Checks automatically when online": "オンライン時に自動確認",
    "Updating…": "更新中…",
    "Queue": "待機中",
-   "Restart to finish": "再起動して完了"
+   "Restart to finish": "再起動して完了",
+   "Automatic updates": "自動アップデート",
+   "In the background, one at a time": "バックグラウンドで更新"
   }
  },
  {
@@ -3454,7 +3484,9 @@ module.exports = [
    "Checks automatically when online": "온라인일 때 자동 확인",
    "Updating…": "업데이트 중…",
    "Queue": "대기 중",
-   "Restart to finish": "재시작하여 완료"
+   "Restart to finish": "재시작하여 완료",
+   "Automatic updates": "자동 업데이트",
+   "In the background, one at a time": "백그라운드에서 업데이트"
   }
  },
  {
@@ -3670,7 +3702,9 @@ module.exports = [
    "Checks automatically when online": "Sjekker automatisk når tilkoblet",
    "Updating…": "Oppdaterer…",
    "Queue": "Kø",
-   "Restart to finish": "Start på nytt for å fullføre"
+   "Restart to finish": "Start på nytt for å fullføre",
+   "Automatic updates": "Automatiske oppdateringer",
+   "In the background, one at a time": "I bakgrunnen, én om gangen"
   }
  },
  {
@@ -3888,7 +3922,9 @@ module.exports = [
    "Checks automatically when online": "Controleert automatisch als online",
    "Updating…": "Bijwerken…",
    "Queue": "Wachtrij",
-   "Restart to finish": "Herstart om af te ronden"
+   "Restart to finish": "Herstart om af te ronden",
+   "Automatic updates": "Automatische updates",
+   "In the background, one at a time": "Op de achtergrond, één tegelijk"
   }
  },
  {
@@ -4104,7 +4140,9 @@ module.exports = [
    "Checks automatically when online": "Sprawdza automatycznie po połączeniu",
    "Updating…": "Aktualizowanie…",
    "Queue": "Kolejka",
-   "Restart to finish": "Uruchom ponownie, aby zakończyć"
+   "Restart to finish": "Uruchom ponownie, aby zakończyć",
+   "Automatic updates": "Automatyczne aktualizacje",
+   "In the background, one at a time": "W tle, po jednej"
   }
  },
  {
@@ -4320,7 +4358,9 @@ module.exports = [
    "Checks automatically when online": "Verifica automaticamente quando online",
    "Updating…": "Atualizando…",
    "Queue": "Fila",
-   "Restart to finish": "Reinicie para concluir"
+   "Restart to finish": "Reinicie para concluir",
+   "Automatic updates": "Atualizações automáticas",
+   "In the background, one at a time": "Em segundo plano, uma por vez"
   }
  },
  {
@@ -4536,7 +4576,9 @@ module.exports = [
    "Checks automatically when online": "Verifica automaticamente quando online",
    "Updating…": "A atualizar…",
    "Queue": "Fila",
-   "Restart to finish": "Reinicie para concluir"
+   "Restart to finish": "Reinicie para concluir",
+   "Automatic updates": "Atualizações automáticas",
+   "In the background, one at a time": "Em segundo plano, uma de cada vez"
   }
  },
  {
@@ -4752,7 +4794,9 @@ module.exports = [
    "Checks automatically when online": "Verifică automat când e online",
    "Updating…": "Se actualizează…",
    "Queue": "Coadă",
-   "Restart to finish": "Repornește pentru a termina"
+   "Restart to finish": "Repornește pentru a termina",
+   "Automatic updates": "Actualizări automate",
+   "In the background, one at a time": "În fundal, câte una"
   }
  },
  {
@@ -4968,7 +5012,9 @@ module.exports = [
    "Checks automatically when online": "Проверяет автоматически при подключении",
    "Updating…": "Обновление…",
    "Queue": "Очередь",
-   "Restart to finish": "Перезапустите для завершения"
+   "Restart to finish": "Перезапустите для завершения",
+   "Automatic updates": "Автообновления",
+   "In the background, one at a time": "В фоне, по одному"
   }
  },
  {
@@ -5184,7 +5230,9 @@ module.exports = [
    "Checks automatically when online": "Kontroluje automaticky po pripojení",
    "Updating…": "Aktualizuje sa…",
    "Queue": "Front",
-   "Restart to finish": "Dokončiť reštartom"
+   "Restart to finish": "Dokončiť reštartom",
+   "Automatic updates": "Automatické aktualizácie",
+   "In the background, one at a time": "Na pozadí, jedna po druhej"
   }
  },
  {
@@ -5400,7 +5448,9 @@ module.exports = [
    "Checks automatically when online": "Samodejno preveri ob povezavi",
    "Updating…": "Posodabljanje…",
    "Queue": "Čakalna vrsta",
-   "Restart to finish": "Znova zaženi za dokončanje"
+   "Restart to finish": "Znova zaženi za dokončanje",
+   "Automatic updates": "Samodejne posodobitve",
+   "In the background, one at a time": "V ozadju, ena za drugo"
   }
  },
  {
@@ -5616,7 +5666,9 @@ module.exports = [
    "Checks automatically when online": "Kontrollerar automatiskt när online",
    "Updating…": "Uppdaterar…",
    "Queue": "Kö",
-   "Restart to finish": "Starta om för att slutföra"
+   "Restart to finish": "Starta om för att slutföra",
+   "Automatic updates": "Automatiska uppdateringar",
+   "In the background, one at a time": "I bakgrunden, en i taget"
   }
  },
  {
@@ -5832,7 +5884,9 @@ module.exports = [
    "Checks automatically when online": "ตรวจสอบอัตโนมัติเมื่อออนไลน์",
    "Updating…": "กำลังอัปเดต…",
    "Queue": "คิว",
-   "Restart to finish": "รีสตาร์ทเพื่อเสร็จสิ้น"
+   "Restart to finish": "รีสตาร์ทเพื่อเสร็จสิ้น",
+   "Automatic updates": "อัปเดตอัตโนมัติ",
+   "In the background, one at a time": "ในเบื้องหลัง ทีละรายการ"
   }
  },
  {
@@ -6048,7 +6102,9 @@ module.exports = [
    "Checks automatically when online": "Çevrimiçiyken otomatik denetler",
    "Updating…": "Güncelleniyor…",
    "Queue": "Sıra",
-   "Restart to finish": "Bitirmek için yeniden başlat"
+   "Restart to finish": "Bitirmek için yeniden başlat",
+   "Automatic updates": "Otomatik güncellemeler",
+   "In the background, one at a time": "Arka planda, tek tek"
   }
  },
  {
@@ -6264,7 +6320,9 @@ module.exports = [
    "Checks automatically when online": "Перевіряє автоматично при підключенні",
    "Updating…": "Оновлення…",
    "Queue": "Черга",
-   "Restart to finish": "Перезапустіть для завершення"
+   "Restart to finish": "Перезапустіть для завершення",
+   "Automatic updates": "Автооновлення",
+   "In the background, one at a time": "У фоні, по одному"
   }
  },
  {
@@ -6480,7 +6538,9 @@ module.exports = [
    "Checks automatically when online": "Tự kiểm tra khi trực tuyến",
    "Updating…": "Đang cập nhật…",
    "Queue": "Hàng đợi",
-   "Restart to finish": "Khởi động lại để hoàn tất"
+   "Restart to finish": "Khởi động lại để hoàn tất",
+   "Automatic updates": "Cập nhật tự động",
+   "In the background, one at a time": "Chạy nền, từng cái một"
   }
  },
  {
@@ -6698,7 +6758,9 @@ module.exports = [
    "Checks automatically when online": "联网时自动检查",
    "Updating…": "正在更新…",
    "Queue": "等待中",
-   "Restart to finish": "重启以完成"
+   "Restart to finish": "重启以完成",
+   "Automatic updates": "自动更新",
+   "In the background, one at a time": "在后台更新"
   }
  },
  {
@@ -6916,7 +6978,9 @@ module.exports = [
    "Checks automatically when online": "連線時自動檢查",
    "Updating…": "正在更新…",
    "Queue": "等待中",
-   "Restart to finish": "重新啟動以完成"
+   "Restart to finish": "重新啟動以完成",
+   "Automatic updates": "自動更新",
+   "In the background, one at a time": "在後面更新"
   }
  }
 ];

@@ -175,7 +175,7 @@ function compact(W, H0, look, opts) {
     const installed = screen('installed', 1, [
         title('Installed'),
         el('online', 'chips', X + 150, M + 8, ONLINE_W, 48, { items: '', align: 'left', after: 'title' }),
-        text('subtitle', X + 240, M + 24, CW - 240 - 380, 30, '', 23, 'label', DIM, { after: 'online' }),
+        text('subtitle', X + 240, M + 24, CW - 240 - 380, 30, '', 23, 'label', DIM, { after: 'online', afterDrawn: true }),
         button('updateAll', R - HB_W, M, HB_W, HB_H, '', 'primary', 25, { vicon: 'arrowDown', color: BLUE }),
         restartNow(R - HB_W, { updateAll: [-HB_W - 16, 0], subtitle: [0, -HB_W - 16] }),
         label('appsLabel', X, HEAD + 8, 'APPS'),

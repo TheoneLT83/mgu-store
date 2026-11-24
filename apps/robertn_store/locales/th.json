@@ -210,6 +210,8 @@
     "Checks automatically when online": "ตรวจสอบอัตโนมัติเมื่อออนไลน์",
     "Updating…": "กำลังอัปเดต…",
     "Queue": "คิว",
-    "Restart to finish": "รีสตาร์ทเพื่อเสร็จสิ้น"
+    "Restart to finish": "รีสตาร์ทเพื่อเสร็จสิ้น",
+    "Automatic updates": "อัปเดตอัตโนมัติ",
+    "In the background, one at a time": "ในเบื้องหลัง ทีละรายการ"
   }
 }

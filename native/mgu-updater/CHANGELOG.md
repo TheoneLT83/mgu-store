@@ -2,6 +2,7 @@
 
 ## 0.8.61
 
+- Automatic updates (state/auto-update.json, on unless the Store's Settings turns them off; op auto-update): online and with nothing to do, one update at a time, 2 min apart, the updater's own and the Store's last, their downloads and installs at nice 10. An install the owner asks for puts what runs back to normal priority.
 robertnisipeanu/mgu-store's 0.8.60 with this repository's 0.8.60:
 - The updater runs in the head unit's slice for standard services, so it does not take CPU time ahead of the HMI.
 

@@ -1005,6 +1005,7 @@ class Fetcher {
         return new Promise((resolve, reject) => {
             const child = cp.spawn(process.execPath, [path.join(HERE, 'fetch.js')],
                 this.asFetchUid({ stdio: ['pipe', 'pipe', 'inherit'], cwd: dir, env: {} }));
+            gentle(child, this.lowPriority);
             let result = null;
             let buf = '';
             child.stdout.setEncoding('utf8');
@@ -1102,13 +1103,36 @@ function repoId(repo) {
     return String(repo).toLowerCase().replace('/', '_').replace(/[^a-z0-9_-]/g, '-');
 }
 
+/* Automatic updates (state/auto-update.json { on }, on unless turned off): while the updater is online with nothing
+ * to do, driving or not, one update at a time, AUTO_GAP_MS apart, the updater's own and the Store's last; their
+ * downloads and installs at a low CPU priority (AUTO_NICE), so the HMI keeps its speed. One the owner asks for (Install,
+ * Update all) puts what runs back to normal priority at once. */
+const AUTO_GAP_MS = 120000;
+const AUTO_TICK_MS = 60000;
+const AUTO_NICE = 10;
+const lowChildren = new Set();
+function gentle(child, low) {
+    if (!low || !child || !child.pid) return;
+    try { require('os').setPriority(child.pid, AUTO_NICE); lowChildren.add(child.pid); } catch (e) { /* as it is */ }
+    child.on('exit', () => lowChildren.delete(child.pid));
+}
+/* The owner asked for an install: what runs in the background at normal priority again (the deploy tool's process
+ * group, its build and copy steps included). */
+function hurry() {
+    lowChildren.forEach((pid) => {
+        try { process.kill(-pid, 0); require('child_process').execFile('renice', ['-n', '0', '-g', String(pid)], () => {}); } catch (e) { /* not a group */ }
+        try { require('os').setPriority(pid, 0); } catch (e) { /* gone */ }
+    });
+    lowChildren.clear();
+}
+
 /* entry as it installs under id, its own id as listedId (Updater.place). */
 function under(entry, id) {
     return Object.assign({}, entry, { id, listedId: entry.id, artifact: Object.assign({}, entry.artifact, { name: `${id}@${entry.version}.tgz` }) });
 }
 // Requests only the Store and the phone page may make (they hold the secret);
 // the phone page offers no restart (web.js).
-const PRIVILEGED = ['reboot', 'safe-mode-off', 'uninstall', 'rollback', 'setup', 'source-add', 'source-probe', 'source-remove', 'login-start', 'login-cancel', 'token-add', 'token-remove', 'web', 'logs',
+const PRIVILEGED = ['auto-update', 'reboot', 'safe-mode-off', 'uninstall', 'rollback', 'setup', 'source-add', 'source-probe', 'source-remove', 'login-start', 'login-cancel', 'token-add', 'token-remove', 'web', 'logs',
     'uplink-prefer', 'usb-phone', 'wifi-enable', 'wifi-5ghz', 'wifi-scan', 'wifi-connect', 'wifi-forget', 'proxy-set'];
 // requests that change what is installed
 const CHANGES = ['install', 'uninstall', 'rollback', 'setup'];
@@ -2131,6 +2155,8 @@ class Updater {
             // one of them each, for clients that know a single provider (the Store 0.7)
             providers: Object.keys(this.providers).reduce((o, cap) => Object.assign(o, { [cap]: this.providers[cap][0] }), {}),
             online: readLease(this.conf).online,
+            // automatic updates while parked (on unless turned off)
+            autoUpdate: this.autoUpdateOn(),
             // the uplink's device, preferred group and Wi-Fi (its status.json), null while it does not run
             uplink: this.uplink,
             privacy: this.privacy,
@@ -2752,7 +2778,7 @@ class Updater {
      * is not for this head unit is refused. auto: the updater's own repair
      * (repairStale), which leaves the deploy tool's safe mode on; an install
      * asked for (the Store, the phone page) of one queued so leaves it. */
-    request(id, auto) {
+    request(id, auto, background) {
         if (this.rebooting) {
             return 'the head unit is restarting';
         }
@@ -2793,7 +2819,7 @@ class Updater {
             return null;
         }
         const items = steps.map((s) => Object.assign({ op: 'install', id: s.id, source: s.source }, s.listed ? { listed: s.listed } : {},
-            s.unit ? { unit: s.unit } : {}, auto ? { auto: true } : {}));
+            s.unit ? { unit: s.unit } : {}, auto ? { auto: true } : {}, background ? { background: true } : {}));
         const refused = items.map((i) => this.conflict(i)).filter(Boolean)[0];
         if (refused) {
             return refused;
@@ -3346,6 +3372,9 @@ class Updater {
             i = Math.max(0, this.queue.findIndex((q) => !needsSelf(q)));
         }
         const item = this.queue.splice(i, 1)[0];
+        // an automatic update's work at a low CPU priority (its download and the deploy tool)
+        this.lowPriority = !!(item && item.background);
+        if (this.fetcher) this.fetcher.lowPriority = this.lowPriority;
         if (!item) {
             this.busy = null;
             this.changed();
@@ -4202,6 +4231,7 @@ class Updater {
         const limit = limitS >= 120 ? `${Math.round(limitS / 60)} min` : `${limitS} s`;
         return new Promise((resolve) => {
             const child = cp.spawn(this.conf.deploy, args, { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+            gentle(child, this.lowPriority);
             let timedOut = false;
             let kill = null;
             const group = (sig) => {
@@ -4763,7 +4793,8 @@ class Updater {
         switch (req.op) {
         case 'status': return null;
         case 'check': this.check(); return null;
-        case 'install': return typeof req.id === 'string' ? this.request(req.id) : 'install needs an id';
+        case 'auto-update': return this.setAutoUpdate(req.on === true);
+        case 'install': return typeof req.id === 'string' ? this.requestNow(req.id) : 'install needs an id';
         case 'reboot': return this.reboot(this.authorized(req.secret));
         case 'safe-mode-off': return this.leaveSafeMode();
         case 'uninstall': return typeof req.id === 'string' ? this.requestUninstall(req.id, req.tools) : 'uninstall needs an id';
@@ -4789,6 +4820,63 @@ class Updater {
         case 'wifi-connect':
         case 'wifi-forget': return this.uplinkRequest(req, reply);
         default: return `unknown op ${req.op}`;
+        }
+    }
+
+    autoUpdateOn() {
+        if (this.autoUpdateCache === undefined) {
+            try {
+                this.autoUpdateCache = readJson(path.join(this.conf.state_dir, 'auto-update.json')).on !== false;
+            } catch (e) {
+                this.autoUpdateCache = true;
+            }
+        }
+        return this.autoUpdateCache;
+    }
+
+    setAutoUpdate(on) {
+        try {
+            writeAtomic(path.join(this.conf.state_dir, 'auto-update.json'), JSON.stringify({ on }) + '\n');
+        } catch (e) {
+            return `auto-update: ${e.message}`;
+        }
+        this.autoUpdateCache = on;
+        console.log(`automatic updates: ${on ? 'on' : 'off'}`);
+        this.changed();
+        return null;
+    }
+
+    /* An install the owner asked for: what runs and what waits at normal priority from now on. */
+    requestNow(id) {
+        if (this.lowPriority) {
+            console.log(`${id} asked for: the automatic update in progress at normal priority`);
+        }
+        this.lowPriority = false;
+        if (this.fetcher) this.fetcher.lowPriority = false;
+        this.queue.forEach((q) => delete q.background);
+        hurry();
+        return this.request(id);
+    }
+
+    /* One automatic update when its time has come (see AUTO_GAP_MS). */
+    autoUpdateTick() {
+        const now = Date.now();
+        if (!this.autoUpdateOn() || this.busy || this.queue.length || this.rebooting || !readLease(this.conf).online
+            || now - (this.autoAt || 0) < AUTO_GAP_MS) {
+            return;
+        }
+        const st = this.state();
+        const ups = (st.components || []).filter((c) => c.status === 'update' && !c.error && !c.blocked && !c.queued && c.compat !== 'no');
+        const last = (c) => (c.id === SELF ? 1 : c.id === this.conf.store_app ? 2 : 0);
+        const c = ups.sort((a, b) => last(a) - last(b))[0];
+        if (!c) {
+            return;
+        }
+        this.autoAt = now;
+        console.log(`automatic update: ${c.id} ${c.installed || ''} -> ${c.version}`);
+        const refused = this.request(c.id, false, true);
+        if (refused) {
+            console.log(`automatic update of ${c.id}: ${refused}`);
         }
     }
 
@@ -5021,6 +5109,7 @@ class Updater {
             let wasOnline = readLease(this.conf).online;
             setTimeout(() => this.check(), Number(this.conf.first_check_s) * 1000);
             setInterval(() => this.check(), Number(this.conf.check_interval_s) * 1000);
+            setInterval(() => this.autoUpdateTick(), AUTO_TICK_MS);
             // a Store update on trial: its process looked for each second
             setInterval(() => this.watchStoreTrial(), 1000);
             // USB media: nothing announces a stick, so the mounts are looked

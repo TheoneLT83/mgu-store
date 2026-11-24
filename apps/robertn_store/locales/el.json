@@ -210,6 +210,8 @@
     "Checks automatically when online": "Ελέγχει αυτόματα όταν υπάρχει σύνδεση",
     "Updating…": "Ενημέρωση…",
     "Queue": "Ουρά",
-    "Restart to finish": "Επανεκκίνηση για ολοκλήρωση"
+    "Restart to finish": "Επανεκκίνηση για ολοκλήρωση",
+    "Automatic updates": "Αυτόματες ενημερώσεις",
+    "In the background, one at a time": "Στο παρασκήνιο, μία τη φορά"
   }
 }

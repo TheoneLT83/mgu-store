@@ -2,6 +2,11 @@
 
 ## 0.9.79
 
+Settings has Automatic updates (on unless turned off): the updater installs updates by itself, one at a time and at a
+low priority so the iDrive stays quick, driving or not; Install or Update all puts it back to full speed at once.
+The iDrive 7 look's Installed page: while updates run, their progress takes the counts' place, so the line no longer
+runs under the Online pill. A failure's code is no longer INSTALL for an error that names the head unit.
+
 The full-screen iDrive 7 look: the Store page's status line starts after the Online pill as drawn, so a longer word
 (Checking, or a translation) no longer runs into it.
 

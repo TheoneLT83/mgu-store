@@ -210,6 +210,8 @@
     "Checks automatically when online": "Kontroluje automaticky při připojení",
     "Updating…": "Aktualizace…",
     "Queue": "Fronta",
-    "Restart to finish": "Dokončit restartem"
+    "Restart to finish": "Dokončit restartem",
+    "Automatic updates": "Automatické aktualizace",
+    "In the background, one at a time": "Na pozadí, jedna po druhé"
   }
 }

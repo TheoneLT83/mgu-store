@@ -210,6 +210,8 @@
     "Checks automatically when online": "Kontrollerar automatiskt när online",
     "Updating…": "Uppdaterar…",
     "Queue": "Kö",
-    "Restart to finish": "Starta om för att slutföra"
+    "Restart to finish": "Starta om för att slutföra",
+    "Automatic updates": "Automatiska uppdateringar",
+    "In the background, one at a time": "I bakgrunden, en i taget"
   }
 }

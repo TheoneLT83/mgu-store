@@ -210,6 +210,8 @@
     "Checks automatically when online": "Online automatikusan ellenőriz",
     "Updating…": "Frissítés…",
     "Queue": "Sor",
-    "Restart to finish": "Újraindítás a befejezéshez"
+    "Restart to finish": "Újraindítás a befejezéshez",
+    "Automatic updates": "Automatikus frissítések",
+    "In the background, one at a time": "A háttérben, egyenként"
   }
 }

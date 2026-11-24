@@ -210,6 +210,8 @@
     "Checks automatically when online": "온라인일 때 자동 확인",
     "Updating…": "업데이트 중…",
     "Queue": "대기 중",
-    "Restart to finish": "재시작하여 완료"
+    "Restart to finish": "재시작하여 완료",
+    "Automatic updates": "자동 업데이트",
+    "In the background, one at a time": "백그라운드에서 업데이트"
   }
 }

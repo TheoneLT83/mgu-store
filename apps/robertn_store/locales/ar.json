@@ -210,6 +210,8 @@
     "Checks automatically when online": "يتحقق تلقائيًا عند الاتصال",
     "Updating…": "جارٍ التحديث…",
     "Queue": "قائمة الانتظار",
-    "Restart to finish": "أعد التشغيل للإنهاء"
+    "Restart to finish": "أعد التشغيل للإنهاء",
+    "Automatic updates": "التحديثات التلقائية",
+    "In the background, one at a time": "في الخلفية، واحدًا تلو الآخر"
   }
 }

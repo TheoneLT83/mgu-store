@@ -212,6 +212,8 @@
     "Checks automatically when online": "Controleert automatisch als online",
     "Updating…": "Bijwerken…",
     "Queue": "Wachtrij",
-    "Restart to finish": "Herstart om af te ronden"
+    "Restart to finish": "Herstart om af te ronden",
+    "Automatic updates": "Automatische updates",
+    "In the background, one at a time": "Op de achtergrond, één tegelijk"
   }
 }

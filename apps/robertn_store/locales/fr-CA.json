@@ -210,6 +210,8 @@
     "Checks automatically when online": "Vérifie automatiquement en ligne",
     "Updating…": "Mise à jour…",
     "Queue": "File d'attente",
-    "Restart to finish": "Redémarrer pour terminer"
+    "Restart to finish": "Redémarrer pour terminer",
+    "Automatic updates": "Mises à jour automatiques",
+    "In the background, one at a time": "En arrière-plan, une à la fois"
   }
 }

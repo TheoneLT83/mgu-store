@@ -210,6 +210,8 @@
     "Checks automatically when online": "Verifică automat când e online",
     "Updating…": "Se actualizează…",
     "Queue": "Coadă",
-    "Restart to finish": "Repornește pentru a termina"
+    "Restart to finish": "Repornește pentru a termina",
+    "Automatic updates": "Actualizări automate",
+    "In the background, one at a time": "În fundal, câte una"
   }
 }

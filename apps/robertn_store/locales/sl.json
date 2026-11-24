@@ -210,6 +210,8 @@
     "Checks automatically when online": "Samodejno preveri ob povezavi",
     "Updating…": "Posodabljanje…",
     "Queue": "Čakalna vrsta",
-    "Restart to finish": "Znova zaženi za dokončanje"
+    "Restart to finish": "Znova zaženi za dokončanje",
+    "Automatic updates": "Samodejne posodobitve",
+    "In the background, one at a time": "V ozadju, ena za drugo"
   }
 }

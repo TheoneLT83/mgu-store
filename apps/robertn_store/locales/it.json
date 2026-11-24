@@ -210,6 +210,8 @@
     "Checks automatically when online": "Controlla automaticamente quando online",
     "Updating…": "Aggiornamento…",
     "Queue": "Coda",
-    "Restart to finish": "Riavvia per completare"
+    "Restart to finish": "Riavvia per completare",
+    "Automatic updates": "Aggiornamenti automatici",
+    "In the background, one at a time": "In background, uno alla volta"
   }
 }

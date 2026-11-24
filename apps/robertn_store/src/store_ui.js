@@ -257,13 +257,14 @@ function cardButton(c, busy) {
 }
 /* A failure's kind, for its code: what part of an install it stopped in, from the updater's words. */
 function errorCode(e) {
-    const s = String(e || '').toLowerCase();
+    // ("head unit" names the car's screen, not a step of the install)
+    const s = String(e || '').toLowerCase().replace(/head[- ]unit/g, '');
     return /download|fetch|http|network|timed out|socket|dns|tls|connect/.test(s) ? 'DOWNLOAD'
         : /space|enospc|disk|\bfull\b/.test(s) ? 'SPACE'
             : /verif|hash|checksum|signature|integrity/.test(s) ? 'VERIFY'
                 : /build|sdk|link|compile|exit \d/.test(s) ? 'BUILD'
                     : /requires|needs .* (newer|first)|depend/.test(s) ? 'REQUIRES'
-                        : /deploy|install|unit|service|systemd/.test(s) ? 'INSTALL' : 'FAILED';
+                        : /deploy|install|\bunit\b|service|systemd/.test(s) ? 'INSTALL' : 'FAILED';
 }
 /* The message in a panel's progress place (the full-screen iDrive 7 look): being offline (also over a download that waits
  * for it: offline set, the progress then hidden), a failure's code (keep: the page keeps its reason), or why it cannot be
@@ -397,8 +398,9 @@ function installedView(m) {
     return {
         title: { text: tr("Installed") },
         online: onlineChip(m),
-        subtitle: Object.assign({ text: `${plural(apps.length, 'app')} · ${plural(tools.length, 'tool')}` },
-            (() => { const r = runProgress(m, busy); return r ? { bar: r.value, barText: r.text } : { bar: null, barText: '' }; })()),
+        // while updates run, their progress in the counts' place (the counts come back after)
+        subtitle: (() => { const r = runProgress(m, busy); return r ? { text: '', bar: r.value, barText: r.text }
+            : { text: `${plural(apps.length, 'app')} · ${plural(tools.length, 'tool')}`, bar: null, barText: '' }; })(),
         // updates: install them all; none: look for new ones (the updater's check, as Settings' Check now)
         updateAll: updates.length ? button(tr("Install all updates ({0})", updates.length), { do: 'update-all' }, { vicon: 'arrowDown', style: 'primary', color: BLUE })
             : m.connected && m.st ? button(m.noNet ? tr("No internet") : m.st.catalog && m.st.catalog.checking ? tr("Checking") : tr("Check for updates"), { do: 'check' },
@@ -497,6 +499,11 @@ function settingsView(m) {
     if (m.connected && st) {
         access.push({ id: 'internet', title: 'Internet', sub: st.online ? 'Online' : 'Offline', subColor: st.online ? GREEN : AMBER,
             plain: true, vicon: 'tether', iconColor: 'text', right: 'chevron', act: { do: 'open', page: { name: 'internet' } } });
+    }
+    // automatic updates (an updater that has them): online, one at a time, in the background at a low priority
+    if (m.connected && st && typeof st.autoUpdate === 'boolean') {
+        access.push({ id: 'auto', title: tr("Automatic updates"), sub: st.autoUpdate ? tr("In the background, one at a time") : tr("Off"), plain: true,
+            vicon: 'refresh', iconColor: 'text', right: `toggle:${st.autoUpdate ? 'on' : 'off'}`, act: { do: 'auto-update' } });
     }
     // the preferred connection (and Phone over USB on its page), with an uplink that has Wi-Fi
     const prefer = wifiOf(m) ? { id: 'prefer', title: tr("Preferred connection"), sub: groupLabel(m.st.uplink.preferred || ''), plain: true,

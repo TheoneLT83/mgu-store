@@ -212,6 +212,8 @@
     "Checks automatically when online": "联网时自动检查",
     "Updating…": "正在更新…",
     "Queue": "等待中",
-    "Restart to finish": "重启以完成"
+    "Restart to finish": "重启以完成",
+    "Automatic updates": "自动更新",
+    "In the background, one at a time": "在后台更新"
   }
 }
