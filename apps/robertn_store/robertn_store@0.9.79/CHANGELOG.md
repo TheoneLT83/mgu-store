@@ -5,6 +5,9 @@
 The full-screen iDrive 7 look: the Store page's status line starts after the Online pill as drawn, so a longer word
 (Checking, or a translation) no longer runs into it.
 
+The iDrive controller: Back from the Store's top page by a left tilt no longer stops on an error, and a tilt counts once as
+it starts, held or not (one handler for it, as the Store had two).
+
 ## 0.9.78
 
 - A press or a controller turn the Store acts on is said to the renderer even where the picture stays as it was (a

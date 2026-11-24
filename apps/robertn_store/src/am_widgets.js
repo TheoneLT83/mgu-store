@@ -97,7 +97,8 @@ function surface(cv, t, x, y, w, h, r, sel, acc) {
 
 /** icon + text centred on (cx, cy) */
 function content(cv, cx, cy, ic, text, sz, c, font, w) {
-    const is = ic && CP.has(String(ic).toUpperCase()) ? Math.round(sz * 1.35) : 0, gap = is && text ? sz * 0.4 : 0;
+    // (no HMI icons in the Store: icon() draws none, so an icon takes no room)
+    const is = 0, gap = 0;
     const room = w ? w - is - gap : 0;
     const ts = text && room ? shrink(cv, text, room, sz, font) : sz;
     if (text && room) text = fit(cv, text, room, ts, font);

@@ -989,6 +989,7 @@ function buildPaths(entry) {
  * (Updater.next clears it when the queue is empty): commits' trees (by
  * repo and commit), repo files by their git id, at most BATCH_BYTES, and
  * the last whole repo read, when it unpacked to at most WHOLE_BYTES. */
+const BATCH_BYTES = 64 << 20;          // batchCache: repo files kept by their git id, at most this many bytes
 function batchCache() {
     return {
         trees: new Map(),

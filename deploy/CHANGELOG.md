@@ -1,5 +1,9 @@
 # Deploy tool changelog
 
+## 0.8.34
+
+- One reading of the head unit's uptime: an unreadable one makes the first-start check wait as it should, not at once.
+
 ## 0.8.33
 
 robertnisipeanu/mgu-store's 0.8.29 and 0.8.30 with this repository's 0.8.32:

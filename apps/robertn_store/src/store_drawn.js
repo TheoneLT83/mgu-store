@@ -35,7 +35,7 @@ const fs = require('fs');
 const kit = require('./kit_record.js');
 const png = require('./kit_png.js');
 const { setPicture } = require('./am_widgets.js');
-const { frame, layoutOf, dragOf, dragFrame, hit, placement, toward } = require('./store_frame.js');
+const { frame, layoutOf, dragOf, dragFrame, hit, placement } = require('./store_frame.js');
 const FULL_X = 84;              // the HMI's back arrow column (x 0..84): kept the HMI's, as the idrive7-apps keep it
 
 const DEPTHS = 3;
@@ -1039,9 +1039,10 @@ class Drawn extends EventEmitter {
         this.ccu = Object.assign({}, e, { dir: tilt });
         if (last) {
             this._dial(last.knob, e.knob, e.press && e.press !== last.press && e.seq !== last.seq);
-            if (TILT[e.tilt] && TILT[e.tilt] !== TILT[last.tilt]) {
-                this._tilt(TILT[e.tilt]);
-            }
+        }
+        // a tilt once as it starts (held, its direction is kept until the knob is centred again)
+        if (tilt && tilt !== (last && last.dir)) {
+            this._tilt(tilt);
         }
     }
 
@@ -1090,24 +1091,6 @@ class Drawn extends EventEmitter {
             this.host.act({ do: 'back' });
         } else {
             this.host.closeState(this.hostOf(1));
-        }
-        if (tilt && tilt !== (last && last.dir)) {
-            this._tilt(tilt);
-        }
-    }
-
-    /* A tilt moves the focus to the nearest item that way (with no focus yet,
-     * to the first); left with nothing there closes the page, as BACK does. */
-    _tilt(dir) {
-        if (!this.on_) {
-            return;
-        }
-        const to = this.focus < 0 ? (this.items.length ? 0 : null) : toward(this.items, this.focus, dir);
-        if (to !== null) {
-            this.focus = to;
-            this.render();
-        } else if (dir === 'W') {
-            this.pop();
         }
     }
 

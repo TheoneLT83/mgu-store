@@ -55,7 +55,7 @@ var os = require('os');
 process.umask(0o022);
 
 /* deploy/component.json's version; the release sets both. */
-var VERSION = '0.8.33';
+var VERSION = '0.8.34';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -4126,9 +4126,6 @@ function dropVerify(id) {
     var v = readVerify();
     if (v[id]) { delete v[id]; writeVerify(v); }
 }
-function uptimeS() {
-    try { return parseFloat(fs.readFileSync(path.join(CFG.proc, 'uptime'), 'utf8')); } catch (e) { return Infinity; }
-}
 function dueVerify(v) {
     var boot = bootId();
     return Object.keys(v).filter(function (id) { return v[id].boot !== boot; });
@@ -4140,7 +4137,7 @@ function dueVerify(v) {
 function verifyWait() {
     var due = dueVerify(readVerify());
     if (!due.length || readSafeMode()) return;
-    var wait = CFG.verifyAfterS - uptimeS();
+    var up = uptimeS(), wait = CFG.verifyAfterS - (up === null ? Infinity : up);      // unknown uptime: no wait
     if (wait > 0) { say('checking ' + due.join(', ') + ' once the head unit has been up ' + CFG.verifyAfterS + 's'); sleepMs(wait * 1000); }
 }
 /* verify: at a start after the install, each tool noted in verify.json
