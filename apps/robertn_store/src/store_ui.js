@@ -341,11 +341,10 @@ function storeView(m) {
                 : run ? { text: '', bar: run.value, barText: run.text } : { text: m.connected ? statusLine(st, true) : statusLine(null, false, m.secret), color: DIM, bar: null },
             safeModeOff: safeModeOff(m),
             restartNow: safeModeOff(m).hidden ? restartNow(m) : hidden,
-            grid: { items: list.map((c, i) => Object.assign(tile(m, c, busy, name), {
+            grid: { items: list.map((c) => Object.assign(tile(m, c, busy, name), {
                 act: { do: 'select', id: c.id }, selected: c.id === panelV.selId, btn: cardButton(c, busy), state: '',
                 src: [name(c), c.installed && c.status === 'update' ? `${c.installed} > ${target(c)}` : c.installed || c.version, !c.installed && c.size ? size(c.size) : '']
-                    .filter(Boolean).join(' · '),
-                head: i === 0 ? (m.filter === 'app' ? tr("Apps") : m.filter === 'tool' ? tr("Head-unit tools") : tr("All apps and tools")) : '' })),
+                    .filter(Boolean).join(' · ') })),
             empty: m.connected ? tr("Nothing here") : '' }
         }, panelV);
     }

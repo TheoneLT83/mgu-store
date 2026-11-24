@@ -2,8 +2,8 @@
 
 ## 0.9.74
 
-The full-screen iDrive 7 look bigger: the Store and Installed pages' cards in two columns with larger names, icons and
-buttons, and larger words in their panels. What's new fills the panel down to the buttons, with Full changelog in its
+The full-screen iDrive 7 look bigger: the Store and Installed pages' cards in two columns, taller and closer together,
+with larger names, icons and buttons, and larger words in their panels; the controller's ring around a card fits it. What's new fills the panel down to the buttons, with Full changelog in its
 corner: a source's newest changes, one a line, or a release's notes, cut inside the box.
 
 ## 0.9.73

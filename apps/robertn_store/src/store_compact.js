@@ -113,8 +113,9 @@ function compact(W, H0, look, opts) {
     const DW = 560;                       // the panel's width
     const dx = R - DW;                    // its left edge
     const LW = dx - 20 - X;               // the cards' width
-    const card = (name, y, cols, extra) => el(name, 'appGrid', X - 4, y, LW + 4, B - y, Object.assign({ items: '', cols, tileH: 116, head: 26,
-        cards: true, titleSize: 28, subSize: 20, empty: '' }, extra || {}));
+    // cards 112 px high, 10 apart; Installed's with its parts' headings over each row
+    const card = (name, y, cols, extra) => el(name, 'appGrid', X - 4, y, LW + 4, B - y, Object.assign({ items: '', cols, tileH: 122, head: 0, gap: 10,
+        cards: true, titleSize: 30, subSize: 21, empty: '' }, extra || {}));
     const panel = (name) => el(name, 'rect', dx, M, DW, B - M, { color: '#15171c', radius: 18 });
     const DBTN_H = 64;
     const MSG_Y = B - 2 * DBTN_H - 38 - 100;     // a failure, being offline or the progress: over the buttons
@@ -127,7 +128,7 @@ function compact(W, H0, look, opts) {
             { vicon: 'refresh', color: AMBER, hidden: true, shift: { subtitle: [0, -296] } }),
         button('safeModeOff', dx - 20 - 320, M + 4, 320, 58, 'Leave safe mode', 'primary', 20,
             { vicon: 'unlock', color: BLUE, hidden: true, shift: { subtitle: [0, -336] } }),
-        card('grid', M + 66, 2),
+        card('grid', M + 70, 2),
         panel('dPanel'),
         el('dIcon', 'appIcon', dx + 22, M + 22, 112, 112, { vicon: '', colors: '#3a4352,#232a35' }),
         text('dName', dx + 154, M + 24, DW - 176, 46, '', 38, 'bold'),
@@ -146,7 +147,7 @@ function compact(W, H0, look, opts) {
     ]);
     const RS_H = 92;
     const installedCards = screen('installed', 1, [
-        card('grid', M, 2),
+        card('grid', M, 2, { tileH: 138, head: 22, gap: 4 }),
         panel('iPanel'),
         button('checkAgain', dx + 20, M + 18, 320, 54, 'Check again', 'outline', 19, { vicon: 'refresh' }),
         el('online', 'chips', dx + DW - 20 - ONLINE_W, M + 21, ONLINE_W, 48, { items: '', align: 'right' }),

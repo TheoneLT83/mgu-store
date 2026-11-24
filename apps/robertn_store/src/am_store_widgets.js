@@ -181,6 +181,10 @@ function cardButton(cv, t, it, xr, cy, h, maxW) {
  * third (item.state, in item.stateColor) where it has one, its state's button on the right (item.btn: { text, kind }); a
  * picked one (item.selected) outlined in the selection colour; one downloading a bar along its bottom. o.head px over each
  * row's cards hold a part's heading (item.head, item.headColor: the part's first card); items with blank fill a row. */
+/* A card's size in its cell (o.gap px under it; the last column clear of the scroll bar). */
+function cardBox(g, o, col) {
+    return { w: g.tw - 12 - (col === g.cols - 1 ? 14 : 0), h: g.th - (o.head || 0) - (o.gap == null ? 6 : o.gap) };
+}
 function cardGrid(cv, t, b, o, g) {
     const head = o.head || 0, ts = o.titleSize || 22, ss = o.subSize || 15, S = t.sel || t.accent;
     cv.clip(b.x, b.y, b.w, b.h);
@@ -192,7 +196,7 @@ function cardGrid(cv, t, b, o, g) {
             cv.text(String(a.head).toUpperCase(), x + 12, y + head - 9, hs, hc, { font: 'bold', spacing: 2 });
         }
         if (a.blank) return;
-        const w = g.tw - 12 - (col === g.cols - 1 ? 14 : 0), cy0 = y + head, h = g.th - head - 6, cy = cy0 + h / 2;
+        const { w, h } = cardBox(g, o, col), cy0 = y + head, cy = cy0 + h / 2;
         if (a.selected) {
             cv.card(x, cy0, w, h, 14, [[0, mix('#1a1c22', S, 0.16)], [1, '#16181d']]);
             cv.strokeRoundRect(x, cy0, w, h, 14, 2, S);
@@ -602,4 +606,4 @@ const TRY = {
 };
 
 // (the Store: shown is what a key types, store_frame.js's items)
-module.exports = { DRAW, TRY, appIcon, chip, chipBoxes, visibleIds, keyBoxes, shown, gridView, listView, rightBoxes, navItems, GREEN, BLUE, AMBER };
+module.exports = { cardBox, DRAW, TRY, appIcon, chip, chipBoxes, visibleIds, keyBoxes, shown, gridView, listView, rightBoxes, navItems, GREEN, BLUE, AMBER };

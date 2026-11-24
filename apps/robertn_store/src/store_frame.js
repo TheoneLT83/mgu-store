@@ -33,7 +33,7 @@ const { withAlpha } = require('./kit_canvas.js');
 const { theme: kitTheme } = require('./kit_themes.js');
 const { view, icons } = require('./store_ui.js');
 const { tabCells } = require('./am_widgets.js');
-const { gridView, listView, navItems, rightBoxes, keyBoxes, shown, chipBoxes } = require('./am_store_widgets.js');
+const { cardBox, gridView, listView, navItems, rightBoxes, keyBoxes, shown, chipBoxes } = require('./am_store_widgets.js');
 const { compact } = require('./store_compact.js');
 const fonts = require('./kit_fonts.js');
 const { t } = require('./i18n.js');
@@ -134,8 +134,11 @@ function itemsOf(st, page, look) {
             regions.push({ key, x: b.x, y: b.y, w: b.w, h: b.h, step: g.th, max: g.max });
             g.all.forEach((it, k) => {
                 const row = Math.floor(k / g.cols);
-                const item = { x: b.x + (k % g.cols) * g.tw + 8, y: b.y + (row - g.top) * g.th, w: g.tw - 16, h: g.th - 8, r: 24,
-                    label: it.title, act: it.act, box: b };
+                const col = k % g.cols, card = o.cards && cardBox(g, o, col);
+                // a card: its own box (under its row's heading place); a tile: its cell
+                const item = card ? { x: b.x + col * g.tw + 4, y: b.y + (row - g.top) * g.th + (o.head || 0), w: card.w, h: card.h, r: 14,
+                    label: it.title, act: it.act, box: b }
+                    : { x: b.x + col * g.tw + 8, y: b.y + (row - g.top) * g.th, w: g.tw - 16, h: g.th - 8, r: 24, label: it.title, act: it.act, box: b };
                 if (row < g.top || row + 1 > g.top + g.shown + EPS) {
                     item.reveal = { key, top: row < g.top ? row : row + 1 - g.shown };
                 }
