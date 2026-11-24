@@ -866,7 +866,10 @@ has that group), in a folder only root can write to: at start, one that
 someone else made or can write to is renamed aside
 (`/dev/shm/mgu-updater.untrusted-<time>`) and the folder made afresh. One
 JSON object per line. The daemon sends the full state on connect, after
-each request, and whenever it changes (at most every 250 ms):
+each request, and whenever it changes (at most every 250 ms). A client whose `hello` names a `language` gets each component's
+`texts` in that language and its base language only; one whose `hello` has
+`"progress": true` gets a download's progress as
+`{"type":"progress","busy":{…}}` between states (the state's `busy`):
 
 ```json
 { "type": "state", "updater": { "version": "0.4.0" }, "online": true, "privacy": "patched",
@@ -1016,8 +1019,9 @@ each request, and whenever it changes (at most every 250 ms):
 
 Requests: `{"op":"status"}`, `{"op":"check"}`, `{"op":"install","id"}`
 (with its missing requirements first), from any app.
-`{"op":"hello","id","version"}` (no answer): a client says what it is; the
-Store says it at each connection (below, "The Store's update").
+`{"op":"hello","id","version","language"?,"progress"?}` (no answer): a
+client says what it is, at each connection (below, "The Store's update"); a
+`language` other than the one it named before sends it the state again.
 **Privileged** ones carry `"secret"`:
 
 | Request | Does |

@@ -6871,6 +6871,47 @@ function testCarApps(certs) {
 
 /* ---- run ---------------------------------------------------------------------- */
 
+/* A client whose hello names a language gets that language's texts and
+ * its base language's; one that asks for progress gets a download's
+ * progress on its own; any other client the whole state, every language. */
+function testClientHello() {
+    const { Updater } = require('../js/updater');
+    const texts = { de: { title: 'D' }, pt: { title: 'P' }, 'pt-BR': { title: 'B' }, fr: { title: 'F' } };
+    const client = () => ({ lines: [], write(l) { this.lines.push(JSON.parse(l)); } });
+    const u = Object.assign(Object.create(Updater.prototype), {
+        conf: { store_app: 'robertn_store' }, storeTrial: null, clients: new Set(), said: new WeakMap(),
+        sendTimer: null, progressTimer: null, busy: null,
+        state: () => ({ type: 'state', busy: u.busy, components: [{ id: 'a', texts }, { id: 'b', texts: null }, { id: 'c', texts: { fr: {} } }] })
+    });
+    const plain = client();
+    const store = client();
+    const old = client();
+    [plain, store, old].forEach((c) => u.clients.add(c));
+    u.handle({ op: 'hello', id: 'robertn_store', version: '1.0.0', language: 'pt-BR', progress: true }, null, store);
+    u.handle({ op: 'hello', id: 'robertn_store', version: '0.9.0' }, null, old);
+    ok('hello: a new language gets the state at once, with its texts and its base language\'s',
+        store.lines.length === 1 && JSON.stringify(store.lines[0].components.map((c) => c.texts)) ===
+        JSON.stringify([{ 'pt-BR': { title: 'B' }, pt: { title: 'P' } }, null, null]) && !old.lines.length, JSON.stringify(store.lines));
+    u.busy = { id: 'a', phase: 'download', progress: 1, total: 10 };
+    u.progressed();
+    return sleep(400).then(() => {
+        ok('progress: on its own to a client that asked for it, the state to the others',
+            JSON.stringify(store.lines[1]) === JSON.stringify({ type: 'progress', busy: u.busy }) &&
+            [plain, old].every((c) => c.lines.length === 1 && c.lines[0].type === 'state' && c.lines[0].busy.progress === 1 &&
+                JSON.stringify(c.lines[0].components[0].texts) === JSON.stringify(texts)), JSON.stringify([store.lines, plain.lines]));
+        u.progressed();
+        u.changed();
+        return sleep(400);
+    }).then(() => {
+        ok('progress: a state on its way carries it', store.lines.length === 3 && store.lines[2].type === 'state' && plain.lines.length === 2,
+            JSON.stringify(store.lines.slice(2)));
+        u.handle({ op: 'hello', id: 'robertn_store', version: '1.0.0', language: 'pt-BR', progress: true }, null, store);
+        u.handle({ op: 'hello', id: 'robertn_store', version: '1.0.0', language: 'de', progress: true }, null, store);
+        ok('hello: the same language again sends nothing, another one the state with its texts', store.lines.length === 4 &&
+            JSON.stringify(store.lines[3].components[0].texts) === JSON.stringify({ de: { title: 'D' } }), JSON.stringify(store.lines.slice(3)));
+    });
+}
+
 function main() {
     const certs = makeCerts();
     const pubDir = path.join(T, 'pub');
@@ -6881,6 +6922,7 @@ function main() {
     testFileLog();
     testStoreSwitch();
     return Promise.resolve(testRequiredAlone())
+        .then(() => testClientHello())
         .then(() => testTar())
         .then(() => testDeployTimeout())
         .then(() => testIndexV1Cache().catch((e) => ok('index v1 cache scenario', false, e.stack)))

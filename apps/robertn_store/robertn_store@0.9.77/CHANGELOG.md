@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.77
+
+robertnisipeanu/mgu-store's 0.9.44 and 0.9.45 with this repository's 0.9.76:
+- While the updater is installing or has installs waiting, the list stays on screen when it restarts.
+- The Store asks the updater for the catalog texts of its display language only and for download progress on its own, which keeps its memory use lower during installs.
+
 ## 0.9.76
 
 A page that stays as it is sends the renderer no frames, only a sign each second that the Store is running, so the
