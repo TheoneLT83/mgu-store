@@ -44,6 +44,7 @@ const ICONS_KEPT = 48;                  // decoded pictures kept, the most recen
 const FPS = 60;                         // frames a second at most (mgu-render's fps setting can give another)
 const BUSY_FPS = 15;                    // while an install runs: the CPU is the install's
 const KEEPALIVE_MS = 1000;              // the renderer hides an app silent for 3 s: something at least this often
+const HANDLED_MS = 150;                 // an input acted on said to mgu-render at most this often
 const CLOSED_RESHOW_MS = 700;           // a touch outside that left the page where it was
 const STUCK_MS = 6000;                  // asked to show and off screen this long: the widget screens instead
 const RETRY_MS = 30000;                 // after a picture that showed was taken away: the drawn screens tried again
@@ -891,6 +892,7 @@ class Drawn extends EventEmitter {
         this.timing.trace('touch', ++this.timing.touchesIn, phase);
         const t0 = this.timing.on ? msNow() : 0;
         this._touchEvent(phase, x, y);
+        if (phase !== 'move') this._handled();
         if (t0) { this.timing.touches++; this.timing.touchMs += msNow() - t0; }
     }
 
@@ -1021,7 +1023,17 @@ class Drawn extends EventEmitter {
         }
     }
 
+    /* An input acted on: said to mgu-render (at most every HANDLED_MS), so one that leaves the picture as it was (a
+     * press on a greyed-out button, the card already picked) is not taken for an app deaf to input. */
+    _handled() {
+        const now = Date.now();
+        if (now - (this.handledAt || 0) < HANDLED_MS || !this.gpu.handled) return;
+        this.handledAt = now;
+        this.gpu.handled();
+    }
+
     _ccu(e) {
+        this._handled();
         const last = this.ccu;
         const tilt = tiltOf(e.tilt, last ? last.dir : null);
         this.ccu = Object.assign({}, e, { dir: tilt });

@@ -428,7 +428,11 @@ function installedCards(m, all, busy, name, updates) {
     };
     part(need, tr("Needs attention"), AMBER);
     part(ok, tr("Up to date"), '');
-    const queue = all.filter((c) => (busy && busy.id === c.id) || c.queued);
+    // in the order the updater takes them (mgu-updater next()): the one running, the rest, then the updater's own
+    // update (it restarts the updater), then the Store's (it closes the Store)
+    const lastOf = (c) => (busy && busy.id === c.id ? 0 : c.id === 'mgu-updater' ? 2 : c.id === 'robertn_store' ? 3 : 1);
+    const queue = all.filter((c) => (busy && busy.id === c.id) || c.queued).map((c, i) => [c, i])
+        .sort((a, b) => lastOf(a[0]) - lastOf(b[0]) || a[1] - b[1]).map(([c]) => c);
     const run = runProgress(m, busy);
     const restart = restartNow(m, m.held ? m.held.restart : undefined);
     const checking = !!(m.st && m.st.catalog && m.st.catalog.checking);

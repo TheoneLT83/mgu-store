@@ -38,8 +38,12 @@ const DRAW = {
             cv.roundRect(bx, b.y + o.size * 1.05, Math.max(bh, bw * Math.max(0, Math.min(1, o.bar))), bh, bh / 2, '#3d9bff');
             return null;
         }
-        if (!o.wrap) return cv.text(W.fit(cv, o.text, b.w, o.size, o.font), o.align === 'center' ? b.x + b.w / 2 : o.align === 'right' ? b.x + b.w : b.x,
-            b.y + o.size * 0.8, o.size, c, { font: o.font, align: o.align });
+        if (!o.wrap) {
+            // shrink: a line too long for its box smaller first (to 70 %), then cut
+            const size = o.shrink ? W.shrink(cv, String(o.text || ''), b.w, o.size, o.font, 0.7) : o.size;
+            return cv.text(W.fit(cv, o.text, b.w, size, o.font), o.align === 'center' ? b.x + b.w / 2 : o.align === 'right' ? b.x + b.w : b.x,
+                b.y + o.size * 0.8, size, c, { font: o.font, align: o.align });
+        }
         // wrapped (left aligned): each line of the text a paragraph, as many lines as the box holds; o.lead a first
         // paragraph in o.leadColor
         let y = b.y;

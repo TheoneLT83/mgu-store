@@ -186,7 +186,8 @@ function translated(opts) {
  * scroll. A component with opts.after starts at least AFTER_GAP right of
  * the end of that shown one's text, or of its box when it is chips (where
  * it starts while they have none). A shown component with opts.shift ({ name: [dx,
- * dw] }) moves those components right by dx and widens them by dw. */
+ * dw] }) moves those components right by dx and widens them by dw; one with opts.ifHidden ({ name, dy, dh }) moves
+ * down by dy and grows by dh while that one is hidden (a panel's button taking the place of one not shown). */
 function screenOf(v, scroll, layout) {
     const def = (layout || SCREENS).screens.find((s) => s.name === v.screen);
     const components = def.components.map((c) => {
@@ -200,8 +201,13 @@ function screenOf(v, scroll, layout) {
         return Object.assign({}, c, { opts });
     });
     const shift = Object.assign({}, ...components.filter((c) => c.opts.shift && !c.opts.hidden).map((c) => c.opts.shift));
+    // opts.ifHidden ({ name, dy, dh }): while that one is hidden, this one moves down by dy and grows by dh
+    const hiddenNow = (n) => { const o = components.find((x) => x.name === n); return !o || !!o.opts.hidden; };
     const placed = components.map((c) => (!shift[c.name] ? c
-        : Object.assign({}, c, { x: c.x + shift[c.name][0], w: c.w + shift[c.name][1] })));
+        : Object.assign({}, c, { x: c.x + shift[c.name][0], w: c.w + shift[c.name][1] }))).map((c) => {
+        const f = c.opts.ifHidden;
+        return f && hiddenNow(f.name) ? Object.assign({}, c, { y: c.y + (f.dy || 0), h: c.h + (f.dh || 0) }) : c;
+    });
     const out = [];
     placed.forEach((c0) => {
         let c = c0;

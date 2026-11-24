@@ -187,10 +187,12 @@ function cardBox(g, o, col) {
 }
 function cardGrid(cv, t, b, o, g) {
     const head = o.head || 0, ts = o.titleSize || 22, ss = o.subSize || 15, S = t.sel || t.accent;
-    cv.clip(b.x, b.y, b.w, b.h);
+    cv.clip(b.x, b.y - (head ? 0 : 12), b.w, b.h + (head ? 0 : 12));      // (room for a first row's part tab)
+    let headTab = null;
     g.all.slice(g.first * g.cols, g.end * g.cols).forEach((a, i) => {
         const col = i % g.cols, x = b.x + col * g.tw + 4, y = b.y + (g.first + Math.floor(i / g.cols) - g.top) * g.th;
-        if (a.head) {
+        if (a.head && !head) headTab = { a, x, y };          // over the card: drawn after it
+        else if (a.head) {
             const hs = Math.min(18, Math.max(15, head - 12)), hc = C(t, a.headColor, t.dim);
             cv.roundRect(x, y + head - hs - 9, 4, hs + 2, 2, a.headColor ? hc : S);
             cv.text(String(a.head).toUpperCase(), x + 12, y + head - 9, hs, hc, { font: 'bold', spacing: 2 });
@@ -217,6 +219,15 @@ function cardGrid(cv, t, b, o, g) {
         if (typeof a.progress === 'number' && a.progress >= 0) {
             cv.roundRect(x + 14, cy0 + h - 5, w - 28, 4, 2, withAlpha('#ffffff', 0.1));
             cv.roundRect(x + 14, cy0 + h - 5, Math.max(4, (w - 28) * Math.min(1, a.progress)), 4, 2, BLUE);
+        }
+        // a part's name with no room over its row (head 0): a tab on the top edge of its first card
+        if (headTab) {
+            const hc = C(t, headTab.a.headColor, S), hs = 14, opt = { font: 'bold', spacing: 1.6 };
+            const label = String(headTab.a.head).toUpperCase(), tw = cv.textWidth(label, hs, opt) + 24;
+            cv.roundRect(headTab.x + 18, headTab.y - 11, tw, 22, 11, mix('#15171c', hc, 0.35));
+            cv.strokeRoundRect(headTab.x + 18, headTab.y - 11, tw, 22, 11, 1.5, hc);
+            cv.text(label, headTab.x + 30, headTab.y + 5, hs, '#ffffff', opt);
+            headTab = null;
         }
     });
     cv.noclip();

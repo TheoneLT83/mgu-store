@@ -1,5 +1,9 @@
 # mgu-render changelog
 
+## 0.6.34
+
+- The app client's `handled()` tells mgu-render an input was acted on though the picture stays as it was (the app's claims again), so the app is not taken for deaf to input.
+
 ## 0.6.33
 
 robertnisipeanu/mgu-store's unreleased change with this repository's 0.6.32:

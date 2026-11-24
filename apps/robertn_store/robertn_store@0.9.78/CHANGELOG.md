@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.78
+
+- A press or a controller turn the Store acts on is said to the renderer even where the picture stays as it was (a
+  greyed-out button, the card already picked), so the renderer no longer takes the Store for deaf to input and hands
+  touch and the controller to the HMI for 10 s.
+- The full-screen iDrive 7 look: Installed's cards as close together as the Store page's, each part named by a tab on
+  its first card; the queue in the order it installs (the updater's own update and the Store's last); the panels'
+  words and the queue's rows larger; Install at the panel's foot where there is no Remove; the status line right after
+  Online, smaller rather than cut where Restart now takes room.
+
 ## 0.9.77
 
 robertnisipeanu/mgu-store's 0.9.44 and 0.9.45 with this repository's 0.9.76:
