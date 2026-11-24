@@ -290,9 +290,15 @@ function storePanel(m, list, busy) {
         dDesc: { text: m.connected ? tr("Nothing here") : statusLine(null, false, m.secret) }, dNews: { title: '', text: '' }, dLog: hidden, dMsg: { title: '', text: '' }, dProgress: hidden, dPrimary: hidden, dSecondary: hidden };
     const v = appView(m, { name: 'app', id: c.id }), mine = busy && busy.id === c.id;
     const h = m.history && m.history.id === c.id ? m.history : null, top = h && h.items.length ? h.items[0] : null;
-    const news = top ? { title: `${tr("What's new")} · ${top.rev ? top.title : top.title}`, text: top.rev ? top.date || '' : String(top.text || '').replace(/^\s*[-*] /gm, '').split('\n').filter(Boolean).join(' ') }
-        : { title: tr("What's new"), text: !h || h.status === 'loading' ? tr("Loading history") : h.status === 'offline' ? tr("History needs internet") : tr("No history") };
+    // a source's changes (rev: commits, newest first): the newest few, with the newest one's date; a release's: its notes
+    const news = !top ? { title: tr("What's new"), text: !h || h.status === 'loading' ? tr("Loading history") : h.status === 'offline'
+        ? tr("History needs internet") : tr("No history") }
+        : top.rev ? { title: [tr("What's new"), top.date].filter(Boolean).join(' · '), text: h.items.slice(0, 5).map((it) => `- ${it.title}`).join('\n') }
+            : { title: `${tr("What's new")} · ${top.title}`, text: String(top.text || '').split('\n').map((l) => l.replace(/^\s*[-*] /, '- ')).filter((l) => l.trim()).join('\n') };
     const msg = panelMsg(m, c, v, mine), offline = msg.offline;
+    const progress = msg.text && offline ? hidden : v.progress;
+    // Full changelog in the box's corner; the box over a message or the progress only down to it
+    Object.assign(news, { titleRoom: 230, short: (msg.title || msg.text) || (progress && !progress.hidden) ? 112 : 0 });
     const facts = [{ text: c.version }, c.size && { text: size(c.size) }, { text: isTool(c) ? tr("Tool") : tr("App"), color: isTool(c) ? TEAL : BLUE }].filter(Boolean);
     return {
         selId: c.id,
@@ -305,7 +311,7 @@ function storePanel(m, list, busy) {
         dNews: news,
         dLog: button(tr("Full changelog"), { do: 'open', page: { name: 'changelog', id: c.id } }, { style: 'outline' }),
         dMsg: msg,
-        dProgress: msg.text && offline ? hidden : v.progress,
+        dProgress: progress,
         dPrimary: red(v.primary),
         dSecondary: v.secondary
     };

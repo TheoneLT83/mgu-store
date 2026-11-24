@@ -187,9 +187,9 @@ function cardGrid(cv, t, b, o, g) {
     g.all.slice(g.first * g.cols, g.end * g.cols).forEach((a, i) => {
         const col = i % g.cols, x = b.x + col * g.tw + 4, y = b.y + (g.first + Math.floor(i / g.cols) - g.top) * g.th;
         if (a.head) {
-            const hs = 15, hc = C(t, a.headColor, t.dim);
-            cv.roundRect(x, y + head - 22, 4, 16, 2, a.headColor ? hc : S);
-            cv.text(String(a.head).toUpperCase(), x + 12, y + head - 8, hs, hc, { font: 'bold', spacing: 2 });
+            const hs = Math.min(18, Math.max(15, head - 12)), hc = C(t, a.headColor, t.dim);
+            cv.roundRect(x, y + head - hs - 9, 4, hs + 2, 2, a.headColor ? hc : S);
+            cv.text(String(a.head).toUpperCase(), x + 12, y + head - 9, hs, hc, { font: 'bold', spacing: 2 });
         }
         if (a.blank) return;
         const w = g.tw - 12 - (col === g.cols - 1 ? 14 : 0), cy0 = y + head, h = g.th - head - 6, cy = cy0 + h / 2;
@@ -200,17 +200,19 @@ function cardGrid(cv, t, b, o, g) {
             cv.card(x, cy0, w, h, 14, [[0, '#1a1c22'], [1, '#141619']]);
             cv.strokeRoundRect(x, cy0, w, h, 14, 1, withAlpha('#ffffff', 0.08));
         }
-        const s = Math.min(h - 22, 58);
-        appIcon(cv, t, Object.assign({}, a, { progress: -1 }), x + 14, cy - s / 2, s, '#16181d');
-        const bw = a.btn ? cardButton(cv, t, a.btn, x + w - 14, cy, Math.min(40, h * 0.5), Math.max(90, w * 0.36)) : 0;
-        const tx = x + 14 + s + 16, room = x + w - 14 - bw - (bw ? 12 : 0) - tx;
-        const three = !!a.state, ty = three ? cy - 9 : cy - 1;
+        const s = Math.min(h - 24, 76), p = Math.round(h * 0.14);
+        appIcon(cv, t, Object.assign({}, a, { progress: -1 }), x + p, cy - s / 2, s, '#16181d');
+        const bw = a.btn ? cardButton(cv, t, a.btn, x + w - p, cy, Math.min(52, h * 0.46), Math.max(110, w * 0.36)) : 0;
+        const tx = x + p + s + 18, room = x + w - p - bw - (bw ? 14 : 0) - tx;
+        // the lines centred on the card: the title's cap height, the source's
+        const three = !!a.state, gap = Math.round(ss * 0.45), block = ts * 0.72 + gap + ss * 0.72 + (three ? gap + (ss - 1) * 0.72 : 0);
+        const ty = cy - block / 2 + ts * 0.72;
         cv.text(W.fit(cv, String(a.title || ''), room, ts, 'bold'), tx, ty, ts, t.text, { font: 'bold' });
-        cv.text(fitCardSource(cv, String(a.src || ''), room, ss), tx, ty + ss + 5, ss, t.dim);
-        if (three) cv.text(W.fit(cv, String(a.state), room, ss - 1), tx, ty + 2 * ss + 8, ss - 1, C(t, a.stateColor, t.dim));
+        cv.text(fitCardSource(cv, String(a.src || ''), room, ss), tx, ty + gap + ss * 0.72 + ss * 0.1, ss, t.dim);
+        if (three) cv.text(W.fit(cv, String(a.state), room, ss - 1), tx, ty + 2 * (gap + ss * 0.72) + ss * 0.1, ss - 1, C(t, a.stateColor, t.dim));
         if (typeof a.progress === 'number' && a.progress >= 0) {
-            cv.roundRect(x + 14, cy0 + h - 4, w - 28, 3, 1.5, withAlpha('#ffffff', 0.1));
-            cv.roundRect(x + 14, cy0 + h - 4, Math.max(3, (w - 28) * Math.min(1, a.progress)), 3, 1.5, BLUE);
+            cv.roundRect(x + 14, cy0 + h - 5, w - 28, 4, 2, withAlpha('#ffffff', 0.1));
+            cv.roundRect(x + 14, cy0 + h - 5, Math.max(4, (w - 28) * Math.min(1, a.progress)), 4, 2, BLUE);
         }
     });
     cv.noclip();
@@ -509,24 +511,41 @@ function sheet(cv, t, b, o) {
 const TONES = { red: '#ff4d4d', amber: AMBER, blue: BLUE };
 function note(cv, t, b, o) {
     if (!o.title && !o.text) return;
+    const ts = o.titleSize || Math.round((o.size || 16) * 0.85), sp = 1.6;
+    // a title in capitals with its letter spacing, cut to w
+    const title = (w) => {
+        let s = String(o.title).toUpperCase();
+        const wid = (x) => cv.textWidth(x, ts, { font: 'bold', spacing: sp });
+        if (wid(s) <= w) return s;
+        while (s.length > 1 && wid(s + '…') > w) s = s.slice(0, -1);
+        return s.replace(/\s+$/, '') + '…';
+    };
     if (o.bare) {
-        cv.roundRect(b.x, b.y + 4, 4, 16, 2, t.sel || t.accent);
-        cv.text(String(o.title).toUpperCase(), b.x + 12, b.y + 18, 15, t.dim, { font: 'bold', spacing: 2 });
+        cv.roundRect(b.x, b.y + 4, 4, 18, 2, t.sel || t.accent);
+        cv.text(title(b.w - 12), b.x + 12, b.y + 20, 17, t.dim, { font: 'bold', spacing: 2 });
         return;
     }
-    const c = TONES[o.tone] || null, r = 12, p = 12;
-    // a title alone: one line at the box's foot (next to what follows it)
-    const bx = o.text ? b : { x: b.x, y: b.y + b.h - 44, w: b.w, h: 44 };
+    const c = TONES[o.tone] || null, r = 12, p = 14;
+    // a title alone: one line at the box's foot (next to what follows it); short: the box's top b.h - short px
+    const bx = !o.text ? { x: b.x, y: b.y + b.h - 48, w: b.w, h: 48 } : o.short ? Object.assign({}, b, { h: Math.max(48, b.h - o.short) }) : b;
     cv.roundRect(bx.x, bx.y, bx.w, bx.h, r, c ? withAlpha(c, 0.12) : withAlpha('#ffffff', 0.05));
     cv.strokeRoundRect(bx.x, bx.y, bx.w, bx.h, r, 1, c ? withAlpha(c, 0.45) : withAlpha('#ffffff', 0.1));
+    const tw = bx.w - 2 * p - (o.titleRoom || 0);
     if (!o.text) {
-        cv.text(W.fit(cv, String(o.title).toUpperCase(), bx.w - 2 * p, 15, 'bold'), bx.x + p, bx.y + 28, 15, c || BLUE, { font: 'bold', spacing: 1.6 });
+        cv.text(title(tw), bx.x + p, bx.y + 24 + ts * 0.36, ts, c || BLUE, { font: 'bold', spacing: sp });
         return;
     }
-    let y = b.y + p;
-    if (o.title) { cv.text(W.fit(cv, String(o.title).toUpperCase(), b.w - 2 * p, 14, 'bold'), b.x + p, y + 12, 14, c || BLUE, { font: 'bold', spacing: 1.6 }); y += 22; }
-    const size = o.size || 16, room = Math.floor((b.y + b.h - p - y + size * 0.3) / (size * 1.3));
-    if (o.text && room > 0) W.wrap(cv, String(o.text), b.x + p, y, b.w - 2 * p, size, c ? mix(c, '#ffffff', 0.55) : t.text, room);
+    let y = bx.y + p;
+    if (o.title) { cv.text(title(tw), bx.x + p, y + ts * 0.8 + (o.titleRoom ? 6 : 0), ts, c || BLUE, { font: 'bold', spacing: sp }); y += ts + 12 + (o.titleRoom ? 12 : 0); }
+    const size = o.size || 16, lh = size * 1.25, colour = c ? mix(c, '#ffffff', 0.55) : t.text;
+    let room = Math.floor((bx.y + bx.h - p - y + size * 0.3) / lh);
+    // each line of the text its own paragraph
+    for (const para of String(o.text).split('\n').filter((l) => l.trim())) {
+        if (room < 1) break;
+        const n = W.wrap(cv, para, bx.x + p, y, bx.w - 2 * p, size, colour, room) || 1;
+        y += n * lh + size * 0.25;
+        room = Math.floor((bx.y + bx.h - p - y + size * 0.3) / lh);
+    }
 }
 const DRAW = { appIcon: appIconEl, chips, appGrid, appList, sideNav, vbutton, keyboard, sheet, note };
 

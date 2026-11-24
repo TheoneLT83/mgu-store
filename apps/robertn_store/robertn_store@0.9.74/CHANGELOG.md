@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.74
+
+The full-screen iDrive 7 look bigger: the Store and Installed pages' cards in two columns with larger names, icons and
+buttons, and larger words in their panels. What's new fills the panel down to the buttons, with Full changelog in its
+corner: a source's newest changes, one a line, or a release's notes, cut inside the box.
+
 ## 0.9.73
 
 The full-screen iDrive 7 look laid out anew. The Store page lists apps and tools as cards in three columns under

@@ -89,6 +89,13 @@ function screens() {
     return [
         ['store', { tab: 'store', stack: main }],
         ['store-apps', { tab: 'store', filter: 'app', stack: main, focus: 9 }],
+        // the full screen's Store panel: a card picked, its history's newest (a branch's commits; a tool's versions)
+        ['store-news', { tab: 'store', stack: main, sel: 'gauges', history: { id: 'gauges', status: 'ok', items: [
+            { title: 'Gauges: the boost gauge reads in bar or psi, as the car\'s own display is set up', text: '', date: '2026-10-28', rev: '73eab72', new: true },
+            { title: 'Gauges: page tabs open their page on a tap', text: '', date: '2026-10-27', rev: 'da63270', new: true },
+            { title: 'Gauges: oil temperature on the first page', text: '', date: '2026-10-20', rev: '4b1c9e0', new: false }] } }],
+        ['store-news-tool', { tab: 'store', stack: main, filter: 'tool', sel: 'mgu-render', history: { id: 'mgu-render', status: 'ok', items: [
+            { title: '0.4.0', text: '- Video for third-party apps: a player writes decoded frames, the app draws them where its picture goes.\n- Another renderer\'s apps are no longer hidden by the foreground gate.', date: '', rev: '', new: true }] } }],
         // the update history: a branch's commits (the newest two not installed yet); a tool's CHANGELOG versions
         ['app-update', { stack: main.concat([{ name: 'app', id: 'gauges' }]), history: { id: 'gauges', status: 'ok', items: [
             { title: 'Gauges: the boost gauge reads in bar or psi', text: '', date: '2026-10-28', rev: '73eab72', new: true },

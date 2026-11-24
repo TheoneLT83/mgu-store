@@ -113,50 +113,53 @@ function compact(W, H0, look, opts) {
     const DW = 560;                       // the panel's width
     const dx = R - DW;                    // its left edge
     const LW = dx - 20 - X;               // the cards' width
-    const card = (name, y, cols, extra) => el(name, 'appGrid', X - 4, y, LW + 4, B - y, Object.assign({ items: '', cols, tileH: 98, head: 24,
-        cards: true, titleSize: 22, subSize: 15, empty: '' }, extra || {}));
+    const card = (name, y, cols, extra) => el(name, 'appGrid', X - 4, y, LW + 4, B - y, Object.assign({ items: '', cols, tileH: 116, head: 26,
+        cards: true, titleSize: 28, subSize: 20, empty: '' }, extra || {}));
     const panel = (name) => el(name, 'rect', dx, M, DW, B - M, { color: '#15171c', radius: 18 });
-    const DBTN_H = 60;
+    const DBTN_H = 64;
+    const MSG_Y = B - 2 * DBTN_H - 38 - 100;     // a failure, being offline or the progress: over the buttons
+    const NEWS_Y = M + 222;
     const storeCards = screen('store', 0, [
-        el('filter', 'tabs', X, M + 4, 430, 52, { items: 'All,Apps,Tools', sel: 0, style: 'chips', size: 18 }),
-        el('online', 'chips', X + 446, M + 10, ONLINE_W, 40, { items: '', align: 'left' }),
-        text('subtitle', X + 446 + ONLINE_W + 14, M + 12, LW - 446 - ONLINE_W - 14, 22, '', 19, 'label', DIM, { after: 'online' }),
-        button('restartNow', dx - 20 - 260, M + 4, 260, 52, 'Restart now', 'primary', 18,
-            { vicon: 'refresh', color: AMBER, hidden: true, shift: { subtitle: [0, -276] } }),
-        button('safeModeOff', dx - 20 - 300, M + 4, 300, 52, 'Leave safe mode', 'primary', 18,
-            { vicon: 'unlock', color: BLUE, hidden: true, shift: { subtitle: [0, -316] } }),
-        card('grid', M + 58, 3),
+        el('filter', 'tabs', X, M + 4, 500, 58, { items: 'All,Apps,Tools', sel: 0, style: 'chips', size: 21 }),
+        el('online', 'chips', X + 516, M + 9, ONLINE_W, 48, { items: '', align: 'left' }),
+        text('subtitle', X + 516 + ONLINE_W + 14, M + 12, LW - 516 - ONLINE_W - 14, 24, '', 21, 'label', DIM, { after: 'online' }),
+        button('restartNow', dx - 20 - 280, M + 4, 280, 58, 'Restart now', 'primary', 20,
+            { vicon: 'refresh', color: AMBER, hidden: true, shift: { subtitle: [0, -296] } }),
+        button('safeModeOff', dx - 20 - 320, M + 4, 320, 58, 'Leave safe mode', 'primary', 20,
+            { vicon: 'unlock', color: BLUE, hidden: true, shift: { subtitle: [0, -336] } }),
+        card('grid', M + 66, 2),
         panel('dPanel'),
-        el('dIcon', 'appIcon', dx + 22, M + 22, 108, 108, { vicon: '', colors: '#3a4352,#232a35' }),
-        text('dName', dx + 150, M + 26, DW - 172, 44, '', 34, 'bold'),
-        text('dAuthor', dx + 150, M + 72, DW - 172, 24, '', 18, 'label', DIM),
-        el('dFacts', 'chips', dx + 150, M + 102, DW - 172, 28, { items: '' }),
-        text('dDesc', dx + 22, M + 146, DW - 44, 52, '', 19, 'label', TEXT, { wrap: true }),
-        el('dNews', 'note', dx + 22, M + 204, DW - 44, 86, { title: '', text: '' }),
-        button('dLog', dx + 22, M + 300, 250, 46, 'Full changelog', 'outline', 17, { vicon: '' }),
+        el('dIcon', 'appIcon', dx + 22, M + 22, 112, 112, { vicon: '', colors: '#3a4352,#232a35' }),
+        text('dName', dx + 154, M + 24, DW - 176, 46, '', 38, 'bold'),
+        text('dAuthor', dx + 154, M + 74, DW - 176, 28, '', 21, 'label', DIM),
+        el('dFacts', 'chips', dx + 154, M + 106, DW - 176, 32, { items: '' }),
+        text('dDesc', dx + 22, M + 152, DW - 44, 60, '', 22, 'label', TEXT, { wrap: true }),
+        // what's new down to the buttons (less while a message or the progress shows: short), Full changelog in its corner
+        el('dNews', 'note', dx + 22, NEWS_Y, DW - 44, MSG_Y + 100 - NEWS_Y, { title: '', text: '', size: 20 }),
+        button('dLog', dx + DW - 22 - 12 - 210, NEWS_Y + 10, 210, 40, 'Full changelog', 'outline', 15, { vicon: '' }),
         // what keeps it from being installed, a failure (with its code) or being offline: in the place of the progress
-        el('dMsg', 'note', dx + 22, B - 2 * DBTN_H - 24 - 96, DW - 44, 90, { title: '', text: '', tone: 'red' }),
-        el('dProgress', 'progress', dx + 22, B - 2 * DBTN_H - 24 - 96, DW - 44, 86, { label: '', right: '', sub: '', value: 0, percent: false,
-            size: 20, hidden: true }),
-        button('dPrimary', dx + 22, B - 2 * DBTN_H - 12, DW - 44, DBTN_H, '', 'primary', 22, { vicon: 'arrowDown', color: BLUE }),
-        button('dSecondary', dx + 22, B - DBTN_H, DW - 44, DBTN_H, '', 'outline', 20, { vicon: 'trash' })
+        el('dMsg', 'note', dx + 22, MSG_Y, DW - 44, 100, { title: '', text: '', tone: 'red', size: 19 }),
+        el('dProgress', 'progress', dx + 22, MSG_Y, DW - 44, 92, { label: '', right: '', sub: '', value: 0, percent: false,
+            size: 22, hidden: true }),
+        button('dPrimary', dx + 22, B - 2 * DBTN_H - 26, DW - 44, DBTN_H, '', 'primary', 24, { vicon: 'arrowDown', color: BLUE }),
+        button('dSecondary', dx + 22, B - DBTN_H - 16, DW - 44, DBTN_H, '', 'outline', 22, { vicon: 'trash' })
     ]);
-    const RS_H = 84;
+    const RS_H = 92;
     const installedCards = screen('installed', 1, [
         card('grid', M, 2),
         panel('iPanel'),
-        button('checkAgain', dx + 20, M + 18, 280, 48, 'Check again', 'outline', 17, { vicon: 'refresh' }),
-        el('online', 'chips', dx + DW - 20 - ONLINE_W, M + 22, ONLINE_W, 40, { items: '', align: 'right' }),
-        text('autoNote', dx + 22, M + 74, DW - 44, 20, '', 15, 'label', DIM),
-        el('stIcon', 'appIcon', dx + 20, M + 108, 64, 64, { vicon: 'arrowDown', kind: 'service', colors: '#24456f,#1a2c44' }),
-        text('stTitle', dx + 100, M + 110, DW - 120, 36, '', 28, 'bold'),
-        text('stSub', dx + 100, M + 148, DW - 120, 22, '', 17, 'label', DIM),
-        button('updateAll', dx + 20, M + 190, DW - 40, 56, '', 'primary', 20, { vicon: 'arrowDown', color: BLUE }),
-        el('queueLabel', 'note', dx + 20, M + 260, DW - 40, 26, { title: '', text: '', bare: true }),
-        list('queue', dx + 20, M + 290, DW - 40, B - RS_H - 16 - M - 290, { rowH: 56, titleSize: 18, subSize: 14, ctlK: 0.6, empty: '' }),
+        button('checkAgain', dx + 20, M + 18, 320, 54, 'Check again', 'outline', 19, { vicon: 'refresh' }),
+        el('online', 'chips', dx + DW - 20 - ONLINE_W, M + 21, ONLINE_W, 48, { items: '', align: 'right' }),
+        text('autoNote', dx + 22, M + 82, DW - 44, 24, '', 18, 'label', DIM),
+        el('stIcon', 'appIcon', dx + 20, M + 118, 72, 72, { vicon: 'arrowDown', kind: 'service', colors: '#24456f,#1a2c44' }),
+        text('stTitle', dx + 108, M + 120, DW - 128, 40, '', 32, 'bold'),
+        text('stSub', dx + 108, M + 162, DW - 128, 26, '', 20, 'label', DIM),
+        button('updateAll', dx + 20, M + 208, DW - 40, 62, '', 'primary', 22, { vicon: 'arrowDown', color: BLUE }),
+        el('queueLabel', 'note', dx + 20, M + 284, DW - 40, 28, { title: '', text: '', bare: true }),
+        list('queue', dx + 20, M + 316, DW - 40, B - RS_H - 16 - M - 316, { rowH: 64, titleSize: 22, subSize: 17, ctlK: 0.7, empty: '' }),
         // a restart the head unit needs to finish, only while one does
-        el('rsBox', 'note', dx + 20, B - RS_H - 4, DW - 40, RS_H, { title: '', text: '', tone: 'amber', hidden: true }),
-        button('restartNow', dx + DW - 20 - 16 - 200, B - RS_H - 4 + 16, 200, 52, 'Restart now', 'primary', 18,
+        el('rsBox', 'note', dx + 20, B - RS_H - 4, DW - 40, RS_H, { title: '', text: '', tone: 'amber', hidden: true, size: 19 }),
+        button('restartNow', dx + DW - 20 - 16 - 220, B - RS_H - 4 + 18, 220, 56, 'Restart now', 'primary', 20,
             { vicon: 'refresh', color: AMBER, hidden: true })
     ]);
 
