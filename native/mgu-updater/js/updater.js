@@ -1528,7 +1528,8 @@ class Updater {
             const i = w.indexOf(':');
             const repo = i < 0 ? w : w.slice(0, i);
             if (!list.some((s) => s.type === 'github' && s.repo.toLowerCase() === repo.toLowerCase())) {
-                const def = { id: this.freeSourceId(repoId(repo), repo), type: 'github', repo };
+                // (this repository's default sources keep their repos' names as ids, as the installers seed them)
+                const def = { id: this.freeSourceId(repo.split('/')[1] && repo.split('/')[1].toLowerCase(), repo), type: 'github', repo };
                 if (i >= 0) {
                     def.channel = w.slice(i + 1);
                 }

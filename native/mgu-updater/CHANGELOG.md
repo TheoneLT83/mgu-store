@@ -3,7 +3,7 @@
 ## 0.8.59
 
 robertnisipeanu/mgu-store's 0.8.56 and 0.8.57 with this repository's 0.8.58:
-- A source added by the owner gets an id made of its GitHub owner and repo, so two repos of the same name never share one; sources already on the unit keep their ids.
+- A source the owner adds gets an id made of its GitHub owner and repo, so two repos of the same name never share one; sources already on the unit and the default sources keep their ids.
 - A new source never takes over an installed component of a removed source; adding that repo again gives it its id back.
 
 ## 0.8.58

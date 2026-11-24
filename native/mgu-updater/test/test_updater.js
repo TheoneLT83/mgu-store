@@ -5954,8 +5954,8 @@ function testDefaultSources() {
         { id: 'idrive7-apps', type: 'github', repo: 'someone/idrive7-apps' }] }));
     let u = new Updater(conf());
     const added = stored()[2] || {};
-    ok('default sources: added at the next start, after the sources there, under its owner and repo', stored().length === 3 &&
-        added.repo === 'TheoneLT83/idrive7-apps' && added.channel === 'branch' && added.id === 'theonelt83_idrive7-apps' &&
+    ok('default sources: added at the next start, after the sources there, under its repo\'s name where free', stored().length === 3 &&
+        added.repo === 'TheoneLT83/idrive7-apps' && added.channel === 'branch' && /^(idrive7-apps|s-[0-9a-f]{4})$/.test(added.id) &&
         u.src.has(added.id) && u.stored.length === 3, JSON.stringify(stored()));
     u = new Updater(conf());
     ok('default sources: added once', stored().length === 3 && u.stored.length === 3);
