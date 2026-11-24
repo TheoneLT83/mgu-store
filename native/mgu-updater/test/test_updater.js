@@ -4137,17 +4137,17 @@ function testIdrive7(certs) {
         .then(() => until(() => u.origins.car_vitals, (o) => !!o, 30000, 'car_vitals adopted'))
         .then(() => {
             ok('idrive7: an app the repository lists gets it as origin; one it does not is imported',
-                u.origins.car_vitals.source === 'cauliflowermossgrape_idrive7-apps' && !u.origins.my_kitapp &&
+                u.origins.car_vitals.source === 'idrive7-apps' && !u.origins.my_kitapp &&
                 JSON.stringify(JSON.parse(fs.readFileSync(path.join(state, 'appmanager.json'), 'utf8')).imported) === '["my_kitapp"]',
                 JSON.stringify(u.origins));
             const cv = comp('car_vitals');
-            ok('idrive7: its app shows installed from that source, with the newer version as its update', cv.source === 'cauliflowermossgrape_idrive7-apps' &&
+            ok('idrive7: its app shows installed from that source, with the newer version as its update', cv.source === 'idrive7-apps' &&
                 cv.status === 'update' && cv.installed === '2.13.0' && cv.version === '2.14.0' && !cv.blocked, JSON.stringify(cv));
             const mine = comp('my_kitapp');
             ok('idrive7: an imported app keeps a row, installed and removable', mine.source === 'imported' && mine.status === 'installed' &&
                 mine.uninstallable === true, JSON.stringify(mine));
             const rl = comp('redline');
-            ok('idrive7: an installed app the repository lists without uninstallable is removable', rl.source === 'cauliflowermossgrape_idrive7-apps' &&
+            ok('idrive7: an installed app the repository lists without uninstallable is removable', rl.source === 'idrive7-apps' &&
                 rl.installed === '1.0.0' && rl.uninstallable === true, JSON.stringify(rl));
             return ask(conf.socket, { op: 'uninstall', id: 'redline', secret: u.secret })
                 .then((err) => until(() => comp('redline'), (r) => !u.busy && r.status === 'available', 30000, 'redline removed').then(() => err));
@@ -4155,7 +4155,7 @@ function testIdrive7(certs) {
         .then((err) => {
             ok('idrive7: its Remove runs the deploy tool\'s uninstall; it shows not installed', err === null &&
                 /^uninstall redline --yes$/m.test(fs.readFileSync(deployLog, 'utf8')) && !comp('redline').installed, `${err} ${JSON.stringify(comp('redline'))}`);
-            return until(() => u.src.get('cauliflowermossgrape_idrive7-apps').icons, (x) => !x, 30000, 'icons fetched');
+            return until(() => u.src.get('idrive7-apps').icons, (x) => !x, 30000, 'icons fetched');
         })
         .then(() => {
             const iconOf = (id) => comp(id).icon && fs.readFileSync(comp(id).icon);
@@ -4175,7 +4175,7 @@ function testIdrive7(certs) {
                 'then each place it names until one is there), an installed app\'s too',
             first.length === 6 && first.filter((u) => /car_vitals/.test(u)).length === 1 && first.every((u) => /^raw:/.test(u)), first.join(' '));
             mark = seen.length;
-            return u.check().then(() => until(() => u.src.get('cauliflowermossgrape_idrive7-apps').icons, (x) => !x, 30000, 'icons fetched'));
+            return u.check().then(() => until(() => u.src.get('idrive7-apps').icons, (x) => !x, 30000, 'icons fetched'));
         })
         .then(() => {
             ok('requests: a check of an unchanged source reads no icon, kept or missing', iconReads(mark).length === 0, iconReads(mark).join(' '));
@@ -4183,7 +4183,7 @@ function testIdrive7(certs) {
             u = new Updater(conf);
             mark = seen.length;
             return u.serve().then(() => u.refresh()).then(() => u.check())
-                .then(() => until(() => u.src.get('cauliflowermossgrape_idrive7-apps').icons, (x) => !x, 30000, 'icons fetched'));
+                .then(() => until(() => u.src.get('idrive7-apps').icons, (x) => !x, 30000, 'icons fetched'));
         })
         .then(() => {
             ok('requests: nor does a restarted updater: a missing icon is remembered', iconReads(mark).length === 0 && comp('gforce').icon,
@@ -4199,7 +4199,7 @@ function testIdrive7(certs) {
             files['more/gforce/icon.png'] = [png(99, 5), 0o644];
             repo.branches.main = ghCommit('TheoneLT83/idrive7-apps', files);
             mark = seen.length;
-            return u.check().then(() => until(() => u.src.get('cauliflowermossgrape_idrive7-apps').icons, (x) => !x, 30000, 'icons fetched'));
+            return u.check().then(() => until(() => u.src.get('idrive7-apps').icons, (x) => !x, 30000, 'icons fetched'));
         })
         .then(() => {
             const reads = iconReads(mark);
@@ -4210,8 +4210,8 @@ function testIdrive7(certs) {
             return u.serve().then(() => u.refresh());
         })
         .then(() => {
-            ok('idrive7: a later start keeps what was decided', u.origins.car_vitals.source === 'cauliflowermossgrape_idrive7-apps' &&
-                u.adopted.imported.join() === 'my_kitapp' && u.stored.filter((d) => d.id === 'cauliflowermossgrape_idrive7-apps').length === 1, JSON.stringify(u.stored));
+            ok('idrive7: a later start keeps what was decided', u.origins.car_vitals.source === 'idrive7-apps' &&
+                u.adopted.imported.join() === 'my_kitapp' && u.stored.filter((d) => d.id === 'idrive7-apps').length === 1, JSON.stringify(u.stored));
             // a new commit while car_vitals is installed: 2.14.1 with a new icon
             const repo = gh.repos['TheoneLT83/idrive7-apps'];
             const tree = repo.trees[repo.branches.main];
@@ -4223,7 +4223,7 @@ function testIdrive7(certs) {
             files['apps/car_vitals/icon.png'] = [newCarIcon, 0o644];
             repo.branches.main = ghCommit('TheoneLT83/idrive7-apps', files);
             mark = seen.length;
-            return u.check().then(() => until(() => u.src.get('cauliflowermossgrape_idrive7-apps').icons, (x) => !x, 30000, 'icons fetched'));
+            return u.check().then(() => until(() => u.src.get('idrive7-apps').icons, (x) => !x, 30000, 'icons fetched'));
         })
         .then(() => {
             const cv = comp('car_vitals');
@@ -4249,7 +4249,7 @@ function testIdrive7(certs) {
         })
         .then(() => {
             ok('idrive7: with its source removed by the owner, an app is imported and the source stays removed',
-                u.adopted.imported.indexOf('dyno') >= 0 && !u.origins.dyno && !u.stored.some((d) => d.id === 'cauliflowermossgrape_idrive7-apps') &&
+                u.adopted.imported.indexOf('dyno') >= 0 && !u.origins.dyno && !u.stored.some((d) => d.id === 'idrive7-apps') &&
                 comp('dyno').source === 'imported' && comp('dyno').status === 'installed', `${JSON.stringify(u.stored)} ${JSON.stringify(comp('dyno'))}`);
             u.server.close();
         });
@@ -6105,17 +6105,17 @@ function testDefaultPrivate(certs) {
     return u.serve()
         .then(() => u.check())
         .then(() => {
-            ok('default sources: added under their owners and repos, read from their releases', JSON.stringify(u.stored.map((s) => [s.id, s.repo || null, s.channel || null])) ===
-                '[["mgu-store",null,null],["owner_other-repo","owner/other-repo","releases"],["owner_apps-repo","owner/apps-repo","releases"]]', JSON.stringify(u.stored));
-            ok('default sources: one of a repo still private needs a token; the others are read', src('owner_apps-repo').status === 'auth-needed' &&
-                src('owner_other-repo').status === 'ok' && src('mgu-store').status === 'ok' && !comp('lib-tool').id && !comp('hooked-tool').id,
+            ok('default sources: added under their repos\' names, read from their releases', JSON.stringify(u.stored.map((s) => [s.id, s.repo || null, s.channel || null])) ===
+                '[["mgu-store",null,null],["other-repo","owner/other-repo","releases"],["apps-repo","owner/apps-repo","releases"]]', JSON.stringify(u.stored));
+            ok('default sources: one of a repo still private needs a token; the others are read', src('apps-repo').status === 'auth-needed' &&
+                src('other-repo').status === 'ok' && src('mgu-store').status === 'ok' && !comp('lib-tool').id && !comp('hooked-tool').id,
                 JSON.stringify(st().sources));
             gh.repos[repo].private = false;
             return u.check();
         })
         .then(() => {
-            ok('default sources: once the repo is public it is read without a token', src('owner_apps-repo').status === 'ok' && src('owner_apps-repo').auth === null &&
-                comp('hooked-tool').source === 'owner_apps-repo' && comp('hooked-tool').status === 'available', JSON.stringify([src('owner_apps-repo'), comp('hooked-tool')]));
+            ok('default sources: once the repo is public it is read without a token', src('apps-repo').status === 'ok' && src('apps-repo').auth === null &&
+                comp('hooked-tool').source === 'apps-repo' && comp('hooked-tool').status === 'available', JSON.stringify([src('apps-repo'), comp('hooked-tool')]));
             return ask(conf.socket, { op: 'install', id: 'hooked-tool' });
         })
         .then((err) => until(st, () => !st().busy && !st().components.some((c) => c.queued) && comp('hooked-tool').status === 'installed',
@@ -6124,8 +6124,8 @@ function testDefaultPrivate(certs) {
             const order = fs.readFileSync(deployLog, 'utf8').split('\n').filter((l) => /^install/.test(l))
                 .map((l) => (/([a-z_-]+@\d+\.\d+\.\d+)\.tgz/.exec(l) || [])[1]);
             ok('default sources: a tool of its catalog installs with the library tool the same catalog lists', err === null &&
-                JSON.stringify(order) === '["lib-tool@0.1.0","hooked-tool@0.5.0"]' && u.origins['lib-tool'].source === 'owner_apps-repo' &&
-                u.origins['hooked-tool'].source === 'owner_apps-repo', `${err} ${JSON.stringify(order)}`);
+                JSON.stringify(order) === '["lib-tool@0.1.0","hooked-tool@0.5.0"]' && u.origins['lib-tool'].source === 'apps-repo' &&
+                u.origins['hooked-tool'].source === 'apps-repo', `${err} ${JSON.stringify(order)}`);
             u.server.close();
         });
 }
@@ -6837,8 +6837,8 @@ function testCarApps(certs) {
     fs.unlinkSync(path.join(M, 'state', 'default-sources.json'));
     u = new Updater(conf);
     const def = u.stored.find((d) => d.type === 'github' && d.repo === 'IterioDev/car-apps') || {};
-    ok('car-apps: added on its tags channel, beside the index source named car-apps, under its owner and repo', def.channel === 'tags' &&
-        def.id === 'iteriodev_car-apps' && u.stored.some((d) => d.id === 'car-apps' && d.type === 'https'), JSON.stringify(u.stored));
+    ok('car-apps: added on its tags channel, beside the index source named car-apps, under a free id', def.channel === 'tags' &&
+        /^s-[0-9a-f]{4}$/.test(def.id) && u.stored.some((d) => d.id === 'car-apps' && d.type === 'https'), JSON.stringify(u.stored));
     const st = () => u.state();
     const comp = (id) => st().components.find((c) => c.id === id) || {};
     const apiOf = (mark) => seen.slice(mark).filter((x) => /^api\.github\.com/.test(x.host) && x.url.indexOf('/repos/IterioDev/car-apps') === 0);
