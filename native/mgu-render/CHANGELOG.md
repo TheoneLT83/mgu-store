@@ -1,5 +1,10 @@
 # mgu-render changelog
 
+## 0.6.33
+
+robertnisipeanu/mgu-store's unreleased change with this repository's 0.6.32:
+- A frame that repeats the one on screen, with nothing it draws changed since, is not drawn and shown again; the app still gets its next tick. The app client's `alive()` tells mgu-render an app is running without sending a frame.
+
 ## 0.6.32
 
 robertnisipeanu/mgu-store's 0.6.25 with this repository's 0.6.31:

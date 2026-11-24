@@ -170,6 +170,7 @@ class RenderClient extends EventEmitter {
     busy(on) { busyAsked = on; }
     grab(on) { this.grabbing = on; }
     bridge(on) { bridges.push(on); }
+    alive() {}
     frame(rec) { frames.push(rec); return true; }
     dropLayer(id) { dropped.push(id); }
 }

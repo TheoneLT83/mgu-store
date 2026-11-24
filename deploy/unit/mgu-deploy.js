@@ -55,7 +55,7 @@ var os = require('os');
 process.umask(0o022);
 
 /* deploy/component.json's version; the release sets both. */
-var VERSION = '0.8.31';
+var VERSION = '0.8.32';
 var HERE = __dirname;
 var MGR_UID = Number(process.env.MGU_DEPLOY_MAINAPP_UID || 12201);
 
@@ -4090,6 +4090,20 @@ function dropVerify(id) {
 function uptimeS() {
     try { return parseFloat(fs.readFileSync(path.join(CFG.proc, 'uptime'), 'utf8')); } catch (e) { return Infinity; }
 }
+function dueVerify(v) {
+    var boot = bootId();
+    return Object.keys(v).filter(function (id) { return v[id].boot !== boot; });
+}
+/* The wait for verifyAfterS, run between the start's clean-up under the
+ * deploy lock and cmdVerify under it again: the queued iDrive 8 app changes
+ * (apply-pending, before the app platform starts) and installs go ahead
+ * meanwhile, and cmdVerify reads verify.json again. */
+function verifyWait() {
+    var due = dueVerify(readVerify());
+    if (!due.length || readSafeMode()) return;
+    var wait = CFG.verifyAfterS - uptimeS();
+    if (wait > 0) { say('checking ' + due.join(', ') + ' once the head unit has been up ' + CFG.verifyAfterS + 's'); sleepMs(wait * 1000); }
+}
 /* verify: at a start after the install, each tool noted in verify.json
  * whose noted version is current gets its boot services' health check
  * and its check, once the head unit has been up verifyAfterS. One that
@@ -4100,12 +4114,10 @@ function uptimeS() {
  * last_verify. */
 function cmdVerify() {
     try { cmdCleanStrays(); } catch (e) { warn('homes left behind: ' + e.message); }
-    var v = readVerify(), boot = bootId(), due = Object.keys(v).filter(function (id) { return v[id].boot !== boot; });
+    var v = readVerify(), due = dueVerify(v);
     if (!due.length) { say('nothing to check at this start'); return 0; }
     /* their services did not start: checked at a start without safe mode */
     if (readSafeMode()) { say('safe mode is on: ' + due.join(', ') + ' checked at a start without it'); return 0; }
-    var wait = CFG.verifyAfterS - uptimeS();
-    if (wait > 0) { say('checking ' + due.join(', ') + ' once the head unit has been up ' + CFG.verifyAfterS + 's'); sleepMs(wait * 1000); }
     var left = {};
     Object.keys(v).forEach(function (id) { if (due.indexOf(id) < 0) left[id] = v[id]; });
     writeVerify(left);
@@ -9457,7 +9469,12 @@ function runCommand() {
         if (args.command === 'updater-sources') return cmdUpdaterSources();
         if (args.command === 'sdk-donor') return cmdSdkDonor(args);
         if (args.command === 'apply-pending') return cmdApplyPending();
-        if (args.command === 'verify') return cmdVerify();
+        if (args.command === 'verify') {
+            releaseLock(); locked = false;
+            verifyWait();
+            acquireLock(); locked = true;
+            return cmdVerify();
+        }
         if (args.command === 'remove-unused') return cmdRemoveUnused();
         if (args.command === 'clean-strays') return cmdCleanStrays();
         if (args.command === 'appmanager') return cmdAppManager(args);

@@ -43,7 +43,7 @@ const ICON_BYTES = 128 * 1024;          // a package picture: at most this big
 const ICONS_KEPT = 48;                  // decoded pictures kept, the most recently shown
 const FPS = 60;                         // frames a second at most (mgu-render's fps setting can give another)
 const BUSY_FPS = 15;                    // while an install runs: the CPU is the install's
-const KEEPALIVE_MS = 1000;              // the renderer hides an app silent for 3 s
+const KEEPALIVE_MS = 1000;              // the renderer hides an app silent for 3 s: something at least this often
 const CLOSED_RESHOW_MS = 700;           // a touch outside that left the page where it was
 const STUCK_MS = 6000;                  // asked to show and off screen this long: the widget screens instead
 const RETRY_MS = 30000;                 // after a picture that showed was taken away: the drawn screens tried again
@@ -548,9 +548,16 @@ class Drawn extends EventEmitter {
             this._watchStuck();
         }
         clearInterval(this.keepalive);
+        // a page that stays as it is: the renderer hears from it without a frame; a frame held for a tick that has
+        // not come goes now
         this.keepalive = on ? setInterval(() => {
-            if (Date.now() - this.sentAt >= KEEPALIVE_MS) {
+            if (Date.now() - this.sentAt < KEEPALIVE_MS) {
+                return;
+            }
+            if (this.dirty) {
                 this.render(true);
+            } else {
+                this.gpu.alive();
             }
         }, KEEPALIVE_MS) : null;
     }
@@ -596,7 +603,7 @@ class Drawn extends EventEmitter {
 
     /* Draws the frame (sent while the renderer is ready and the page is
      * shown, one at a time) and writes the top host state's proxies. same:
-     * nothing but a scroll changed since the last build (the keepalive). */
+     * nothing but a scroll changed since the last build. */
     render(same) {
         if (!this.mode || !this.w) {
             return;

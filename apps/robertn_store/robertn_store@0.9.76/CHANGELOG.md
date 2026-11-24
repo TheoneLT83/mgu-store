@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.76
+
+A page that stays as it is sends the renderer no frames, only a sign each second that the Store is running, so the
+renderer does no drawing for it meanwhile (robertnisipeanu/mgu-store's, with mgu-render 0.6.33; an older renderer
+takes the sign as nothing new).
+
 ## 0.9.75
 
 An app whose source was removed names that source's repo (robertnisipeanu/mgu-store's 0.9.43, with updater 0.8.59).
