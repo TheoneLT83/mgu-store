@@ -1124,7 +1124,38 @@ function testFetch(certs, pubDir) {
         .then((r) => {
             const last = r.events[r.events.length - 1];
             ok('fetch: a file that fails ends the set with its error and its index', r.code !== 0 && last.error && last.file === 1, JSON.stringify(last));
+            return serveFetch([
+                { id: 1, job: Object.assign({}, base, { url: `https://updates.test:${HTTPS_PORT}/payload.bin`, headers: {}, dest: path.join(dl, 's1'), maxBytes: 300000 }) },
+                { id: 2, job: Object.assign({}, base, { url: `https://updates.test:${HTTPS_PORT}/missing.bin`, headers: {}, dest: path.join(dl, 's2') }) }
+            ], { id: 3, remove: dl }, FETCH_UID);
+        })
+        .then((r) => {
+            const end = (id) => r.events.filter((e) => e.id === id && (e.done || e.error || e.removed));
+            ok('fetch serve: jobs side by side in one child, each ended once under its own id', end(1).length === 1 && end(1)[0].done &&
+                end(1)[0].bytes === 300000 && end(2).length === 1 && end(2)[0].status === 404, JSON.stringify(r.events.filter((e) => e.progress === undefined)));
+            ok('fetch serve: a remove empties the folder as the fetch uid; the child ends once stdin closes', end(3).length === 1 &&
+                fs.readdirSync(dl).length === 0 && r.code === 0);
         });
+}
+
+/* fetch.js serve: jobs written at once, then remove once they have ended, then stdin closed. */
+function serveFetch(jobs, remove, uid) {
+    return new Promise((resolve) => {
+        const child = cp.spawn(process.execPath, [path.join(ROOT, 'js', 'fetch.js'), 'serve'],
+            { uid, gid: uid, stdio: ['pipe', 'pipe', 'inherit'], env: {}, cwd: '/' });
+        let out = '';
+        const events = () => out.split('\n').filter(Boolean).map((l) => JSON.parse(l));
+        child.stdout.on('data', (d) => {
+            out += d;
+            const ended = events().filter((e) => e.done || e.error).length;
+            if (ended === jobs.length && remove) {
+                child.stdin.end(`${JSON.stringify(remove)}\n`);
+                remove = null;
+            }
+        });
+        child.on('close', (code) => resolve({ code, events: events() }));
+        jobs.forEach((j) => child.stdin.write(`${JSON.stringify(j)}\n`));
+    });
 }
 
 /* Root reads a download only if it is a regular file within the size. */
@@ -6912,6 +6943,95 @@ function testClientHello() {
     });
 }
 
+/* What is installed is read again when its files move, also an app
+ * updated in place with its archive's time. */
+function testInstalledStamp() {
+    const { Updater } = require('../js/updater');
+    const dir = path.join(T, 'stamp');
+    const tools = path.join(dir, 'opt');
+    const oap = path.join(dir, 'oap');
+    mkdirp(path.join(tools, 'tool', 'v1'));
+    fs.writeFileSync(path.join(tools, 'tool', 'v1', 'component.json'), JSON.stringify({ id: 'tool', version: '1.0.0' }));
+    fs.symlinkSync('v1', path.join(tools, 'tool', 'current'));
+    mkdirp(path.join(oap, 'oap_12201', 'data', 'apps'));
+    mkdirp(path.join(oap, 'oap_5001', 'source'));
+    fs.writeFileSync(path.join(oap, 'oap_12201', 'data', 'apps', 'app.json'), JSON.stringify({ userId: 5001 }));
+    const pkg = path.join(oap, 'oap_5001', 'source', 'package.json');
+    fs.writeFileSync(pkg, JSON.stringify({ name: 'app', version: '1.0.0' }));
+    const u = Object.assign(Object.create(Updater.prototype), { conf: { tool_root: tools, oap_root: oap, mainapp_uid: 12201 } });
+    const a = u.installedStamp();
+    const same = u.installedStamp() === a;
+    const was = fs.statSync(pkg);
+    let b;
+    // each change past the file system's time step
+    return sleep(50).then(() => {
+        fs.writeFileSync(pkg, JSON.stringify({ name: 'app', version: '1.0.1' }));
+        fs.utimesSync(pkg, was.atime, was.mtime);
+        b = u.installedStamp();
+        return sleep(50);
+    }).then(() => {
+        mkdirp(path.join(tools, 'tool', 'v2'));
+        fs.writeFileSync(path.join(tools, 'tool', 'v2', 'component.json'), JSON.stringify({ id: 'tool', version: '1.0.0' }));
+        fs.unlinkSync(path.join(tools, 'tool', 'current'));
+        fs.symlinkSync('v2', path.join(tools, 'tool', 'current'));
+        const c = u.installedStamp();
+        ok('installed files: the same while nothing changes; they move with an app updated in place with its old time and a tool put in place again',
+            same && b !== a && c !== b, JSON.stringify([a, b, c]));
+    });
+}
+
+/* The deploy tool's status and app-privacy's check are asked again only
+ * when what their answers rest on moved (Updater.answers). */
+function testKeptAnswers() {
+    const { Updater } = require('../js/updater');
+    const d = path.join(T, 'kept');
+    const p = (n) => path.join(d, n);
+    mkdirp(p('proc'));
+    ['input', 'bundle', 'calls'].forEach((n) => fs.writeFileSync(p(n), n === 'calls' ? '' : 'a'));
+    fs.writeFileSync(p('boot'), 'boot-1\n');
+    const stamp = 'const s = (f) => { try { const t = fs.statSync(f); return t.size + ":" + t.mtime.getTime() + ":" + t.ctime.getTime() + ":" + t.ino; } catch (e) { return "-"; } };';
+    fs.writeFileSync(p('deploy.js'), `#!${process.execPath}\nconst fs = require("fs"); ${stamp}\nfs.appendFileSync(${JSON.stringify(p('calls'))}, "status\\n");\n` +
+        `const until = fs.existsSync(${JSON.stringify(p('until'))}) ? Number(fs.readFileSync(${JSON.stringify(p('until'))}, "utf8")) : null;\n` +
+        `console.log(JSON.stringify(Object.assign({ components: [] }, { inputs: { ${JSON.stringify(p('input'))}: s(${JSON.stringify(p('input'))}) } }, until ? { inputs_until: until } : {})));\n`, { mode: 0o755 });
+    fs.writeFileSync(p('privacy.js'), `const fs = require("fs"); fs.appendFileSync(${JSON.stringify(p('calls'))}, "check\\n");\n` +
+        `console.log(JSON.stringify({ state: "patched", restartNeeded: false, files: [{ path: ${JSON.stringify(p('bundle'))} }] }));\n`);
+    const u = { conf: { deploy: p('deploy.js'), privacy_tool: p('privacy.js'), boot_id: p('boot'), proc: p('proc') }, answersKept: { status: null, privacy: null } };
+    const calls = () => {
+        const l = fs.readFileSync(p('calls'), 'utf8').split('\n').filter(Boolean);
+        return `${l.filter((x) => x === 'status').length}/${l.filter((x) => x === 'check').length}`;
+    };
+    const ask = (force) => Updater.prototype.answers.call(u, force).then(([st, pr]) => !!st && pr.state === 'patched');
+    const later = () => new Promise((r) => setTimeout(r, 20));
+    // a check's answer is kept once its files are older than the second before it ran
+    const settled = () => new Promise((r) => setTimeout(r, 1100));
+    const steps = [
+        ['the first refresh asks both; the check\'s new files keep it from being kept', () => null, '1/1'],
+        ['once they are older, the check\'s answer is kept', settled, '1/2'],
+        ['then neither is asked while nothing moved', () => null, '1/2'],
+        ['a file the deploy tool read that changed asks it again', () => fs.writeFileSync(p('input'), 'bb'), '2/2'],
+        ['a bundle the check read that changed asks it again', () => fs.writeFileSync(p('bundle'), 'bb'), '2/3'],
+        ['and again until it has settled, then it is kept', settled, '2/4'],
+        ['kept', () => null, '2/4'],
+        ['another app manager process asks both again', () => {
+            mkdirp(p('proc/4242'));
+            fs.writeFileSync(p('proc/4242/cmdline'), '/usr/bin/node\0/usr/lib/oap-mainapp/src/main.js\0');
+            fs.writeFileSync(p('proc/4242/stat'), '4242 (node) S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 777 0 0');
+        }, '3/5'],
+        ['another start of the head unit asks both again', () => fs.writeFileSync(p('boot'), 'boot-2\n'), '4/6'],
+        ['an answer past its inputs_until is not kept', () => {
+            fs.writeFileSync(p('until'), String(Date.now() - 1));
+            fs.writeFileSync(p('input'), 'ccc');
+        }, '5/6'],
+        ['nor used', () => null, '6/6'],
+        ['force asks both', () => fs.unlinkSync(p('until')), '7/7', true]
+    ];
+    let chain = Promise.resolve();
+    steps.forEach(([what, change, want, force]) => {
+        chain = chain.then(later).then(change).then(() => ask(force)).then((good) => ok(`kept answers: ${what}`, good && calls() === want, calls()));
+    });
+    return chain;
+}
+
 function main() {
     const certs = makeCerts();
     const pubDir = path.join(T, 'pub');
@@ -6921,7 +7041,9 @@ function main() {
     testCollect();
     testFileLog();
     testStoreSwitch();
-    return Promise.resolve(testRequiredAlone())
+    return testInstalledStamp()
+        .then(() => testKeptAnswers())
+        .then(() => testRequiredAlone())
         .then(() => testClientHello())
         .then(() => testTar())
         .then(() => testDeployTimeout())

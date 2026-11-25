@@ -504,6 +504,21 @@ mgu-deploy.sh appmanager [--json] | appmanager adopt [--yes]
 `./artifacts` beside the script. Tools install before apps, `app-privacy`
 first. `restore` needs `--yes`, or `YES` typed at a terminal.
 
+`status --json` also gives `inputs`: each file the run read, with its stamp
+as it read it (`size:mtime:ctime:inode` as `lstat` gives them, times in
+ms; for a link `>` and its target's, `>-` when it leads nowhere; `-` when
+absent), a file the run wrote or a folder whose entries it changed as the
+run left it; `/proc/mounts` as the first 16 hex digits of the sha256 of
+its text, nothing else of `/proc`, `/sys` or `/dev`. While every stamp
+holds, and the head unit and its app manager process are the same, the
+answer holds too, up to `inputs_until` (epoch ms) when it gives one; the
+units' states and journals, `running` and `app_uids` are live and not
+covered. A run gives no `inputs` when its answer rests on more: a repair
+it made, left pending or that failed, another run holding the lock, an HMI
+it could not read, the head unit told by its running HMI, or a file it read
+that changed from the second before the run on. The updater keeps the
+answer by them.
+
 `--repair` (the updater's) installs again an app `status` lists under
 `lost_apps`, from its kept package, once: after that, or when it fails,
 the app is listed under `lost_held` with the reason until it is installed

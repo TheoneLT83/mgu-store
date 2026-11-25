@@ -1,5 +1,11 @@
 # Updater changelog
 
+## 0.8.62
+
+robertnisipeanu/mgu-store's 0.8.61 and 0.8.62 with this repository's 0.8.61:
+- Less CPU at start and at each check: downloads close together share one download process (at nice 10 during an automatic update), a check reuses the deploy tool's answer from just before, and a start reads the sources once.
+- The deploy tool and app-privacy are asked again only when what their last answers rest on has changed, and at each periodic check; the free space is read once for downloads close together.
+
 ## 0.8.61
 
 - Automatic updates (state/auto-update.json, on unless the Store's Settings turns them off; op auto-update): online and with nothing to do, one update at a time, 2 min apart, the updater's own and the Store's last, their downloads and installs at nice 10. An install the owner asks for puts what runs back to normal priority.

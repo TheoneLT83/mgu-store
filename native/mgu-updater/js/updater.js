@@ -58,6 +58,8 @@ const REBOOT_MIN_UPTIME_S = Number(process.env.MGU_UPDATER_REBOOT_MIN_UPTIME_S |
 const REBOOT_SPACING_MS = 10 * 60 * 1000;
 const REBOOT_HOUR_MAX = 3;
 const HOUR_MS = 60 * 60 * 1000;
+// a check the updater starts itself asks the deploy tool again only when its last answer is older
+const REFRESH_FRESH_MS = 120000;
 // how long after the start that put an app in place (iDrive 8) MainApp may take to list it
 const PLACED_GRACE_MS = 5 * 60 * 1000;
 // A Store this new or newer says hello when it connects; its update stands once it has (storeTrial).
@@ -485,6 +487,10 @@ function toolProblem(conf, id) {
 /* The deploy tool's status --json, or null when it does not answer with it. */
 function deployStatus(conf) {
     return new Promise((resolve) => {
+        if (!conf.deploy) {
+            resolve(null);
+            return;
+        }
         // (a slow unit's status, an app's package read once, takes a while: as the commit of an update waits on it)
         cp.execFile(conf.deploy, ['status', '--json'], { timeout: 120000, maxBuffer: 1 << 20 }, (err, stdout) => {
             try {
@@ -656,10 +662,11 @@ function providersOf(st) {
     return out;
 }
 
-/* The app-privacy patch's state (native/app-privacy/INTEGRATION.md §5):
- * patched (in effect), restart-needed (patched, but the running MainApp
- * started before the bundles were written), unpatched, mismatch, unknown
- * (the tool gave no answer), or null without the tool. */
+/* app-privacy's check: { state, files }, or null without the tool. state:
+ * the patch's (native/app-privacy/INTEGRATION.md §5), patched (in effect),
+ * restart-needed (patched, but the running MainApp started before the
+ * bundles were written), unpatched, mismatch or unknown (the tool gave no
+ * answer); files: the bundles it read. */
 function privacyState(conf) {
     if (!conf.privacy_tool || !fs.existsSync(conf.privacy_tool)) {
         return Promise.resolve(null);
@@ -669,9 +676,10 @@ function privacyState(conf) {
             (err, stdout) => {
                 try {
                     const r = JSON.parse(String(stdout).trim().split('\n').pop());
-                    resolve(r.state === 'patched' && r.restartNeeded ? 'restart-needed' : r.state || 'unknown');
+                    resolve({ state: r.state === 'patched' && r.restartNeeded ? 'restart-needed' : r.state || 'unknown',
+                        files: Array.isArray(r.files) && r.files.every((f) => f && typeof f.path === 'string') ? r.files.map((f) => f.path) : null });
                 } catch (e) {
-                    resolve('unknown');
+                    resolve({ state: 'unknown', files: null });
                 }
             });
     });
@@ -699,6 +707,7 @@ const CACHE_ONE = 256 << 10;
 // what the RAM scratch leaves free on its file system; amounts up to SCRATCH_SMALL need no df
 const SCRATCH_RESERVE = 64 << 20;
 const SCRATCH_SMALL = 1 << 20;
+const SCRATCH_DF_MS = 5000;
 
 function memAvailable() {
     try {
@@ -731,6 +740,8 @@ class Scratch {
         this.conf = conf;
         this.used = 0;
         this.own = null;
+        // the last free-space reading (free)
+        this.read = null;
     }
 
     get dir() {
@@ -779,7 +790,19 @@ class Scratch {
         if (bytes <= SCRATCH_SMALL) {
             return true;
         }
-        return total <= memAvailable() / 4 && bytes <= freeBytes(own ? this.dir : path.dirname(this.dir)) - (own ? 0 : SCRATCH_RESERVE);
+        return total <= memAvailable() / 4 && bytes <= this.free(own ? this.dir : path.dirname(this.dir)) - (own ? 0 : SCRATCH_RESERVE);
+    }
+
+    /* freeBytes(dir), read at most every SCRATCH_DF_MS: a download burst
+     * takes its room from one reading, less what it has taken since. */
+    free(dir) {
+        const now = Date.now();
+        const r = this.read;
+        if (!r || r.dir !== dir || now - r.at >= SCRATCH_DF_MS || now < r.at) {
+            this.read = { dir, at: now, bytes: freeBytes(dir), used: this.used };
+            return this.read.bytes;
+        }
+        return r.bytes - Math.max(0, this.used - r.used);
     }
 
     take(bytes) {
@@ -798,8 +821,92 @@ class Scratch {
     }
 }
 
-/* Downloads run in a child as the fetch uid, each into a folder of its own
- * that root makes in state_dir and hands to that uid. Root reads the result
+/* The fetch child (fetch.js serve) the downloads of a burst share, as one
+ * uid: started for the first, ended FETCH_IDLE_MS after the last.
+ * run(msg, onEvent, onEnd): onEvent(ev) for each of the job's events
+ * until onEnd(final event); onEnd(null, error or null) when the child
+ * ends first. */
+const FETCH_IDLE_MS = 10000;
+class FetchWorker {
+    constructor(opts) {
+        this.uid = opts.uid;
+        this.jobs = new Map();
+        this.n = 0;
+        this.ended = false;
+        this.idle = null;
+        this.onOther = () => {};
+        this.child = cp.spawn(process.execPath, [path.join(HERE, 'fetch.js'), 'serve'],
+            Object.assign({ stdio: ['pipe', 'pipe', 'inherit'], cwd: '/', env: {} }, opts));
+        let buf = '';
+        this.child.stdout.setEncoding('utf8');
+        this.child.stdout.on('data', (d) => {
+            buf += d;
+            let nl;
+            while ((nl = buf.indexOf('\n')) >= 0) {
+                const line = buf.slice(0, nl);
+                buf = buf.slice(nl + 1);
+                let ev;
+                try {
+                    ev = JSON.parse(line);
+                } catch (e) {
+                    continue;
+                }
+                const job = this.jobs.get(ev.id);
+                if (!job) {
+                    this.onOther(ev);
+                } else if (!ev.retry && (ev.error || ev.removed || ((ev.done || ev.notModified) && ev.file === undefined))) {
+                    this.drop(ev.id);
+                    job.onEnd(ev);
+                } else {
+                    job.onEvent(ev);
+                }
+            }
+        });
+        const gone = (err) => {
+            this.ended = true;
+            clearTimeout(this.idle);
+            const left = Array.from(this.jobs.values());
+            this.jobs.clear();
+            left.forEach((j) => j.onEnd(null, err instanceof Error ? err : null));
+        };
+        this.child.on('error', gone);
+        this.child.on('close', gone);
+        this.child.stdin.on('error', () => {});
+    }
+
+    run(msg, onEvent, onEnd) {
+        const id = ++this.n;
+        clearTimeout(this.idle);
+        this.jobs.set(id, { onEvent, onEnd });
+        this.child.stdin.write(JSON.stringify(Object.assign({ id }, msg)) + '\n');
+        return id;
+    }
+
+    /* Stops waiting for job id (its events are no longer read). */
+    drop(id) {
+        this.jobs.delete(id);
+        if (!this.jobs.size && !this.ended) {
+            clearTimeout(this.idle);
+            this.idle = setTimeout(() => this.end(), FETCH_IDLE_MS);
+        }
+    }
+
+    end() {
+        clearTimeout(this.idle);
+        this.ended = true;
+        this.child.stdin.end();
+    }
+
+    /* Stops the child and every job in it. */
+    kill() {
+        this.ended = true;
+        this.child.kill('SIGKILL');
+    }
+}
+
+/* Downloads run in a child as the fetch uid (FetchWorker: one for the
+ * downloads close together), each into a folder of its own that root makes
+ * in state_dir and hands to that uid. Root reads the result
  * only through a descriptor opened without following links and checked to
  * be a regular file of bounded size, and removes the folder's contents as
  * the fetch uid, so nothing that uid plants there leads root anywhere. */
@@ -869,14 +976,47 @@ class Fetcher {
     /* Removes a download folder as the fetch uid; done() once it is gone, or failed to go. */
     retire(dir, done) {
         const end = done || (() => {});
-        cp.spawn('rm', ['-rf', dir], this.asFetchUid({ stdio: 'ignore' }))
+        const removed = () => {
+            try {
+                fs.rmdirSync(dir);
+            } catch (e) { /* gone, or refilled since: the next start retries */ }
+            end();
+        };
+        const rm = () => cp.spawn('rm', ['-rf', dir], this.asFetchUid({ stdio: 'ignore' }))
             .on('error', () => end())
-            .on('close', () => {
-                try {
-                    fs.rmdirSync(dir);
-                } catch (e) { /* gone, or refilled since: the next start retries */ }
-                end();
-            });
+            .on('close', removed);
+        const w = this.w;
+        if (w && !w.ended && w.uid === this.asFetchUid({}).uid) {
+            // a child that ends first leaves it to rm
+            w.run({ remove: dir }, () => {}, (ev) => (ev ? removed() : rm()));
+            return;
+        }
+        rm();
+    }
+
+    /* Ends the fetch child, with whatever still runs in it. */
+    stop() {
+        if (this.w && !this.w.ended) {
+            this.w.kill();
+        }
+    }
+
+    /* The fetch child for the next download: the one running, while it
+     * runs as the fetch uid, else a new one. */
+    worker() {
+        const opts = this.asFetchUid({});
+        if (!this.w || this.w.ended || this.w.uid !== opts.uid) {
+            if (this.w && !this.w.ended) {
+                this.w.end();
+            }
+            this.w = new FetchWorker(opts);
+            this.w.onOther = (ev) => {
+                if (ev.certDates) {
+                    this.datesIgnored(ev.certDates, ev.error);
+                }
+            };
+        }
+        return this.w;
     }
 
     /* Download folders an earlier run left. */
@@ -1003,75 +1143,79 @@ class Fetcher {
         const files = job.files && job.files.map((f, i) => Object.assign({}, f, { dest: path.join(dir, String(i)) }));
         const got = files && [];
         return new Promise((resolve, reject) => {
-            const child = cp.spawn(process.execPath, [path.join(HERE, 'fetch.js')],
-                this.asFetchUid({ stdio: ['pipe', 'pipe', 'inherit'], cwd: dir, env: {} }));
-            gentle(child, this.lowPriority);
+            const w = this.worker();
+            // the shared fetch child at the priority of what runs now (an automatic update: low)
+            if (w.child && w.child.pid) {
+                try { require('os').setPriority(w.child.pid, this.lowPriority ? AUTO_NICE : 0); } catch (e) { /* gone */ }
+            }
             let result = null;
-            let buf = '';
-            child.stdout.setEncoding('utf8');
-            child.stdout.on('data', (d) => {
-                buf += d;
-                let nl;
-                while ((nl = buf.indexOf('\n')) >= 0) {
-                    const line = buf.slice(0, nl);
-                    buf = buf.slice(nl + 1);
-                    let ev;
-                    try {
-                        ev = JSON.parse(line);
-                    } catch (e) {
-                        continue;
-                    }
-                    if (files && ev.file !== undefined && ev.done) {
-                        // read as it comes: what a later failure leaves is not needed
-                        try {
-                            got[ev.file] = Object.assign(this.collect(files[ev.file].dest, files[ev.file].maxBytes),
-                                { headers: ev.headers || {}, resumed: !!ev.resumed });
-                            if (onProgress) {
-                                onProgress(ev.file, ev.bytes, ev.bytes);
-                            }
-                        } catch (err) {
-                            result = { error: err.message };
-                            child.kill();
-                        }
-                    } else if (ev.progress !== undefined && onProgress) {
-                        if (files) {
-                            onProgress(ev.file, ev.progress, ev.total || null);
-                        } else {
-                            onProgress(ev.progress, ev.total || maxBytes || null);
-                        }
-                    } else if (ev.certDates) {
-                        this.datesIgnored(ev.certDates, ev.error);
-                    } else if (ev.retry) {
-                        console.log(`fetch: ${files && ev.file !== undefined && files[ev.file] ? files[ev.file].name : name}: ${ev.error}; trying again in ${ev.after / 1000} s` +
-                            `${ev.from ? ` from byte ${ev.from}` : ''}`);
-                    } else if ((ev.done || ev.error || ev.notModified) && !(result && result.error)) {
-                        result = ev;
-                        if (this.conf.proxy) {
-                            this.noteProxy(ev.error && /^proxy /.test(ev.error) ? ev.error : ev.error ? this.proxyError : null);
-                        }
-                    }
+            let settled = false;
+            let id = null;
+            const settle = (err) => {
+                if (settled) {
+                    return;
                 }
-            });
-            child.on('error', reject);
-            child.on('close', () => {
-                if (result && result.notModified) {
+                settled = true;
+                if (err) {
+                    reject(err);
+                } else if (result && result.notModified) {
                     resolve(Object.assign(Buffer.alloc(0), { headers: result.headers || {}, notModified: true }));
                 } else if (result && result.done && files) {
                     resolve(got);
                 } else if (result && result.done) {
                     try {
-                        resolve(Object.assign(this.collect(dest, maxBytes), { headers: result.headers || {} }));
-                    } catch (err) {
-                        reject(err);
+                        resolve(Object.assign(this.collect(dest, maxBytes), { headers: result.headers || {}, resumed: !!result.resumed }));
+                    } catch (e) {
+                        reject(e);
                     }
                 } else {
                     reject(Object.assign(new Error(result && result.error || 'download failed'),
                         result && result.status ? { status: result.status } : {}, result && result.rateLimited ? { rateLimited: true } : {},
                         result && result.tooBig ? { tooBig: true } : {}));
                 }
-            });
-            child.stdin.end(JSON.stringify({ url, headers, dest, maxBytes, dns: lease.dns, lease: this.conf.lease || undefined, ca: this.ca,
-                method: job.method || 'GET', body: job.body, keep: job.keep || [], proxy: this.conf.proxy || undefined }));
+            };
+            const onEvent = (ev) => {
+                if (files && ev.file !== undefined && ev.done) {
+                    // read as it comes: what a later failure leaves is not needed
+                    try {
+                        got[ev.file] = Object.assign(this.collect(files[ev.file].dest, files[ev.file].maxBytes),
+                            { headers: ev.headers || {}, resumed: !!ev.resumed });
+                        if (onProgress) {
+                            onProgress(ev.file, ev.bytes, ev.bytes);
+                        }
+                    } catch (e) {
+                        // nothing more of what that uid wrote is read: the child goes, with the downloads beside it
+                        result = { error: e.message };
+                        w.drop(id);
+                        w.kill();
+                        settle();
+                    }
+                } else if (ev.progress !== undefined && onProgress) {
+                    if (files) {
+                        onProgress(ev.file, ev.progress, ev.total || null);
+                    } else {
+                        onProgress(ev.progress, ev.total || maxBytes || null);
+                    }
+                } else if (ev.retry) {
+                    console.log(`fetch: ${files && ev.file !== undefined && files[ev.file] ? files[ev.file].name : name}: ${ev.error}; trying again in ${ev.after / 1000} s` +
+                        `${ev.from ? ` from byte ${ev.from}` : ''}`);
+                }
+            };
+            const onEnd = (ev, err) => {
+                if (ev) {
+                    result = ev;
+                    if (this.conf.proxy && !job.quiet) {
+                        this.noteProxy(ev.error && /^proxy /.test(ev.error) ? ev.error : ev.error ? this.proxyError : null);
+                    }
+                }
+                settle(err);
+            };
+            id = w.run({ job: { url, headers, dest, maxBytes, dns: lease.dns, lease: this.conf.lease || undefined, ca: this.ca,
+                method: job.method || 'GET', body: job.body, keep: job.keep || [], proxy: this.conf.proxy || undefined,
+                connectMs: job.connectMs, idleMs: job.idleMs,
+                immutable: !!job.immutable, fresh: !!(job.fresh || this.fresh),
+                files: files ? files.map((f) => ({ url: f.url, dest: f.dest, maxBytes: f.maxBytes })) : undefined, parallel: job.parallel } },
+            onEvent, onEnd);
         }).then((bytes) => {
             this.retire(dir, room.release);
             return bytes;
@@ -1185,28 +1329,68 @@ function storeTileShows(conf) {
  * own (it creates it at its first start after a factory reset), and node
  * runs its main.js (oap-mainapp on iDrive 7, oap-mainapp21 on iDrive 8). */
 function mainappReady(conf) {
-    const proc = conf.proc || '/proc';
     try {
-        if (fs.statSync(path.join(conf.oap_root, `oap_${conf.mainapp_uid}`, 'data')).uid !== Number(conf.mainapp_uid)) {
-            return false;
-        }
-        return fs.readdirSync(proc).filter((n) => /^\d+$/.test(n)).some((pid) => {
-            try {
-                const argv = fs.readFileSync(path.join(proc, pid, 'cmdline'), 'utf8').split('\0');
-                let i = 1;
-                for (; i < argv.length && argv[i].charAt(0) === '-'; i++) {
-                    if (argv[i] === '-r' || argv[i] === '--require') {
-                        i++;
-                    }
-                }
-                const script = argv[i] || '';
-                return /(^|\/)node$/.test(argv[0]) && /\/oap-mainapp(21)?\/src\/main\.js$/.test(script);
-            } catch (e) {
-                return false;
-            }
-        });
+        return fs.statSync(path.join(conf.oap_root, `oap_${conf.mainapp_uid}`, 'data')).uid === Number(conf.mainapp_uid) &&
+            mainappProcess(conf) !== '-';
     } catch (e) {
         return false;
+    }
+}
+
+/* The app manager's process (node running its main.js) as "<pid>:<start
+ * time>", '-' without one. */
+function mainappProcess(conf) {
+    const proc = conf.proc || '/proc';
+    let names = [];
+    try {
+        names = fs.readdirSync(proc).filter((n) => /^\d+$/.test(n));
+    } catch (e) {
+        return '-';
+    }
+    for (const pid of names) {
+        try {
+            const argv = fs.readFileSync(path.join(proc, pid, 'cmdline'), 'utf8').split('\0');
+            let i = 1;
+            for (; i < argv.length && argv[i].charAt(0) === '-'; i++) {
+                if (argv[i] === '-r' || argv[i] === '--require') {
+                    i++;
+                }
+            }
+            const script = argv[i] || '';
+            if (/(^|\/)node$/.test(argv[0]) && /\/oap-mainapp(21)?\/src\/main\.js$/.test(script)) {
+                let start = '';
+                try {
+                    const stat = fs.readFileSync(path.join(proc, pid, 'stat'), 'utf8');
+                    start = stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19] || '';
+                } catch (e) { /* the cmdline alone */ }
+                return `${pid}:${start}`;
+            }
+        } catch (e) { /* gone meanwhile */ }
+    }
+    return '-';
+}
+
+/* A file's stamp as the deploy tool's status inputs give it (deploy/README.md,
+ * "status"): size:mtime:ctime:inode (ms) as lstat gives them, for a link
+ * followed by '>' and its target's ('>-' when it leads nowhere), '-' when
+ * absent; /proc/mounts the sha256 of its text. */
+function inputStamp(p) {
+    const one = (st) => `${st.size}:${st.mtime.getTime()}:${st.ctime.getTime()}:${st.ino}`;
+    try {
+        if (p === '/proc/mounts') {
+            return sha256(fs.readFileSync(p)).slice(0, 16);
+        }
+        const st = fs.lstatSync(p);
+        if (!st.isSymbolicLink()) {
+            return one(st);
+        }
+        try {
+            return `${one(st)}>${one(fs.statSync(p))}`;
+        } catch (e) {
+            return `${one(st)}>-`;
+        }
+    } catch (e) {
+        return '-';
     }
 }
 
@@ -1337,6 +1521,10 @@ class Updater {
         this.said = new WeakMap();
         this.checking = null;
         this.checkAgain = null;
+        // when refresh() last had the deploy tool's answer (epoch ms)
+        this.refreshedAt = 0;
+        // the deploy tool's and app-privacy's answers as kept (answers)
+        this.answersKept = { status: null, privacy: null };
         this.sendTimer = null;
         this.progressTimer = null;
         // the files read while one state is made, each read once (state)
@@ -2645,15 +2833,21 @@ class Updater {
         return true;
     }
 
-    /* A check asked for while one runs is made once more after it: the
+    /* auto: one the updater starts itself (at start, its interval, the
+     * uplink coming up), which takes the deploy tool's word from a refresh
+     * just made; one asked for refreshes. force (its interval): the deploy
+     * tool and app-privacy are asked again, whatever answers are kept. A
+     * check asked for while one runs is made once more after it: the
      * running one may have read the sources before what was asked about
      * changed (a Store's Check now right after a publish). */
-    check() {
+    check(auto, force) {
+        // one under way refreshes as forced when a forced one comes meanwhile
+        this.checkForced = this.checkForced || !!force;
         if (this.checking) {
             if (!this.checkAgain) {
                 this.checkAgain = this.checking.then(() => {
                     this.checkAgain = null;
-                    return this.check();
+                    return this.check(auto);
                 });
             }
             return this.checkAgain;
@@ -2673,7 +2867,17 @@ class Updater {
                 this.iconPass = Promise.all(rts.map((rt) => rt.icons)).then(() => Promise.all(rts.map((rt) => this.fetchIcons(rt))));
                 return this.pruneIcons();
             })
-            .then(() => this.refresh())
+            // with or without a refresh: the apps the sources list are taken over and lost ones put back
+            .then(() => {
+                const forced = this.checkForced;
+                this.checkForced = false;
+                if (forced || !auto || Date.now() - this.refreshedAt >= REFRESH_FRESH_MS) {
+                    return this.refresh(forced);
+                }
+                this.takeOver();
+                this.repairLost();
+                return undefined;
+            })
             .then(() => {
                 this.checking = null;
                 this.repairStale();
@@ -3824,10 +4028,52 @@ class Updater {
         return attempt();
     }
 
+    /* The deploy tool's status and app-privacy's check, each answer kept
+     * while what it rests on holds: this start of the head unit, the app
+     * manager's process and the stamps of the files it read (the deploy
+     * tool's inputs, until its inputs_until; the tool and the bundles the
+     * check names, unchanged while it ran). force: both asked again. */
+    answers(force) {
+        const key = `${bootId(this.conf)}\0${mainappProcess(this.conf)}`;
+        const holds = (k) => !force && !!k && k.key === key && Date.now() < k.until &&
+            Object.keys(k.inputs).every((p) => inputStamp(p) === k.inputs[p]);
+        const stamps = (files) => files.reduce((o, f) => Object.assign(o, { [f]: inputStamp(f) }), {});
+        const kept = this.answersKept;
+        const status = holds(kept.status) ? Promise.resolve(kept.status.answer) : deployStatus(this.conf).then((st) => {
+            const inputs = st && st.inputs;
+            this.answersKept.status = inputs && typeof inputs === 'object' && !Array.isArray(inputs) ? { key, answer: st, inputs,
+                until: typeof st.inputs_until === 'number' ? st.inputs_until : Infinity } : null;
+            return st;
+        });
+        let privacy;
+        if (holds(kept.privacy)) {
+            privacy = Promise.resolve(kept.privacy.answer);
+        } else {
+            // kept only when none of the files it read changed in the second before it ran or since
+            const tool = this.conf.privacy_tool;
+            const since = Date.now() - 1000;
+            privacy = privacyState(this.conf).then((r) => {
+                const files = r && r.files ? [tool].concat(r.files) : null;
+                const settled = !!files && files.every((f) => {
+                    try {
+                        return fs.statSync(f).ctime.getTime() < since;
+                    } catch (e) {
+                        return false;
+                    }
+                });
+                this.answersKept.privacy = settled ? { key, answer: r, inputs: stamps(files), until: Infinity } : null;
+                return r;
+            });
+        }
+        return Promise.all([status, privacy]);
+    }
+
     /* What only the unit's tools can tell: pending reboots, the head unit,
      * the installed providers, the privacy patch. */
-    refresh() {
-        return Promise.all([deployStatus(this.conf), privacyState(this.conf)]).then(([st, privacy]) => {
+    refresh(force) {
+        return this.answers(force).then(([st, checked]) => {
+            const privacy = checked ? checked.state : null;
+            this.refreshedAt = st ? Date.now() : 0;
             this.pending = pendingOf(st);
             this.nextStart = nextStartOf(st);
             if (st) {
@@ -4203,6 +4449,8 @@ class Updater {
         const roles = changed.map((c) => c.role);
         if (roles.indexOf('fetch') >= 0) {
             this.fetcher.notBefore = Date.now() + UPLINK_RESCAN_MS;
+            // nothing keeps running as the uid given up
+            this.fetcher.stop();
         }
         if (roles.indexOf('web') >= 0) {
             this.writeSecrets();
@@ -4227,6 +4475,8 @@ class Updater {
      * SIGKILL 10 s later) and counts as failed. */
     deployTool(args) {
         this.deployError = null;
+        // what it changes is asked again
+        this.answersKept = { status: null, privacy: null };
         const limitS = Number(this.conf.deploy_timeout_s) || 5400;
         const limit = limitS >= 120 ? `${Math.round(limitS / 60)} min` : `${limitS} s`;
         return new Promise((resolve) => {
@@ -4362,7 +4612,7 @@ class Updater {
             }
             this.webUrl = url;
             const store = this.storeData();
-            if (!store) {
+            if (!store || (!url && !fs.existsSync(path.join(store.data, 'web-url')))) {
                 return undefined;
             }
             // the Store reads the file when a state arrives: one goes out once it is written
@@ -5078,8 +5328,8 @@ class Updater {
             }
             this.writeSecrets();
             if (web) {
-                // also with false: it removes a firewall rule an earlier run left
-                Promise.resolve(this.applyWeb()).then(() => this.syncWebUrl(true));
+                // also with false: it removes a firewall rule an earlier run left; writeSecrets wrote web-url
+                Promise.resolve(this.applyWeb()).then(() => this.syncWebUrl());
             }
             const trial = path.join(this.conf.tool_root, SELF, 'trial');
             if (fs.existsSync(trial)) {
@@ -5107,8 +5357,13 @@ class Updater {
             }
             this.refresh().then(() => this.changed());
             let wasOnline = readLease(this.conf).online;
-            setTimeout(() => this.check(), Number(this.conf.first_check_s) * 1000);
-            setInterval(() => this.check(), Number(this.conf.check_interval_s) * 1000);
+            // the first check also reads what an uplink that comes up before it brings
+            let firstDue = true;
+            setTimeout(() => {
+                firstDue = false;
+                this.check(true);
+            }, Number(this.conf.first_check_s) * 1000);
+            setInterval(() => this.check(true, true), Number(this.conf.check_interval_s) * 1000);
             setInterval(() => this.autoUpdateTick(), AUTO_TICK_MS);
             // a Store update on trial: its process looked for each second
             setInterval(() => this.watchStoreTrial(), 1000);
@@ -5158,8 +5413,8 @@ class Updater {
                 if (online !== wasOnline) {
                     wasOnline = online;
                     this.changed();
-                    if (online) {
-                        this.check();
+                    if (online && !firstDue) {
+                        this.check(true);
                     }
                 }
             }, 15000);

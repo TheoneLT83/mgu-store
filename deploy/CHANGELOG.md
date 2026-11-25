@@ -1,5 +1,10 @@
 # Deploy tool changelog
 
+## 0.8.35
+
+robertnisipeanu/mgu-store's 0.8.31 with this repository's 0.8.34:
+- `status --json` names the files its answer rests on, so a caller can keep the answer until one of them changes.
+
 ## 0.8.34
 
 - One reading of the head unit's uptime: an unreadable one makes the first-start check wait as it should, not at once.
