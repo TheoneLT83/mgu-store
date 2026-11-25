@@ -420,9 +420,10 @@ function installedCards(m, all, busy, name, updates) {
     const items = [];
     const part = (list, head, color) => {
         list.forEach((c, i) => {
-            const s = tileState(c, busy), up = c.status === 'update' && s.badge === 'update';
+            const s = tileState(c, busy);
             items.push(Object.assign(iconOf(c), { id: c.id, title: c.title, act: { do: 'open', page: pageOf(c) },
-                src: [name(c), up ? `${c.installed} > ${target(c)}` : c.installed, isTool(c) ? tr("Tool") : ''].filter(Boolean).join(' · '),
+                // an update's versions, also while it waits in the queue or runs
+                src: [name(c), c.status === 'update' && c.installed !== target(c) ? `${c.installed} > ${target(c)}` : c.installed, isTool(c) ? tr("Tool") : ''].filter(Boolean).join(' · '),
                 btn: s.sub === tr("Installed") ? { kind: 'plain', text: tr("Up to date") } : cardButton(c, busy),
                 progress: busy && busy.id === c.id ? s.progress : -1, head: i === 0 ? `${head} · ${list.length}` : '', headColor: color }));
         });
@@ -451,8 +452,9 @@ function installedCards(m, all, busy, name, updates) {
         stTitle: { text: queue.length ? tr("Updating…") : updates.length ? tr("Install all updates ({0})", updates.length) : tr("Up to date") },
         stSub: { text: queue.length ? (run ? run.text : '') : updates.length ? `${updates.length} · ${updates.map((c) => c.title).join(', ')}`
             : `${plural(all.filter((c) => !isTool(c)).length, 'app')} · ${plural(all.filter(isTool).length, 'tool')}` },
-        updateAll: queue.length ? button(tr("Updating…"), null, { vicon: 'arrowDown', style: 'outline', disabled: true })
-            : updates.length ? button(tr("Install all updates ({0})", updates.length), { do: 'update-all' }, { vicon: 'arrowDown', style: 'primary', color: '' })
+        // the updates not queued yet (an automatic update runs one at a time): all of them now, at full speed
+        updateAll: updates.length ? button(tr("Install all updates ({0})", updates.length), { do: 'update-all' }, { vicon: 'arrowDown', style: 'primary', color: '' })
+            : queue.length ? button(tr("Updating…"), null, { vicon: 'arrowDown', style: 'outline', disabled: true })
                 : hidden,
         queueLabel: { title: queue.length ? tr("Queue") : '', text: '', bare: true },
         queue: { items: queue.map((c) => {

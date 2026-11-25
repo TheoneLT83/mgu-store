@@ -162,7 +162,9 @@ function compact(W, H0, look, opts) {
         text('stSub', dx + 112, M + 166, DW - 132, 28, '', 22, 'label', DIM),
         button('updateAll', dx + 20, M + 212, DW - 40, 62, '', 'primary', 23, { vicon: 'arrowDown', color: BLUE }),
         el('queueLabel', 'note', dx + 20, M + 286, DW - 40, 28, { title: '', text: '', bare: true }),
-        list('queue', dx + 20, M + 318, DW - 40, B - RS_H - 16 - M - 318, { rowH: 76, titleSize: 26, subSize: 19, ctlK: 0.8, empty: '' }),
+        // down to the panel's foot while no restart waits under it
+        list('queue', dx + 20, M + 318, DW - 40, B - RS_H - 16 - M - 318, { rowH: 76, titleSize: 26, subSize: 19, ctlK: 0.8, empty: '',
+            ifHidden: { name: 'rsBox', dy: 0, dh: RS_H + 4 } }),
         // a restart the head unit needs to finish, only while one does
         el('rsBox', 'note', dx + 20, B - RS_H - 4, DW - 40, RS_H, { title: '', text: '', tone: 'amber', hidden: true, size: 21, titleSize: 17 }),
         button('restartNow', dx + DW - 20 - 16 - 220, B - RS_H - 4 + 18, 220, 56, 'Restart now', 'primary', 20,

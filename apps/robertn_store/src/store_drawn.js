@@ -252,6 +252,7 @@ class Drawn extends EventEmitter {
     /* At shutdown: the connection ends without switching to the widget screens. */
     close() {
         clearInterval(this.keepalive);
+        clearInterval(this.spinTimer);
         clearTimeout(this.retryTimer);
         clearTimeout(this.prebuild);
         clearTimeout(this.held);
@@ -423,6 +424,11 @@ class Drawn extends EventEmitter {
         if (!!on !== !!this._busy) this.gpu.fps(on ? BUSY_FPS : FPS);
         this._busy = !!on;
         this.gpu.busy(on);
+        // the running row's spinner turns at BUSY_FPS while the page shows: a frame each time, though nothing else moves
+        clearInterval(this.spinTimer);
+        this.spinTimer = on ? setInterval(() => {
+            if (this.on_ && this.onScreen && !this.suspended && !this.gpu.waiting) this.render(true);
+        }, Math.round(1000 / BUSY_FPS)) : null;
     }
 
     suspend(on) {

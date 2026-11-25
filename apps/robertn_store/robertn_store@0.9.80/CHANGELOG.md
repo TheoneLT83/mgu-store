@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.80
+
+Installed (iDrive 7 look): Install all updates stays on while an automatic update runs, for the updates not queued
+yet, all at full speed; each card of an update shows its versions (2.7.1 > 2.7.2), also while it waits or runs; the
+queue reaches the panel's foot while no restart waits. The running row's spinner turns smoothly.
+
 ## 0.9.79
 
 Settings has Automatic updates (on unless turned off): the updater installs updates by itself, one at a time and at a
