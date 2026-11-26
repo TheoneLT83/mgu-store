@@ -8,7 +8,7 @@ screen with the controller, among them Cluster functions.
 
 It is idrive7-apps' controller gate (`kit/renderd/inputgate/`, MIT; its vsomeip headers MPL-2.0), built here the
 same way: `src/mgu-inputgate.cpp`, compiled in the head unit's userland (Ubuntu 18.04, glibc 2.27, GCC 7), gives
-the library idrive7-apps ships, byte for byte. The install kit (`kit/`) is idrive7-apps' gate 1.1.0
+the library idrive7-apps ships, byte for byte. The install kit (`kit/`) is idrive7-apps' gate 1.2.1
 (`kit/renderd/inputgate/tool`: the HMI of either iDrive, Hmi8 / `hmi8.service` or HmiMain3D / `hmi.service`) with this
 repository's check at a normal shutdown (`guard.sh stop`), at the same version, so a car that has the gate from this
 repository updates to what idrive7-apps' apps require (`test/kit_test.js`). A car without idrive7-apps gets it from

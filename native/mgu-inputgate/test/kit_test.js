@@ -1,5 +1,5 @@
 'use strict';
-/* The controller gate's install kit (kit/, component.json): idrive7-apps' gate 1.1.0 (kit/renderd/inputgate/tool: the
+/* The controller gate's install kit (kit/, component.json): idrive7-apps' gate 1.2.1 (kit/renderd/inputgate/tool: the
  * HMI of either iDrive, the drop-in in hmi.service and hmi8.service) with this repository's shutdown check (guard.sh
  * stop). Its guard keeps the updater's preload kit's lines for iDrive 7 (sources.js preloadFiles), the iDrive 8 HMI
  * chosen before them. */

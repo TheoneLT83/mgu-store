@@ -1,23 +1,31 @@
 #!/bin/sh
 # Controller gate (mgu-inputgate): boot guard for mgu-inputgate.so in the HMI, from its repository's
 # mgu-repo.json, installed by mgu-deploy (after idrive7-apps' deploy/mgu-app-install.sh inputgate).
-# The HMI: Hmi8 (hmi8.service) on iDrive 8, HmiMain3D (hmi.service) on iDrive 7 (as idrive7-apps' gate 1.1.0).
+# The HMI: Hmi8 (hmi8.service) on iDrive 8, HmiMain3D (hmi.service) on iDrive 7 (as idrive7-apps' gate 1.2.1).
 if [ ! -e /usr/bin/HmiMain3D ] && [ -e /usr/bin/Hmi8 ]; then UNIT=hmi8.service; PROC=Hmi8; else UNIT=hmi.service; PROC=HmiMain3D; fi
 D=/var/opt/mgu-inputgate; SO=$D/current/mgu-inputgate.so; RUN=/run/mgu-inputgate.env; PID=/run/mgu-inputgate.pid; N=$D/strikes; MAX=2
 n=$(cat "$N" 2>/dev/null); case "$n" in ''|*[!0-9]*) n=0;; esac
 # a version installed since the count was kept starts it again
 v=$(readlink "$D/current" 2>/dev/null)
 if [ "$(cat "$D/strikes.version" 2>/dev/null)" != "$v" ]; then n=0; echo 0 > "$N"; echo "$v" > "$D/strikes.version"; fi
-other_preload() {   # the unit's LD_PRELOAD without ours; the last assignment wins, as in systemd
+other_preload() {   # the HMI's LD_PRELOAD libraries without ours: the unit's Environment= lines and the files its
+                    # other drop-ins read (EnvironmentFile=, another preload tool's /run/<id>.env), so both load
     systemctl cat $UNIT --no-pager 2>/dev/null | awk '
         /^# \// { ours = index($0, "mgu-inputgate") > 0; next }
         ours { next }
         /^[ \t]*Environment=/ && index($0, "LD_PRELOAD=") {
             v = substr($0, index($0, "LD_PRELOAD=") + 11)
             q = index(v, "\""); if (q) v = substr(v, 1, q - 1)
-            last = v
+            print "lib " v
         }
-        END { print last }' | tr ':' ' ' | tr ' ' '\n' | grep -v '^$' | grep -v 'mgu-inputgate' | tr '\n' ' ' | sed 's/ $//'
+        /^[ \t]*EnvironmentFile=/ { f = substr($0, index($0, "=") + 1); sub(/^-/, "", f); print "file " f }' |
+    while read -r kind v; do
+        if [ "$kind" = file ]; then
+            [ -f "$v" ] && sed -n 's/^[ \t]*LD_PRELOAD=//p' "$v" | tr -d '"'
+        else
+            echo "$v"
+        fi
+    done | tr ':' ' ' | tr ' ' '\n' | grep -v '^$' | grep -v 'mgu-inputgate' | awk '!seen[$0]++' | tr '\n' ' ' | sed 's/ $//'
 }
 case "${1:-}" in
 boot)

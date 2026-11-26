@@ -1,5 +1,9 @@
 # Updater changelog
 
+## 0.8.63
+
+- A preload tool's boot guard keeps every other LD_PRELOAD library of its unit: the unit's own and the ones other drop-ins read from their EnvironmentFile (another preload tool's /run/<id>.env), so two preload tools no longer cancel each other.
+
 ## 0.8.62
 
 robertnisipeanu/mgu-store's 0.8.61 and 0.8.62 with this repository's 0.8.61:
