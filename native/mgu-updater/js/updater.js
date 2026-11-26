@@ -3644,7 +3644,8 @@ class Updater {
             return rt.reader.artifact(entry, progress);
         }
         // a build script needs the whole repo, or its folder and the shared files it names; packing, the
-        // component's folder. A public repo's are read file by file (sources.js partFiles)
+        // component's folder. A GitHub repo's come from its tarball at the commit, downloaded once for the updates
+        // that follow from the same commit (sources.js lastTarball)
         const files = (paths) => rt.reader.files(entry.commit, progress, entry.script ? null : entry.path, paths);
         // a build's donor is looked up while its files download
         const donorLookup = entry.script ? this.sdkDonor() : null;

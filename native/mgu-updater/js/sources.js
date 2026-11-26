@@ -1794,12 +1794,33 @@ function githubReader(s, ctx) {
                 ? tokenOrNone((anon) => fileAt(entry.commit, rel, max, anon))
                 : Promise.reject(new Error('an icon path stays inside the repo'))))
                 : Promise.reject(new Error('an icon is a release asset, an https url or a file of the repo tree'))),
-        files: (commit, onProgress, under) => tokenOrNone((anon) => tarball(commit, onProgress, anon))
-            .then((buf) => tar.untgz(buf, ctx.maxBuildBytes))
+        files: (commit, onProgress, under) => lastTarball(`${s.repo}@${commit}`, () => tokenOrNone((anon) => tarball(commit, onProgress, anon)))
+            .then((buf) => {
+                if (onProgress) onProgress(buf.length, buf.length);   // (a kept one: all there)
+                return tar.untgz(buf, ctx.maxBuildBytes);
+            })
             // the tarball's one top folder (<owner>-<repo>-<sha>/) is left off
             .then((members) => members.map((m) => ({ name: m.name.slice(m.name.indexOf('/') + 1), data: m.data, mode: m.mode }))
                 .filter((m) => m.name && !m.name.split('/').some(SKIP) && (!under || m.name.indexOf(`${under}/`) === 0)))
     };
+}
+
+/* A repo's tarball at a commit, downloaded once for the updates that build from it one after another (an update
+ * of every app of a repo, each of which reads the whole tree): the last one is kept for TARBALL_KEEP_MS after its
+ * last use, by repo@commit. A failed download is not kept. */
+const TARBALL_KEEP_MS = 15 * 60 * 1000;
+let tarballKept = null;   // { key, buf (a promise), timer }
+function lastTarball(key, download) {
+    if (!tarballKept || tarballKept.key !== key) {
+        if (tarballKept) clearTimeout(tarballKept.timer);
+        const kept = tarballKept = { key, buf: download(), timer: null };
+        kept.buf.catch(() => { if (tarballKept === kept) { clearTimeout(kept.timer); tarballKept = null; } });
+    }
+    const kept = tarballKept;
+    clearTimeout(kept.timer);
+    kept.timer = setTimeout(() => { if (tarballKept === kept) tarballKept = null; }, TARBALL_KEEP_MS);
+    if (kept.timer.unref) kept.timer.unref();
+    return kept.buf;
 }
 
 /* ---- USB media ---------------------------------------------------------------------- */
@@ -2036,7 +2057,7 @@ function label(s) {
 
 module.exports = {
     load, save, checkStored, writePrivate, mkdirPrivate, reader, label, usbSources, mountPoints,
-    repoCatalog, partPaths, buildPaths, batchCache, packComponent, serviceUnit, preloadFiles, subtree, packageInfo, packageEntry, readInside, walkInside, authError,
+    repoCatalog, partPaths, buildPaths, batchCache, lastTarball, packComponent, serviceUnit, preloadFiles, subtree, packageInfo, packageEntry, readInside, walkInside, authError,
     renameable, renameApp, packageId, uuid5, orderBranches, entryIcons, isIcon, safePath, parseRefs, REPO, CHANNEL, PACKAGE, ICON_BYTES,
     RATE_LIMIT
 };

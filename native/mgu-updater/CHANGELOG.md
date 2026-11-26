@@ -1,5 +1,9 @@
 # Updater changelog
 
+## 0.8.64
+
+- Updates that build from the same commit of a GitHub repo (every app of idrive7-apps after an update there) download its tarball once: it is kept 15 minutes after its last use. Each app downloaded the whole repo again (about 33 MB).
+
 ## 0.8.63
 
 - A preload tool's boot guard keeps every other LD_PRELOAD library of its unit: the unit's own and the ones other drop-ins read from their EnvironmentFile (another preload tool's /run/<id>.env), so two preload tools no longer cancel each other.
