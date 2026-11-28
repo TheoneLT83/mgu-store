@@ -1101,10 +1101,10 @@ async function firstInstall(o) {
         }
     }
     const services = [{ id: 'mgu-updater', unit: 'mgu-updater.service' }].concat(withs.filter((w) => w.unit));
-    // the status on stderr, shown as it comes; which services run on stdout (absent: not installed), then the status as JSON
-    const st = await ssh(o, [`sh ${DEPLOY} status >&2`].concat(services.map((s) =>
-        `if [ -e /var/opt/${s.id}/current ]; then systemctl is-active ${s.unit} 2>/dev/null || true; else echo absent; fi`),
-    [`sh ${DEPLOY} status --json 2>/dev/null | tail -n 1`]).join('; '), { capture: true });
+    // which services run on stdout (absent: not installed), then the status as JSON
+    const st = await ssh(o, services.map((s) =>
+        `if [ -e /var/opt/${s.id}/current ]; then systemctl is-active ${s.unit} 2>/dev/null || true; else echo absent; fi`)
+        .concat([`sh ${DEPLOY} status --json 2>/dev/null | tail -n 1`]).join('; '), { capture: true });
     const lines = st.stdout.split('\n');
     const tiles = tilesShow(lines[services.length]);
     const running = services.every((s, i) => ['active', 'absent'].indexOf((lines[i] || '').trim()) >= 0);
