@@ -1,5 +1,13 @@
 # Updater changelog
 
+## 0.8.66
+
+robertnisipeanu/mgu-store's way of reading a public GitHub repo's app: only the files its build reads (its folder and
+the files its build.shared names), file by file from raw.githubusercontent.com, each checked against its git id, a cut
+download carried on from where it stopped. The files stay on the head unit by their git id (at most 160 MB, the least
+recently used go first), so a later update downloads only what changed. A build that fails with only those files runs
+again with the whole repo; a file that is not the one the commit lists falls back to the whole repo too.
+
 ## 0.8.65
 
 robertnisipeanu/mgu-store's 0.8.63 and part of its 0.8.64 with this repository's 0.8.64:

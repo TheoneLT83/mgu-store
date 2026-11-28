@@ -43,6 +43,14 @@ const PACKAGE = /^([a-z0-9][a-z0-9_-]{0,63})@((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?
 const CHANNEL = /^(releases|tags|branch|branch:[A-Za-z0-9._][A-Za-z0-9._\/-]{0,199})$/;
 const SMALL = 1 << 20; // a JSON file of a source: catalog part, mgu-repo.json, component.json
 const ICON_BYTES = 128 << 10; // a component's icon (PNG)
+// a GitHub component read file by file (githubReader partFiles): at most this many files, this many at a time (fetch.js)
+const PART_FILES = 400;
+const PART_PARALLEL = 6;
+// what one queue's installs keep (batchCache): repo files by git id, and the last whole repo read
+const BATCH_BYTES = 64 << 20;
+const WHOLE_BYTES = 96 << 20;
+const DISK_BLOB_BYTES = 160 << 20;
+const GIT_ID = /^[0-9a-f]{40}$/;
 // a root-service package's mguService: the capability the tool made of it provides
 const SERVICE_KINDS = ['renderer', 'tether'];
 // Packed components carry one fixed mtime: the same tree gives the same bytes.
@@ -996,27 +1004,120 @@ function buildPaths(entry) {
 /* What the installs of one run of the updater's queue keep for each other
  * (Updater.next clears it when the queue is empty): commits' trees (by
  * repo and commit), repo files by their git id, at most BATCH_BYTES, and
- * the last whole repo read, when it unpacked to at most WHOLE_BYTES. */
-const BATCH_BYTES = 64 << 20;          // batchCache: repo files kept by their git id, at most this many bytes
-function batchCache() {
+ * the last whole repo read, when it unpacked to at most WHOLE_BYTES. With
+ * dir, the repo files also stay there by their git id for the next runs (a
+ * repo's shared build files are not read again for each app installed on
+ * its own), at most maxDisk bytes: before a file is written, the least
+ * recently used ones the current install does not use go first, and a file
+ * that still does not fit is kept for this run only. drop() empties dir. */
+function batchCache(dir, maxDisk) {
+    const cap = maxDisk || DISK_BLOB_BYTES;
+    const file = (id) => (dir && GIT_ID.test(id) ? path.join(dir, id) : null);
+    // dir as this run sees it: name -> { size, t } (last used), and their bytes
+    let disk = null;
+    let diskBytes = 0;
+    const onDisk = () => {
+        if (!disk) {
+            disk = new Map();
+            diskBytes = 0;
+            try {
+                fs.readdirSync(dir).forEach((n) => {
+                    const st = fs.statSync(path.join(dir, n));
+                    disk.set(n, { size: st.size, t: st.mtime.getTime() });
+                    diskBytes += st.size;
+                });
+            } catch (e) { /* none kept */ }
+        }
+        return disk;
+    };
+    const forget = (n) => {
+        rmQuiet(path.join(dir, n));
+        diskBytes -= disk.get(n).size;
+        disk.delete(n);
+    };
+    // makes room for n more bytes, sparing the files in inUse; whether they fit
+    const room = (n, inUse) => {
+        const kept = onDisk();
+        if (diskBytes + n <= cap) {
+            return true;
+        }
+        const spare = Array.from(kept.keys()).filter((k) => !inUse.has(k)).sort((a, b) => kept.get(a).t - kept.get(b).t);
+        if (diskBytes - spare.reduce((b, k) => b + kept.get(k).size, 0) + n > cap) {
+            return false;
+        }
+        while (diskBytes + n > cap) {
+            forget(spare.shift());
+        }
+        return true;
+    };
     return {
         trees: new Map(),
         blobs: new Map(),
         bytes: 0,
         whole: null,
-        keep(id, data) {
+        // inUse: the git ids of the files the current install reads
+        keep(id, data, inUse) {
             if (!this.blobs.has(id) && this.bytes + data.length <= BATCH_BYTES) {
                 this.blobs.set(id, data);
                 this.bytes += data.length;
             }
+            const f = file(id);
+            if (f && !onDisk().has(id) && room(data.length, inUse)) {
+                try {
+                    mkdirPrivate(dir);
+                    writePrivate(f, data, false);
+                    disk.set(id, { size: data.length, t: Date.now() });
+                    diskBytes += data.length;
+                } catch (e) { /* kept for this run only */ }
+            }
+        },
+        // a file by its git id: this run's, else the one kept in dir when it still is that file
+        blob(id) {
+            if (this.blobs.has(id)) {
+                return this.blobs.get(id);
+            }
+            const f = file(id);
+            let data = null;
+            try {
+                data = f ? fs.readFileSync(f) : null;
+            } catch (e) { /* not kept */ }
+            if (!data) {
+                return null;
+            }
+            const kept = onDisk().get(id);
+            if (gitBlobId(data) !== id) {
+                if (kept) {
+                    forget(id);
+                } else {
+                    rmQuiet(f);
+                }
+                return null;
+            }
+            if (kept) {
+                kept.t = Date.now();
+            }
+            return data;
         },
         clear() {
             this.trees.clear();
             this.blobs.clear();
             this.bytes = 0;
             this.whole = null;
+            disk = null;
+        },
+        drop() {
+            try {
+                fs.readdirSync(dir).forEach((n) => rmQuiet(path.join(dir, n)));
+            } catch (e) { /* none kept */ }
+            disk = null;
         }
     };
+}
+
+function rmQuiet(file) {
+    try {
+        fs.unlinkSync(file);
+    } catch (e) { /* gone */ }
 }
 
 /* A file's git id (a tree entry's sha). */
@@ -1603,6 +1704,16 @@ function githubReader(s, ctx) {
 
     const releasesList = (n) => json(`${repoUrl}/releases?per_page=${n}`, 'releases.json').then((r) => (Array.isArray(r) ? r : []));
 
+    // a commit's tree for partFiles, through the API with or without a token (GitHub's web hosts give none)
+    const treeAt = (sha) => json(`${repoUrl}/git/trees/${sha}?recursive=1`, 'tree.json').then((t) => {
+        if (!t || t.truncated || typeof t.sha !== 'string' || !Array.isArray(t.tree)) {
+            // asked again it is the same
+            throw Object.assign(new Error(t && t.truncated ? 'the tree is too large to list' : 'not a tree'), { permanent: true });
+        }
+        return { sha: t.sha, entries: t.tree.filter((e) => e && typeof e.path === 'string' && typeof e.sha === 'string')
+            .map((e) => ({ path: e.path, sha: e.sha, type: e.type, mode: e.mode, size: e.size })) };
+    });
+
     const atCommit = (sha, revision) => {
         if (!/^[0-9a-f]{40}$/.test(sha || '')) {
             throw new Error('no commit to read');
@@ -1699,6 +1810,106 @@ function githubReader(s, ctx) {
         return got.length === 100 && page < PROBE_PAGES ? branchList(page + 1, all) : { names: all, more: got.length === 100 };
     });
 
+    /* The repo's files at commit from its tarball, the top folder
+     * (<owner>-<repo>-<sha>/) left off; the batch keeps the last one. */
+    const wholeRepo = (commit, onProgress) => {
+        const batch = ctx.batch;
+        const key = `${s.repo} ${commit}`;
+        if (batch && batch.whole && batch.whole.key === key) {
+            return Promise.resolve(batch.whole.files);
+        }
+        return tokenOrNone((anon) => tarball(commit, onProgress, anon))
+            .then((buf) => tar.untgz(buf, ctx.maxBuildBytes))
+            .then((members) => {
+                const files = members.map((m) => ({ name: m.name.slice(m.name.indexOf('/') + 1), data: m.data, mode: m.mode }))
+                    .filter((m) => m.name && !m.name.split('/').some(SKIP));
+                if (batch && files.reduce((n, f) => n + f.data.length, 0) <= WHOLE_BYTES) {
+                    batch.whole = { key, files };
+                }
+                return files;
+            });
+    };
+
+    /* The files under paths at commit, by the commit's tree (one API
+     * request, kept for the batch), from raw.githubusercontent.com without
+     * a token in one download child (PART_PARALLEL at a time, the largest
+     * first, over connections it keeps open), gzipped on the way, and
+     * checked against their git ids; a file the batch holds by that id is
+     * not read again. onProgress(bytes, total) in the files' own sizes, each
+     * file's share growing as its gzipped bytes come. Links and submodules
+     * are left out, as a tarball leaves them. Rejects when the first path is
+     * not there, or for more than PART_FILES files. */
+    const partFiles = (commit, paths, onProgress) => {
+        const batch = ctx.batch;
+        const key = `${s.repo} ${commit}`;
+        const tree = batch && batch.trees.has(key) ? batch.trees.get(key) : treeAt(commit);
+        if (batch) {
+            batch.trees.set(key, tree);
+        }
+        const inside = (rel, p) => rel === p || rel.indexOf(`${p}/`) === 0;
+        const sizeOf = (e) => Number(e.size) || 0;
+        return tree.then((t) => {
+            const want = t.entries.filter((e) => e.type === 'blob' && e.mode !== '120000' && !e.path.split('/').some(SKIP) &&
+                paths.some((p) => inside(e.path, p)));
+            if (!want.some((e) => inside(e.path, paths[0]))) {
+                throw new Error(`no ${paths[0]}`);
+            }
+            if (want.length > PART_FILES) {
+                throw new Error(`${want.length} files`);
+            }
+            const total = want.reduce((n, e) => n + sizeOf(e), 0);
+            const got = new Map(want.map((e) => [e, batch ? batch.blob(e.sha) : null]).filter((x) => x[1]));
+            const share = new Map(Array.from(got.keys()).map((e) => [e, sizeOf(e)]));
+            const show = () => {
+                if (onProgress) {
+                    onProgress(Array.from(share.values()).reduce((n, b) => n + b, 0), total);
+                }
+            };
+            show();
+            // a file at a commit never changes, and is checked: a cut download goes on from where it
+            // stopped; one pieced together from cut tries that is not the file is read once more, whole
+            const read = (list, fresh) => {
+                const urls = list.map((e) => `${rawHost}/${s.repo}/${commit}/${encode(e.path)}`);
+                return counted(urls[0], () => ctx.net.getAll(urls.map((url, k) => ({ url, name: path.posix.basename(list[k].path),
+                    maxBytes: sizeOf(list[k]) + 65536 + (sizeOf(list[k]) >> 3) })),
+                Object.assign({ Accept: 'application/octet-stream', 'Accept-Encoding': 'gzip' }, ua(ctx.version)),
+                { immutable: true, fresh, parallel: PART_PARALLEL }, (k, bytes, wire) => {
+                    if (wire) {
+                        share.set(list[k], Math.max(share.get(list[k]) || 0, Math.floor(sizeOf(list[k]) * Math.min(1, bytes / wire))));
+                        show();
+                    }
+                }, ['content-encoding']))
+                    .then((bufs) => Promise.all(bufs.map((b, k) => (/^gzip$/i.test(b.headers['content-encoding'] || '')
+                        ? tar.gunzipBounded(b, sizeOf(list[k])) : Promise.resolve(b))
+                        .then((data) => (gitBlobId(data) === list[k].sha ? data : null), () => null)
+                        .then((data) => {
+                            if (data) {
+                                got.set(list[k], data);
+                                share.set(list[k], sizeOf(list[k]));
+                                return null;
+                            }
+                            if (b.resumed && !fresh) {
+                                return list[k];
+                            }
+                            throw new Error(`${list[k].path} is not the file the tree lists`);
+                        }))))
+                    .then((again) => {
+                        show();
+                        again = again.filter(Boolean);
+                        return again.length ? read(again, true) : null;
+                    });
+            };
+            const missing = want.filter((e) => !got.has(e)).sort((a, b) => sizeOf(b) - sizeOf(a));
+            const inUse = new Set(want.map((e) => e.sha));
+            return (missing.length ? read(missing, false) : Promise.resolve()).then(() => want.map((e) => {
+                if (batch) {
+                    batch.keep(e.sha, got.get(e), inUse);
+                }
+                return { name: e.path, data: got.get(e), mode: e.mode === '100755' ? 0o755 : 0o644 };
+            }));
+        });
+    };
+
     return {
         network: true,
         /* The files changed between two commits ([path]); null when GitHub
@@ -1794,33 +2005,17 @@ function githubReader(s, ctx) {
                 ? tokenOrNone((anon) => fileAt(entry.commit, rel, max, anon))
                 : Promise.reject(new Error('an icon path stays inside the repo'))))
                 : Promise.reject(new Error('an icon is a release asset, an https url or a file of the repo tree'))),
-        files: (commit, onProgress, under) => lastTarball(`${s.repo}@${commit}`, () => tokenOrNone((anon) => tarball(commit, onProgress, anon)))
-            .then((buf) => {
-                if (onProgress) onProgress(buf.length, buf.length);   // (a kept one: all there)
-                return tar.untgz(buf, ctx.maxBuildBytes);
-            })
-            // the tarball's one top folder (<owner>-<repo>-<sha>/) is left off
-            .then((members) => members.map((m) => ({ name: m.name.slice(m.name.indexOf('/') + 1), data: m.data, mode: m.mode }))
-                .filter((m) => m.name && !m.name.split('/').some(SKIP) && (!under || m.name.indexOf(`${under}/`) === 0)))
+        files: (commit, onProgress, under, paths) => {
+            const whole = () => wholeRepo(commit, onProgress).then((files) => files.filter((m) => !under || m.name.indexOf(`${under}/`) === 0));
+            if (!paths) {
+                return whole();
+            }
+            return partFiles(commit, paths, onProgress).then((files) => Object.assign(files, { partial: true }), (err) => {
+                console.log(`source ${s.id}: ${paths[0]} at ${commit.slice(0, 7)}: the whole repo (${err.message})`);
+                return whole();
+            });
+        }
     };
-}
-
-/* A repo's tarball at a commit, downloaded once for the updates that build from it one after another (an update
- * of every app of a repo, each of which reads the whole tree): the last one is kept for TARBALL_KEEP_MS after its
- * last use, by repo@commit. A failed download is not kept. */
-const TARBALL_KEEP_MS = 15 * 60 * 1000;
-let tarballKept = null;   // { key, buf (a promise), timer }
-function lastTarball(key, download) {
-    if (!tarballKept || tarballKept.key !== key) {
-        if (tarballKept) clearTimeout(tarballKept.timer);
-        const kept = tarballKept = { key, buf: download(), timer: null };
-        kept.buf.catch(() => { if (tarballKept === kept) { clearTimeout(kept.timer); tarballKept = null; } });
-    }
-    const kept = tarballKept;
-    clearTimeout(kept.timer);
-    kept.timer = setTimeout(() => { if (tarballKept === kept) tarballKept = null; }, TARBALL_KEEP_MS);
-    if (kept.timer.unref) kept.timer.unref();
-    return kept.buf;
 }
 
 /* ---- USB media ---------------------------------------------------------------------- */
@@ -2057,7 +2252,7 @@ function label(s) {
 
 module.exports = {
     load, save, checkStored, writePrivate, mkdirPrivate, reader, label, usbSources, mountPoints,
-    repoCatalog, partPaths, buildPaths, batchCache, lastTarball, packComponent, serviceUnit, preloadFiles, subtree, packageInfo, packageEntry, readInside, walkInside, authError,
+    repoCatalog, partPaths, buildPaths, batchCache, packComponent, serviceUnit, preloadFiles, subtree, packageInfo, packageEntry, readInside, walkInside, authError,
     renameable, renameApp, packageId, uuid5, orderBranches, entryIcons, isIcon, safePath, parseRefs, REPO, CHANNEL, PACKAGE, ICON_BYTES,
     RATE_LIMIT
 };

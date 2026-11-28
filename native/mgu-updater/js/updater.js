@@ -1487,7 +1487,9 @@ class Updater {
             maxRepoBytes: Number(conf.repo_max_bytes) || 64 << 20,
             maxBuildBytes: Number(conf.build_max_bytes) || 200 << 20,
             // an index source's packages, kept by their sha256
-            cacheDir: path.join(conf.state_dir, 'index')
+            cacheDir: path.join(conf.state_dir, 'index'),
+            // what the installs of one run of the queue keep for each other (next() clears it), repo files also on disk
+            batch: sourcesLib.batchCache(path.join(conf.state_dir, 'blobs'))
         };
         this.stored = [];
         this.usb = [];
@@ -3580,6 +3582,7 @@ class Updater {
         this.lowPriority = !!(item && item.background);
         if (this.fetcher) this.fetcher.lowPriority = this.lowPriority;
         if (!item) {
+            this.ctx.batch.clear();
             this.busy = null;
             this.changed();
             return;
@@ -3644,8 +3647,7 @@ class Updater {
             return rt.reader.artifact(entry, progress);
         }
         // a build script needs the whole repo, or its folder and the shared files it names; packing, the
-        // component's folder. A GitHub repo's come from its tarball at the commit, downloaded once for the updates
-        // that follow from the same commit (sources.js lastTarball)
+        // component's folder. A public repo's are read file by file, kept by their git id (sources.js partFiles)
         const files = (paths) => rt.reader.files(entry.commit, progress, entry.script ? null : entry.path, paths);
         // a build's donor is looked up while its files download
         const donorLookup = entry.script ? this.sdkDonor() : null;
@@ -4770,6 +4772,8 @@ class Updater {
         rmIfThere(this.cacheFile(id));
         rmIfThere(this.checkedFile(id));
         cp.execFileSync('rm', ['-rf', path.join(this.ctx.cacheDir, id)]);
+        // repo files are kept by git id, shared by every source
+        this.ctx.batch.drop();
         // what it installed keeps it as its origin, with the repo or URL it was (removed): no other source updates that
         Object.keys(this.origins).forEach((c) => {
             if (this.origins[c].source === id && !this.installedOf(c)) {

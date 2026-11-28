@@ -56,6 +56,7 @@ const path = require('path');
 const dgram = require('dgram');
 const https = require('https');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const cp = require('child_process');
 const { URL } = require('url');
 const catalogLib = require('../js/catalog');
@@ -299,13 +300,53 @@ function ghAssetStore(req, res) {
     res.end(data);
 }
 
+/* A git-like tree of files ({ path: bytes }, modes { path: mode }) as
+ * GitHub's recursive listing gives it: a file's id its git blob id, a
+ * folder's from its entries'. */
+function gitTree(files, modes) {
+    const ids = {};
+    Object.keys(files).forEach((rel) => {
+        ids[rel] = crypto.createHash('sha1').update(`blob ${files[rel].length}\0`).update(files[rel]).digest('hex');
+    });
+    const folders = new Set();
+    Object.keys(files).forEach((rel) => rel.split('/').slice(0, -1).forEach((x, i, a) => folders.add(a.slice(0, i + 1).join('/'))));
+    const idOf = (dir) => sha256(Object.keys(ids).filter((k) => k.indexOf(dir ? `${dir}/` : '') === 0).sort()
+        .map((k) => `${k} ${ids[k]}`).join('\n')).slice(0, 40);
+    return { sha: idOf(''), entries: Object.keys(ids).map((k) => ({ path: k, sha: ids[k], type: 'blob',
+        mode: modes && modes[k] & 0o111 ? '100755' : '100644', size: files[k].length }))
+        .concat(Array.from(folders).map((d) => ({ path: d, sha: idOf(d), type: 'tree', mode: '040000' }))) };
+}
+
 /* raw.githubusercontent.com: a public repo's file at a commit. */
 function ghRaw(req, res) {
     const m = /^\/([^/]+\/[^/]+)\/([0-9a-f]{40})\/(.+)$/.exec(req.url);
     const repo = m && gh.repos[m[1]];
     const f = repo && !repo.private && repo.trees[m[2]] && repo.trees[m[2]][decodeURIComponent(m[3])];
-    res.writeHead(f ? 200 : 404, { 'Content-Length': f ? f[0].length : 0 });
-    res.end(f ? f[0] : '');
+    const rel = m && decodeURIComponent(m[3]);
+    // the file the repo's rawCut names: its first answer cut half way, the rest asked for comes as other
+    // bytes, and asked for whole it comes right (ranges of a strong ETag, never gzipped)
+    if (f && repo.rawCut === rel) {
+        repo.rawCutSeen = (repo.rawCutSeen || []).concat([req.headers.range || null]);
+        const r = /^bytes=(\d+)-$/.exec(req.headers.range || '');
+        const head = { ETag: '"cut"', 'Accept-Ranges': 'bytes' };
+        if (r) {
+            const rest = Buffer.alloc(f[0].length - Number(r[1]), 'x');
+            res.writeHead(206, Object.assign(head, { 'Content-Length': rest.length, 'Content-Range': `bytes ${r[1]}-${f[0].length - 1}/${f[0].length}` }));
+            res.end(rest);
+        } else if (repo.rawCutSeen.length === 1) {
+            res.writeHead(200, Object.assign(head, { 'Content-Length': f[0].length }));
+            res.write(f[0].slice(0, f[0].length >> 1), () => res.socket.destroy());
+        } else {
+            res.writeHead(200, Object.assign(head, { 'Content-Length': f[0].length }));
+            res.end(f[0]);
+        }
+        return;
+    }
+    // a file the repo's rawWrong names comes as other bytes; gzipped when asked, as GitHub's raw host does
+    const data = f && repo.rawWrong === rel ? Buffer.from('not it') : f && f[0];
+    const gz = data && /gzip/.test(req.headers['accept-encoding'] || '') ? zlib.gzipSync(data) : null;
+    res.writeHead(f ? 200 : 404, Object.assign({ 'Content-Length': f ? (gz || data).length : 0 }, gz ? { 'Content-Encoding': 'gzip' } : {}));
+    res.end(f ? gz || data : '');
 }
 
 function ghApi(req, res, auth) {
@@ -442,6 +483,20 @@ function ghApi(req, res, auth) {
         // the raw media type gets the bytes; anything else the JSON object around them, as GitHub does
         const rawWanted = /^application\/vnd\.github(\.v3)?\.raw/.test(req.headers.accept || '');
         send(f ? 200 : 404, !f ? { message: 'Not Found' } : rawWanted ? f[0] : { type: 'file', encoding: 'base64', content: f[0].toString('base64') });
+    } else if (rest.indexOf('/git/trees/') === 0) {
+        const tree = repo.trees[rest.slice('/git/trees/'.length)];
+        if (!tree || u.searchParams.get('recursive') !== '1') {
+            send(404, { message: 'Not Found' });
+            return;
+        }
+        const files = {};
+        const modes = {};
+        Object.keys(tree).forEach((rel) => {
+            files[rel] = tree[rel][0];
+            modes[rel] = tree[rel][1];
+        });
+        const t = gitTree(files, modes);
+        send(200, { sha: t.sha, truncated: false, tree: t.entries });
     } else if (rest.indexOf('/tarball/') === 0) {
         const sha = rest.slice('/tarball/'.length);
         // GitHub refuses a tarball request that accepts only application/octet-stream
@@ -2471,14 +2526,16 @@ function testSources(certs) {
         "  const app = JSON.parse(fs.readFileSync(path.join('apps', id, 'app.json'), 'utf8'));",
         "  const dir = path.join(process.env.TMPDIR, 'pkg'); fs.mkdirSync(dir);",
         "  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: id, version: app.version,",
-        "    donor: fs.readFileSync(process.env.MGU_SDK_DONOR, 'utf8'), uid: process.getuid(), cwd: process.cwd() }));",
+        "    donor: fs.readFileSync(process.env.MGU_SDK_DONOR, 'utf8'), uid: process.getuid(), cwd: process.cwd(),",
+        "    lib: fs.existsSync('lib/x.txt') ? fs.readFileSync('lib/x.txt', 'utf8') : null, readme: fs.existsSync('README.md'),",
+        "    others: fs.existsSync('apps/b_ok') }));",
         "  cp.execFileSync('tar', ['-czf', path.join(process.env.MGU_OUT, `${id}@${app.version}.tgz`), '-C', dir, 'package.json']);",
         "  console.log('built');",
         '}'
     ].join('\n');
     const tTool = { id: 't_tool', kind: 'tool', version: '1.0.0', title: 'Tree tool',
         files: [{ path: 't.sh', from: 'bin/t.sh', mode: '0755' }], units: [{ name: 't.service', from: 'systemd/t.service' }], internet: true };
-    const branchFiles = (pVersion) => ({
+    const branchFiles = (pVersion, more) => Object.assign({
         'mgu-repo.json': JSON.stringify({ schema: 1, components: [
             { id: 'p_app', kind: 'app', path: 'apps/p_app', build: 'unit', uninstallable: true },
             { id: 't_tool', kind: 'tool', path: 'native/t_tool' },
@@ -2488,11 +2545,16 @@ function testSources(certs) {
             { id: 'b_slow', kind: 'app', path: 'apps/b_slow', build: { node: 'tools/build.js', args: ['slow', 'b_slow'] } },
             { id: 'b_escape', kind: 'app', path: 'apps/b_escape', build: { node: 'tools/build.js', args: ['escape', 'b_escape', path.join(M, 'outside', 'x')] } },
             { id: 'b_detach', kind: 'app', path: 'apps/b_detach', build: { node: 'tools/build.js', args: ['detach', 'b_detach'] } },
-            { id: 'bad_tool', kind: 'tool', path: 'native/bad_tool' }
+            { id: 'bad_tool', kind: 'tool', path: 'native/bad_tool' },
+            { id: 'b_sh', kind: 'app', path: 'apps/b_sh', build: { node: 'tools/build.js', args: ['shared', 'b_sh'], shared: ['lib'] } },
+            { id: 'b_sh2', kind: 'app', path: 'apps/b_sh2', build: { node: 'tools/build.js', args: ['shared', 'b_sh2'], shared: ['lib'] } },
+            { id: 'b_sh3', kind: 'app', path: 'apps/b_sh3', build: { node: 'tools/build.js', args: ['shared', 'b_sh3'], shared: ['lib'] } },
+            { id: 'b_all', kind: 'app', path: 'apps/b_all', build: { node: 'tools/build.js', args: ['needsall', 'b_all'], shared: ['lib'] } }
         ] }),
         'apps/p_app/mgu-app.json': JSON.stringify({ schema: 1, id: 'p_app', version: pVersion, title: 'Package app', tree: `p_app@${pVersion}`, modules: ['src/p.js'], sdk: [] }),
         [`apps/p_app/p_app@${pVersion}/package.json`]: JSON.stringify({ name: 'p_app', version: pVersion }),
         'apps/p_app/src/p.js': 'module.exports = 1;\n',
+        'apps/p_app/src/data.bin': crypto.createHash('sha512').update('data').digest('hex').repeat(4000),
         'native/t_tool/component.json': JSON.stringify(tTool),
         'native/t_tool/bin/t.sh': ['#!/bin/sh\necho t\n', 0o755],
         'native/t_tool/systemd/t.service': '[Service]\nExecStart=/bin/true\n',
@@ -2503,8 +2565,14 @@ function testSources(certs) {
         'apps/b_slow/package.json': JSON.stringify({ name: 'b_slow', version: '1.0.0' }),
         'apps/b_escape/app.json': JSON.stringify({ id: 'b_escape', version: '1.0.0' }),
         'apps/b_detach/app.json': JSON.stringify({ id: 'b_detach', version: '1.0.0' }),
+        'apps/b_sh/app.json': JSON.stringify({ id: 'b_sh', version: '1.0.0' }),
+        'apps/b_sh2/app.json': JSON.stringify({ id: 'b_sh2', version: '1.0.0' }),
+        'apps/b_sh3/app.json': JSON.stringify({ id: 'b_sh3', version: '1.0.0' }),
+        'apps/b_all/app.json': JSON.stringify({ id: 'b_all', version: '1.0.0' }),
+        'lib/x.txt': 'shared lib\n',
+        'extra/data.txt': 'only in the whole repo\n',
         'tools/build.js': buildJs
-    });
+    }, more || {});
     ghRepo('third/branchy');
     const c1 = ghCommit('third/branchy', branchFiles('1.0.0'));
     gh.repos['third/branchy'].branches.main = c1;
@@ -2555,6 +2623,11 @@ function testSources(certs) {
     const installed = (id) => until(st, (s) => !s.busy && !s.components.some((c) => c.queued) && comp(id).status === 'installed', 60000, `${id} installed`);
     const settled = () => until(st, (s) => !s.busy && !s.components.some((c) => c.queued) && !s.sources.some((x) => x.status === 'checking'), 60000, 'settled');
     const authLeaks = () => seen.filter((x) => x.auth && !/^api\.github\.com/.test(x.host) && !/^updates\.test/.test(x.host));
+    let pMark = 0;
+    let tMark = 0;
+    let shMark = 0;
+    let sh3Mark = 0;
+    let allMark = 0;
 
     return u.serve()
         .then(() => u.writeSecrets())
@@ -2908,6 +2981,8 @@ function testSources(certs) {
             ok('releases: an installed app without a listed title shows its entry point\'s en_GB text', comp('mgu_only').title === 'mgu_only entry',
                 comp('mgu_only').title);
             fs.writeFileSync(deployLog, '');
+            pMark = seen.length;
+            gh.repos['third/branchy'].rawCut = 'apps/p_app/src/data.bin';
             return ask(sock, { op: 'install', id: 'p_app' });
         })
         .then(() => installed('p_app'))
@@ -2915,6 +2990,8 @@ function testSources(certs) {
             const pkg = JSON.parse(fs.readFileSync(path.join(oap, `oap_${JSON.parse(fs.readFileSync(path.join(oap, 'oap_12201', 'data', 'apps', 'p_app.json'))).userId}`, 'source', 'package.json')));
             ok('repo: an app with mgu-app.json goes to the deploy tool as a source package of its folder', pkg.built === true && pkg.tree === 'p_app@1.0.0');
             ok('origins: a branch install records its commit', JSON.parse(fs.readFileSync(path.join(state, 'origins.json'), 'utf8')).p_app.commit === c1);
+            tMark = seen.length;
+            gh.repos['third/branchy'].rawWrong = 'native/t_tool/bin/t.sh';
             return ask(sock, { op: 'install', id: 't_tool' });
         })
         .then(() => installed('t_tool'))
@@ -2924,7 +3001,18 @@ function testSources(certs) {
             ok('repo: a tool is packed as a tool kit, each file with its sha256, the rest of component.json kept',
                 c.files[0].path === 't.sh' && c.files[0].sha256 === sha256(Buffer.from('#!/bin/sh\necho t\n')) && !c.files[0].from &&
                 c.units[0].name === 't.service' && c.internet === true && fs.readFileSync(path.join(dir, 't.sh'), 'utf8') === '#!/bin/sh\necho t\n');
-            ok('github: the tarball came from codeload without the token', seen.some((x) => /^codeload/.test(x.host) && x.auth === null) && authLeaks().length === 0);
+            const pFetch = seen.slice(pMark, tMark);
+            const cutSeen = gh.repos['third/branchy'].rawCutSeen || [];
+            ok('resume: a cut file goes on from where it stopped; pieced together wrong, it is read again whole and installs',
+                cutSeen.length === 3 && cutSeen[0] === null && /^bytes=\d+-$/.test(cutSeen[1] || '') && cutSeen[2] === null &&
+                comp('p_app').status === 'installed', JSON.stringify(cutSeen));
+            gh.repos['third/branchy'].rawCut = null;
+            ok('github: a public repo\'s component is read file by file from raw.githubusercontent.com without the token, no tarball',
+                pFetch.some((x) => /^raw\./.test(x.host) && /\/apps\/p_app\/src\/p\.js$/.test(x.url) && x.auth === null) &&
+                !pFetch.some((x) => /^codeload/.test(x.host) || (/^raw\./.test(x.host) && !/\/apps\/p_app\//.test(x.url))), JSON.stringify(pFetch));
+            ok('github: a file that is not the one the tree lists falls back to the tarball, from codeload without the token',
+                seen.slice(tMark).some((x) => /^codeload/.test(x.host) && x.auth === null) && authLeaks().length === 0);
+            gh.repos['third/branchy'].rawWrong = null;
             // the branch moves on, same versions, with changes in both components' folders
             const c2 = ghCommit('third/branchy', Object.assign(branchFiles('1.0.0'),
                 { 'apps/p_app/src/p.js': 'module.exports = 2;\n', 'native/t_tool/NOTES': 'changed\n' }));
@@ -3015,6 +3103,43 @@ function testSources(certs) {
         .then(() => stillRunning(() => uidPids(12995)))
         .then((left) => {
             ok('build: a process the script leaves running outside its group is killed', !left.length, `${left}`);
+            // two apps of one commit with the same shared files, queued together (an Update all)
+            shMark = seen.length;
+            return Promise.all([ask(sock, { op: 'install', id: 'b_sh' }), ask(sock, { op: 'install', id: 'b_sh2' })])
+                .then(() => until(st, () => !st().busy && ['b_sh', 'b_sh2'].every((id) => comp(id).status === 'installed' || comp(id).error), 60000, 'b_sh, b_sh2'));
+        })
+        .then(() => {
+            const pkgOf = (id) => {
+                const reg = JSON.parse(fs.readFileSync(path.join(oap, 'oap_12201', 'data', 'apps', `${id}.json`)));
+                return JSON.parse(fs.readFileSync(path.join(oap, `oap_${reg.userId}`, 'source', 'package.json')));
+            };
+            const got = seen.slice(shMark);
+            const pkgs = ['b_sh', 'b_sh2'].map((id) => comp(id).status === 'installed' && pkgOf(id));
+            ok('build.shared: the build gets its folder, the shared files and the script, not the rest of the repo',
+                pkgs.every((p) => p && p.lib === 'shared lib\n' && p.readme === false && p.others === false), JSON.stringify([pkgs, comp('b_sh').error, comp('b_sh2').error]));
+            ok('batch: two apps of one commit read its tree once and each shared file once, no tarball',
+                got.filter((x) => /\/git\/trees\//.test(x.url)).length === 1 && got.filter((x) => /\/lib\/x\.txt$/.test(x.url)).length === 1 &&
+                got.filter((x) => /\/tools\/build\.js$/.test(x.url)).length === 1 && !got.some((x) => /^codeload/.test(x.host)),
+                JSON.stringify(got.map((x) => x.url)));
+            ok('batch: kept only while the queue runs', u.ctx.batch.trees.size === 0 && u.ctx.batch.blobs.size === 0 && u.ctx.batch.whole === null);
+            // the next app on its own, in a run of its own: the shared files come from the disk, a kept one that is not the file is read again
+            const blobId = (text) => crypto.createHash('sha1').update(`blob ${Buffer.byteLength(text)}\0`).update(text).digest('hex');
+            fs.writeFileSync(path.join(state, 'blobs', blobId('shared lib\n')), 'not the file');
+            sh3Mark = seen.length;
+            return ask(sock, { op: 'install', id: 'b_sh3' }).then(() => until(st, () => !st().busy && (comp('b_sh3').status === 'installed' || comp('b_sh3').error), 60000, 'b_sh3'));
+        })
+        .then(() => {
+            const got = seen.slice(sh3Mark);
+            ok('blobs: an app installed on its own later reads the shared files kept on disk, one that is not the file again',
+                comp('b_sh3').status === 'installed' && got.filter((x) => /\/lib\/x\.txt$/.test(x.url)).length === 1 &&
+                !got.some((x) => /\/tools\/build\.js$/.test(x.url)) && !got.some((x) => /^codeload/.test(x.host)),
+                JSON.stringify([comp('b_sh3').error, got.map((x) => x.url)]));
+            allMark = seen.length;
+            return ask(sock, { op: 'install', id: 'b_all' }).then(() => until(st, () => !st().busy && (comp('b_all').status === 'installed' || comp('b_all').error), 60000, 'b_all'));
+        })
+        .then(() => {
+            ok('build.shared: a build that fails with only its shared files runs again with the whole repo',
+                comp('b_all').status === 'installed' && seen.slice(allMark).some((x) => /^codeload/.test(x.host)), JSON.stringify([comp('b_all').error]));
             // tags, and a repo without releases, added through the socket
             return Promise.all([priv({ op: 'source-add', type: 'github', repo: 'third/tagged', channel: 'tags' }),
                 priv({ op: 'source-add', type: 'github', repo: 'third/plain' }),
@@ -3095,6 +3220,7 @@ function testSources(certs) {
         .then((errs) => {
             ok('source-remove: the built-in source stays; another goes', /cannot be removed/.test(errs[0]) && errs[1] === null &&
                 !st().sources.some((x) => x.id === 'second') && comp('dup_app').source === 'mgu-store');
+            ok('source-remove: the kept repo files go', fs.readdirSync(path.join(state, 'blobs')).length === 0);
             // USB media
             const stick = path.join(media, 'STICK');
             mkdirp(path.join(stick, 'usbtool'));
@@ -7032,6 +7158,49 @@ function testKeptAnswers() {
     return chain;
 }
 
+/* The repo files kept on disk stay under their cap before each write: the
+ * least recently used go first, never one the current install uses; a file
+ * that cannot fit is kept for the run only. */
+function testBlobCap() {
+    const sourcesLib = require('../js/sources');
+    const dir = path.join(T, 'blobcap');
+    const id = (text) => crypto.createHash('sha1').update(`blob ${text.length}\0`).update(text).digest('hex');
+    const [a, b, c, d] = ['a', 'b', 'c', 'd'].map((x) => Buffer.from(x.repeat(40)));
+    const kept = () => fs.readdirSync(dir).sort().join();
+    const names = (...l) => l.map(id).sort().join();
+    const uses = (...l) => new Set(l.map(id));
+    const old = sourcesLib.batchCache(dir, 100);
+    old.keep(id(a), a, uses(a));
+    old.keep(id(b), b, uses(b));
+    fs.utimesSync(path.join(dir, id(a)), new Date(1000), new Date(1000));
+    fs.utimesSync(path.join(dir, id(b)), new Date(2000), new Date(2000));
+    const batch = sourcesLib.batchCache(dir, 100);
+    batch.keep(id(c), c, uses(c));
+    ok('blob cap: a write past the cap evicts the least recently used first', kept() === names(b, c), kept());
+    batch.keep(id(d), d, uses(b, d));
+    ok('blob cap: a file the current install uses is not evicted, older or not', kept() === names(b, d), kept());
+    batch.keep(id(a), a, uses(a, b, d));
+    ok('blob cap: a file that cannot fit beside the current install\'s is kept for the run only',
+        kept() === names(b, d) && batch.blob(id(a)).equals(a), kept());
+    batch.drop();
+    ok('blob cap: drop empties the folder', kept() === '');
+}
+
+/* batchCache.blob() reads a kept file back without rewriting its time on disk. */
+function testBlobRead() {
+    const sourcesLib = require('../js/sources');
+    const blobDir = path.join(T, 'blobread');
+    const blobData = Buffer.from('hello-blob-no-utimes');
+    const blobId = crypto.createHash('sha1').update(`blob ${blobData.length}\0`).update(blobData).digest('hex');
+    const bc = sourcesLib.batchCache(blobDir, 1024);
+    bc.keep(blobId, blobData, new Set([blobId]));
+    fs.utimesSync(path.join(blobDir, blobId), new Date(5000), new Date(5000));
+    const readBack = sourcesLib.batchCache(blobDir, 1024).blob(blobId);
+    ok('batchCache: blob() verifies without rewriting mtime on disk',
+        readBack && readBack.equals(blobData) && fs.statSync(path.join(blobDir, blobId)).mtime.getTime() === 5000,
+        String(fs.statSync(path.join(blobDir, blobId)).mtime.getTime()));
+}
+
 function main() {
     const certs = makeCerts();
     const pubDir = path.join(T, 'pub');
@@ -7041,6 +7210,8 @@ function main() {
     testCollect();
     testFileLog();
     testStoreSwitch();
+    testBlobCap();
+    testBlobRead();
     return testInstalledStamp()
         .then(() => testKeptAnswers())
         .then(() => testRequiredAlone())
