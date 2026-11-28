@@ -72,6 +72,7 @@
  */
 var fs = require('fs');
 var path = require('path');
+var vm = require('vm');
 
 var MARK = '/* mgu-deploy provisioning fallback */';
 var CLASS_ANCHOR = 'class ProvisioningNotifier ';
@@ -487,6 +488,19 @@ function main() {
             src = src.replace(KEEP_STUB_ANCHOR, function () { return KEEP_STUB; });
             src = src.replace(KEEP_CLASS_ANCHOR, function () { return keepSource(listPath) + KEEP_CLASS_ANCHOR; });
         }
+    }
+    var body = src;
+    if (body.charAt(0) === '#' && body.charAt(1) === '!') {
+        var nl = body.slice(2).search(/[\r\n]/);
+        body = nl < 0 ? '' : body.slice(nl + 2);
+    }
+    if (body.charCodeAt(0) === 0xFEFF) body = body.slice(1);
+    try {
+        new vm.Script(require('module').wrap(body), { filename: outFile, displayErrors: true });
+    } catch (e) {
+        process.stderr.write('fallback_build: the fallback copy of ' + inFile + ' does not parse (' +
+            e.name + ': ' + e.message + '); not binding it\n');
+        return 3;
     }
     var tmp = outFile + '.tmp-' + process.pid;
     fs.writeFileSync(tmp, src);

@@ -1,5 +1,10 @@
 # Deploy tool changelog
 
+## 0.8.36
+
+robertnisipeanu/mgu-store's 0.8.32 with this repository's 0.8.35:
+- Installs, updates, backups and status checks use less memory and storage writes, and finish faster on the head unit. `mgu-install.js` downloads packages in parallel, uploads the fallback tool once during uninstall, and keeps failed removals isolated from earlier tools.
+
 ## 0.8.35
 
 robertnisipeanu/mgu-store's 0.8.31 with this repository's 0.8.34:

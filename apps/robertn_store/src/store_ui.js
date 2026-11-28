@@ -1,5 +1,6 @@
 'use strict';
 const { t: tr } = require('./i18n.js');
+const { gridView, listView } = require('./am_store_widgets.js');
 /**
  * What the renderer screens (src/am_screens.js) show, from mgu-updater's
  * state: view(model) -> { screen, values: { element: opts } } for the page on
@@ -1094,19 +1095,39 @@ function view(m) {
     return { screen, values, look: lookOf(m) };
 }
 
-/* The picture files a view shows (components[].icon). */
-function icons(v) {
+/* The picture files visible on a screen (components[].icon). With the laid-out
+ * screen st: its shown components', of a grid or list only the rows in view. */
+function icons(v, st) {
     const out = [];
     const add = (x) => {
         if (x && /^key:/.test(x.icon || '')) {
             out.push(x.icon.slice(4));
         }
     };
-    Object.keys(v.values).forEach((k) => {
-        const o = v.values[k];
-        add(o);
-        (o && Array.isArray(o.items) ? o.items : []).forEach(add);
-    });
+    if (st && Array.isArray(st.components)) {
+        st.components.forEach((c) => {
+            const o = c.opts;
+            if (!o || o.hidden) {
+                return;
+            }
+            if (c.gpu === 'appGrid') {
+                const g = gridView(c, o);
+                g.all.slice(g.first * g.cols, g.end * g.cols).forEach(add);
+            } else if (c.gpu === 'appList') {
+                const lv = listView(c, o);
+                lv.all.slice(lv.first, lv.end).forEach(add);
+            } else {
+                add(o);
+                (Array.isArray(o.items) ? o.items : []).forEach(add);
+            }
+        });
+    } else {
+        Object.keys(v.values).forEach((k) => {
+            const o = v.values[k];
+            add(o);
+            (o && Array.isArray(o.items) ? o.items : []).forEach(add);
+        });
+    }
     return out.filter((f, i) => out.indexOf(f) === i);
 }
 

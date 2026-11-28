@@ -1,5 +1,10 @@
 # mgu-render changelog
 
+## 0.6.35
+
+robertnisipeanu/mgu-store's 0.6.27 with this repository's 0.6.34:
+- Uses less memory and idle CPU while keeping text, images and embedded screens responsive, allocating fallback buffers and font pages only as needed. Reclaims gradient and font resources cleanly when apps close.
+
 ## 0.6.34
 
 - The app client's `handled()` tells mgu-render an input was acted on though the picture stays as it was (the app's claims again), so the app is not taken for deaf to input.

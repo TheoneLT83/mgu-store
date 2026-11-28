@@ -1,5 +1,13 @@
 # Updater changelog
 
+## 0.8.65
+
+robertnisipeanu/mgu-store's 0.8.63 and part of its 0.8.64 with this repository's 0.8.64:
+- The phone page's Add source takes a catalog address without `https://`.
+- Less memory and CPU while downloading and building: connections kept open across downloads, a download's flow paused
+  while the car's side is slow to take it, a build's disk use measured without holding up the updater, and its output
+  passed on line by line.
+
 ## 0.8.64
 
 - Updates that build from the same commit of a GitHub repo (every app of idrive7-apps after an update there) download its tarball once: it is kept 15 minutes after its last use. Each app downloaded the whole repo again (about 33 MB).

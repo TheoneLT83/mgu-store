@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.81
+
+robertnisipeanu/mgu-store's 0.9.46 and part of its 0.9.47 with this repository's 0.9.80: Add source takes a catalog
+address without `https://`; only the app icons in view are decoded and kept, the screen's drawing buffers are reused,
+and the Store's timing log runs only while the Store is shown.
+
 ## 0.9.80
 
 Installed (iDrive 7 look): Install all updates stays on while an automatic update runs, for the updates not queued

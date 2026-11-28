@@ -78,7 +78,8 @@ const HEAD_STATUS_H = 76;     // the HMI's status icons' height in its title str
 
 function record(st, opts = {}) {
     const tg = opts.design || E.DESIGN, t = kitTheme(st.theme), area = opts.area || E.appArea(opts.view);
-    const rec = new Recorder(tg.w, tg.h, { textScale: opts.textScale || 1 });
+    const rec = opts.rec ? opts.rec.reset() : new Recorder(tg.w, tg.h, { textScale: opts.textScale || 1 });
+    rec.w = tg.w | 0; rec.h = tg.h | 0; rec.textScale = opts.textScale || 1; rec.errors = null;
     rec.clear([0, 0, 0, 0]);
     if (st.bg !== 'none' && st.head) {
         // full screen (store_compact.js full): under the HMI's title strip the page; in the strip only up to head.end
