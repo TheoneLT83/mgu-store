@@ -6849,13 +6849,21 @@ function testAnonymous(certs) {
                 gh.assetNotModified >= 1 && anonRepos.every((r) => apiOf(r, mark).length === 0) && comp('cat_tool').version === '1.0.0',
                 `${gh.assetNotModified} ${JSON.stringify(apiOf('anon/cat', mark))}`);
             mark = seen.length;
-            return install('cat_tool').then((err) => install('tree_tool').then((err2) => [err, err2]));
+            // the tree of a branch install refused for the address's API limit
+            return install('cat_tool').then((err) => {
+                gh.anonLimited = true;
+                return install('tree_tool').then((err2) => {
+                    gh.anonLimited = false;
+                    return [err, err2];
+                });
+            });
         })
         .then((errs) => {
-            ok('anonymous: installs from a github.com release download and a codeload tarball, checked, without an API request',
-                errs.every((e) => e === null) && comp('cat_tool').status === 'installed' && comp('tree_tool').status === 'installed' &&
-                anonRepos.every((r) => apiOf(r, mark).length === 0) && webOf('anon/tree', mark).some((x) => /^codeload\./.test(x.host) && /\/tar\.gz\//.test(x.url)),
-                `${errs} ${JSON.stringify(seen.slice(mark).map((x) => `${x.host}${x.url}`))}`);
+            ok('anonymous: installs from a github.com release download, checked, without an API request',
+                errs[0] === null && comp('cat_tool').status === 'installed' && apiOf('anon/cat', mark).length === 0, `${errs[0]}`);
+            ok('rate limit: a branch install whose tree the API refuses downloads the codeload tarball instead',
+                errs[1] === null && comp('tree_tool').status === 'installed' && webOf('anon/tree', mark).some((x) => /^codeload\./.test(x.host) && /\/tar\.gz\//.test(x.url)),
+                `${errs[1]} ${JSON.stringify(seen.slice(mark).map((x) => `${x.host}${x.url}`))}`);
             // a catalog naming its artifacts by their API URL, with the address's API limit spent
             gh.anonLimited = true;
             return install('api_tool');
